@@ -126,7 +126,17 @@ func _ready() -> void:
 	elif chapter == 2:
 		player.give_weapon(1); player.give_weapon(0)
 	else:
-		for i in [2, 1, 0]:
+		# Kapitelauswahl ohne Mitnahme: die Waffen der letzten Kapitel
+		var lw := {1: 9, 2: 3, 3: 7, 4: 8, 5: 6, 6: 4, 7: 1, 9: 5}
+		var got: Array = []
+		for c in range(chapter - 1, 0, -1):
+			if lw.has(c) and not got.has(lw[c]):
+				got.append(lw[c])
+			if got.size() >= 2:
+				break
+		got.append(0)
+		got.reverse()
+		for i in got:
 			player.give_weapon(i)
 		player.ability_unlocked = true
 	_build_secret()
@@ -134,6 +144,10 @@ func _ready() -> void:
 	# Kassette im Level: im Raum mit dem Splitter
 	if Story.TAPES.has("c%d_a" % chapter) and door_cols.size() > 1:
 		spawn_pickup("tape", 0, _free_spot(Vector2i(door_cols[1] + 4, 20)))
+	# Erinnerung: ein warmer Moment pro Kapitel
+	if Story.DIALOG.has("mem_c%d_0" % chapter):
+		var mp: Vector3 = _free_spot(Vector2i(door_cols[1] - 5, 6)) if door_cols.size() > 1 else checkpoint + Vector3(6, 0, 3)
+		spawn_pickup("memory", 0, mp)
 	# neue Waffen liegen irgendwo im Level (zweiter Raum)
 	var level_weapon := {1: 9, 2: 3, 3: 7, 4: 8, 5: 6, 6: 4, 7: 1, 9: 5}
 	if level_weapon.has(chapter) and door_cols.size() > 1:
@@ -734,6 +748,15 @@ func spawn_pickup(kind: String, idx: int, pos: Vector3, cb: Callable = Callable(
 		lab.material_override = _mat(Color(0.95, 0.9, 0.8), 1.2)
 		lab.position.y = 0.05
 		holder.add_child(lab)
+	elif kind == "memory":
+		# Erinnerung: ein kleines warmes Licht, wie ein Gluehwuermchen
+		var orb := MeshInstance3D.new()
+		var om := SphereMesh.new()
+		om.radius = 0.18
+		om.height = 0.36
+		orb.mesh = om
+		orb.material_override = _mat(Color(1.0, 0.8, 0.5), 4.0)
+		holder.add_child(orb)
 	else:
 		var core := MeshInstance3D.new()
 		var sm := SphereMesh.new()
@@ -743,7 +766,7 @@ func spawn_pickup(kind: String, idx: int, pos: Vector3, cb: Callable = Callable(
 		core.material_override = _mat(Color("#c77dff"), 3.0)
 		holder.add_child(core)
 	var light := OmniLight3D.new()
-	light.light_color = player.WEAPONS[idx].col if kind == "weapon" else (Color(1, 0.9, 0.75) if kind == "tape" else Color("#c77dff"))
+	light.light_color = player.WEAPONS[idx].col if kind == "weapon" else (Color(1, 0.9, 0.75) if kind == "tape" else (Color(1.0, 0.75, 0.45) if kind == "memory" else Color("#c77dff")))
 	light.light_energy = 1.5
 	light.omni_range = 4.0
 	light.position.y = 1.0
@@ -768,7 +791,7 @@ func _update_pickups(delta: float) -> void:
 	for pk in pickups:
 		var d: float = Vector2(pk.n.position.x - player.global_position.x, pk.n.position.z - player.global_position.z).length()
 		if d < 2.2:
-			var nm: String = player.WEAPONS[pk.idx].name if pk.kind == "weapon" else ("TAPE" if pk.kind == "tape" else "OVERLOAD CORE")
+			var nm: String = player.WEAPONS[pk.idx].name if pk.kind == "weapon" else ("TAPE" if pk.kind == "tape" else ("MEMORY" if pk.kind == "memory" else "OVERLOAD CORE"))
 			pickup_hint = "[E]  PICK UP  " + nm
 			if pk.kind == "weapon" and player.slots.size() >= player.MAX_SLOTS and not player.slots.has(pk.idx):
 				pickup_hint += "   (replaces " + player.WEAPONS[player.weapon].name + ")"
@@ -792,11 +815,58 @@ func _take(pk: Dictionary) -> void:
 		tapes_found += 1
 		radio_queue.push_front(["HALCYON LOG", Story.TAPES[key], "res://assets/voice/tape_%s.ogg" % key])
 		radio_t = 0.0
+	elif pk.kind == "memory":
+		_memory_moment()
 	else:
 		player.ability_unlocked = true
 		radio("got_overload")
 	if pk.cb.is_valid():
 		pk.cb.call()
+
+# ---------- Erinnerungen: kurzer warmer Rueckblick ----------
+var memory_rect: ColorRect
+func _memory_moment() -> void:
+	var prev: String = Game.current_track
+	Game.play_music("memory")
+	if memory_rect == null:
+		var cl := CanvasLayer.new()
+		cl.layer = 5
+		add_child(cl)
+		memory_rect = ColorRect.new()
+		memory_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+		memory_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		memory_rect.color = Color(1.0, 0.72, 0.4, 0.0)
+		cl.add_child(memory_rect)
+	var tw := create_tween()
+	tw.tween_property(memory_rect, "color:a", 0.28, 1.2)
+	slowmo(0.8, 0.3)
+	say("mem_c%d" % chapter, func():
+		var tw2 := create_tween()
+		tw2.tween_property(memory_rect, "color:a", 0.0, 2.5)
+		Game.play_music(prev))
+
+# ---------- Atmosphaere: seltene Geraeusche irgendwo hinter dir ----------
+var amb_shot_t := 30.0
+const AMB_SHOTS := ["amb_laugh", "amb_phone", "amb_steps", "amb_musicbox", "amb_door", "amb_pa"]
+func _update_amb_shots(delta: float) -> void:
+	if state != "play" or chapter == 8:
+		return
+	amb_shot_t -= delta
+	if amb_shot_t > 0.0:
+		return
+	amb_shot_t = randf_range(28.0, 60.0)
+	var path := "res://assets/sfx/%s.ogg" % AMB_SHOTS[randi() % AMB_SHOTS.size()]
+	if not ResourceLoader.exists(path):
+		return
+	var sp := AudioStreamPlayer3D.new()
+	sp.stream = load(path)
+	sp.unit_size = 10.0
+	sp.volume_db = -4.0
+	add_child(sp)
+	var back: Vector3 = player.global_basis.z.rotated(Vector3.UP, randf_range(-0.9, 0.9))
+	sp.global_position = player.global_position + back * randf_range(8.0, 16.0) + Vector3(0, 1.5, 0)
+	sp.finished.connect(sp.queue_free)
+	sp.play()
 
 # Traenen / Wasser, das beim Aufwachen ueber das Bild laeuft
 func _make_tears() -> void:
@@ -1273,7 +1343,7 @@ var crit_t := 0.0
 func hit_feedback(pos: Vector3, dmg: int, crit: bool) -> void:
 	hitmark_t = 0.15
 	if player.ult_kind < 0:
-		player.ult = minf(100.0, player.ult + dmg * 1.2)
+		player.ult = minf(100.0, player.ult + dmg * 2.0)
 	if crit:
 		crit_t = 0.2
 		Game.sfx("swap", 2.6, 0.55)
@@ -1591,7 +1661,9 @@ func _process(delta: float) -> void:
 	if state == "transition":
 		_update_transition(delta)
 	dream_time += delta
-	level.dream_update(delta, player.global_position, dream_time)
+	_update_amb_shots(delta)
+	if is_instance_valid(level) and level.is_inside_tree() and player.is_inside_tree():
+		level.dream_update(delta, player.global_position, dream_time)
 	# seltene kurze Traum-Stoerung (Glitch), staerker bei Erinnerungen
 	glitch_t = maxf(0.0, glitch_t - delta)
 	if randf() < delta * 0.03:
@@ -1731,7 +1803,7 @@ func _respawn() -> void:
 
 func on_enemy_killed(e) -> void:
 	if player.ult_kind < 0:
-		player.ult = minf(100.0, player.ult + 7.0)
+		player.ult = minf(100.0, player.ult + 12.0)
 	shake(0.18)
 	# Superhot-Gefuehl: kurzer Zeitlupen-Moment, Kill-Marker, heller "Ping"
 	slowmo(0.12, 0.2)

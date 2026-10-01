@@ -151,6 +151,16 @@ const DIALOG := {
 		["THE CONDUCTOR", "Ticket. Destination: Server 7. Departure: four twelve. All aboard."],
 		["ECHO", "Not this time. I'm getting off."],
 	],
+	# ---- Erinnerungen (warme Rueckblicke) ----
+	"mem_c1": [["MIRA", "Echo! Count how long I can hold my breath! Don't stop counting!"], ["ECHO", "Thirty-one... thirty-two... She always came up laughing."]],
+	"mem_c2": [["HALCYON", "One ice cream each. And Echo, hold your sister's hand, please."], ["MIRA", "Strawberry! No, both! Echo gets the other half."]],
+	"mem_c3": [["HALCYON", "Sorry I'm late again, sweetheart. Is she asleep?"], ["ECHO", "She waited up. She drew you a sun with a face."], ["HALCYON", "Tell her I'll come home early tomorrow. I promise."]],
+	"mem_c4": [["MIRA", "You're here! You're always here at four!"], ["ECHO", "Every day. I promised."]],
+	"mem_c5": [["HALCYON", "Her hand is so small. Why is it so cold, Echo?"], ["ECHO", "I didn't have an answer. I still don't."]],
+	"mem_c6": [["MIRA", "Biscuit ate my homework. He actually ate it!"], ["HALCYON", "Then he'll just have to go to school for you."], ["ECHO", "We laughed so hard the neighbors knocked on the wall."]],
+	"mem_c7": [["MIRA", "When I grow up I'll drive the train. And you can ride for free."], ["ECHO", "Forever?"], ["MIRA", "Forever and ever."]],
+	"mem_c8": [["ECHO", "I used to think heaven was a place. Maybe it's just a day you get to keep."]],
+	"mem_c9": [["HALCYON", "I kept every day. I just couldn't keep you."], ["MIRA", "Mom. It's okay to put us down now."]],
 	"c7_victory": [
 		["MIRA", "You can't change which train you took. But you can stop riding it."],
 		["ECHO", "Then let's go somewhere else. Anywhere but here."],

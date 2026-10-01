@@ -24,3 +24,7 @@ environment/defaults/default_clear_color=Color(0.027, 0.027, 0.06, 1)
 [autoload]
 
 Game="*res://scripts3d/game_state.gd"
+
+[debug]
+
+gdscript/warnings/enable=false

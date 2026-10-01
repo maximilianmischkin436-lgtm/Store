@@ -982,6 +982,8 @@ func _deco_meadow() -> void:
 
 func dream_update(delta: float, player_pos: Vector3, t: float) -> void:
 	for lab in memories:
+		if not is_instance_valid(lab) or not lab.is_inside_tree():
+			continue
 		var d: float = lab.global_position.distance_to(player_pos)
 		var a := clampf((d - 5.0) / 5.0, 0.0, 1.0) * clampf((26.0 - d) / 8.0, 0.0, 1.0)
 		lab.modulate.a = lerpf(lab.modulate.a, a * 0.7, minf(1.0, delta * 2.0))

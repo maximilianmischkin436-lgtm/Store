@@ -65,6 +65,7 @@ var weapon := 0
 var aim := 0.0
 # Ult: laedt sich durch Treffer und Kills, [F] loest die Ult der aktuellen Waffe aus
 var ult := 0.0
+var _f_down := false
 var ult_t := 0.0          # Dauer laufender Ults (PULSE / HUMMINGBIRD)
 var ult_kind := -1
 const ULT_NAMES := ["OVERDRIVE", "DRAGON BREATH", "JUDGEMENT", "SWARM", "DEADEYE", "CLUSTER", "SLEEP", "TSUNAMI", "THOUSAND CUTS", "SHADOW STEP"]               # 0..1 Zielen mit rechter Maustaste
@@ -426,9 +427,18 @@ func _physics_process(delta: float) -> void:
 		ult_t -= delta
 		if ult_t <= 0.0:
 			ult_kind = -1
-	if Input.is_action_just_pressed("ult") and ult >= 100.0 and has_gun() and weapon >= 0:
-		ult = 0.0
-		_do_ult(weapon)
+	if has_gun():
+		ult = minf(100.0, ult + delta * 2.5)   # laedt auch langsam von selbst
+	if Input.is_action_just_pressed("ult") or Input.is_physical_key_pressed(KEY_F) and not _f_down:
+		if not has_gun() or weapon < 0:
+			main.banner("NO WEAPON", Color("#888888"))
+		elif ult >= 100.0:
+			ult = 0.0
+			_do_ult(weapon)
+		else:
+			main.banner("ULT %d%%" % int(ult), Color("#aaaaaa"))
+			Game.sfx("swap", 0.6, 0.5)
+	_f_down = Input.is_physical_key_pressed(KEY_F)
 	if ability_unlocked and Input.is_action_just_pressed("ability") and ability_cd <= 0.0:
 		ability_cd = ABILITY_CD
 		main.overload(global_position)
