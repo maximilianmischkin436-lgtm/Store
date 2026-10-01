@@ -6,6 +6,7 @@ var sensitivity := 1.0
 var music_vol := 0.7
 var sfx_vol := 0.8
 var fullscreen := false
+var retro := true          # VHS-Filter + niedrige Aufloesung
 var progress := 0          # 0 Start, 1 Schrottplatz geschafft, 2 Fragment, 3 Kapitel fertig
 var best_time := 0.0
 var continue_game := false
@@ -85,6 +86,7 @@ func load_save() -> void:
 	music_vol = cf.get_value("settings", "music", 0.7)
 	sfx_vol = cf.get_value("settings", "sfx", 0.8)
 	fullscreen = cf.get_value("settings", "fullscreen", false)
+	retro = cf.get_value("settings", "retro", true)
 	progress = cf.get_value("progress", "stage", 0)
 	best_time = cf.get_value("progress", "best_time", 0.0)
 
@@ -94,6 +96,7 @@ func write_save() -> void:
 	cf.set_value("settings", "music", music_vol)
 	cf.set_value("settings", "sfx", sfx_vol)
 	cf.set_value("settings", "fullscreen", fullscreen)
+	cf.set_value("settings", "retro", retro)
 	cf.set_value("progress", "stage", progress)
 	cf.set_value("progress", "best_time", best_time)
 	cf.save(SAVE_PATH)

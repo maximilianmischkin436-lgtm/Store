@@ -27,10 +27,10 @@ zum Menschsein gehört.
 ## Kapitel
 | # | Bezirk | Boss | Neue Fähigkeit | Fragment-Erinnerung |
 |---|---|---|---|---|
-| 1 | **The Sump** (Schrottplatz) | WARDEN-07 (Wächter-Roboter) | Dash | Lyras Labor, "letztes Sicherheitsnetz" |
-| 2 | **Neon Market** (Schwarzmarkt) | MAMMON (Händler-KI mit Geldschild) | Laser-Klinge (Nahkampf) | Mira als Kind |
-| 3 | **Data Gardens** (Hologramm-Park) | BLOOM (wuchernde Pflanzen-KI) | Hack (Gegner kurz auf deine Seite holen) | Der Krieg |
-| 4 | **The Archive** (Speicher der gelöschten Erinnerungen) | MNEMOS (Erinnerungsfresser) | Zeitverlangsamung | Miras Tod |
+| 1 | **The Drain** (Poolrooms: weiße Fliesen, stilles Wasser, Dachfenster) | WARDEN-07 (Wächter-Roboter) | Dash | Lyras Labor, "letztes Sicherheitsnetz" |
+| 2 | **Neon Market** (leere 90er-Mall bei Nacht, Rolltreppen, Springbrunnen) | MAMMON (Händler-KI mit Geldschild) | Laser-Klinge (Nahkampf) | Mira als Kind |
+| 3 | **The Archive** (Backrooms: gelbe Tapete, summende Neonröhren, endlose Büros) | BLOOM (wuchernde Pflanzen-KI) | Hack (Gegner kurz auf deine Seite holen) | Der Krieg |
+| 4 | **After School** (leere Schule bei Sonnenuntergang, Spielplatz) | MNEMOS (Erinnerungsfresser) | Zeitverlangsamung | Miras Tod |
 | 5 | **The Crown** (Turmspitze) | HALCYON (3 Formen) | – | Lyras letzte Nachricht |
 
 ## Systeme (Plan)
@@ -38,3 +38,8 @@ zum Menschsein gehört.
 - **Als Nächstes:** Speichern/Laden, Hauptmenü, Sound und Musik, Upgrades (Chips) aus Gegnern,
   NPCs im Hub (Nova's Versteck), Nebenaufgaben, Kapitel 2.
 - **Später:** Steam-Export (Windows/Mac/Linux), Controller-Support, Achievements, Übersetzung Deutsch/Englisch.
+
+## Look & Gefühl
+- **Liminal und nostalgisch:** leere, vertraute Orte ohne Menschen, die sich anfühlen wie eine halb vergessene Erinnerung.
+- **VHS-Look:** halbe 3D-Auflösung, Scanlines, Farbsaum, Rauschen, Tracking-Streifen, Kassetten-Anzeige "PLAY ▶ OCT 01 1998". Abschaltbar in den Settings.
+- **Erzählen durch die Umgebung:** schwebende Erinnerungstexte statt langer Dialoge.

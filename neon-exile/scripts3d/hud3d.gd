@@ -15,6 +15,11 @@ func _draw() -> void:
 	var sz := get_viewport_rect().size
 	var c := sz / 2.0
 	var p = main.player
+	# VHS-Anzeige wie auf alter Kassette
+	if Game.retro and main.state != "end":
+		var blink := int(Time.get_ticks_msec() / 600) % 2 == 0
+		draw_string(font, Vector2(sz.x - 210, sz.y - 120), ("PLAY  " if blink else "      ") + "\u25B6", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(1, 1, 1, 0.75))
+		draw_string(font, Vector2(sz.x - 210, sz.y - 94), "OCT 01 1998  4:%02d PM" % (int(main.play_time / 60.0) % 60), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.6))
 	# Schaden: roter Rand
 	if main.hurt_t > 0.0:
 		var a: float = main.hurt_t * 0.8
@@ -90,7 +95,7 @@ func _draw() -> void:
 	if main.title_t > 0.0:
 		var a2: float = clampf(minf(main.title_t, 6.0 - main.title_t), 0.0, 1.0)
 		draw_string(font, Vector2(0, sz.y * 0.4), "CHAPTER 1", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 22, Color(1, 0.82, 0.24, a2))
-		draw_string(font, Vector2(0, sz.y * 0.4 + 58), "THE SUMP", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 60, Color(1, 1, 1, a2))
+		draw_string(font, Vector2(0, sz.y * 0.4 + 58), "THE DRAIN", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 60, Color(1, 1, 1, a2))
 	if main.state == "dead":
 		draw_rect(Rect2(Vector2.ZERO, sz), Color(0.1, 0, 0.02, 0.6))
 		draw_string(font, Vector2(0, sz.y * 0.45), "SYSTEM FAILURE", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 56, Color("#ff2d55"))

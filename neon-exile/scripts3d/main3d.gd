@@ -70,9 +70,9 @@ func _ready() -> void:
 	dialog = Dialog.new()
 	ui.add_child(dialog)
 	title_t = 6.0
-	objective = "Find a way out of the Sump"
+	objective = "Find a way out of the Drain"
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	Game.play_music("dream")
+	Game.play_music("pool")
 	if Game.continue_game:
 		_apply_progress(Game.progress)
 
@@ -131,44 +131,45 @@ var glitch_t := 0.0
 var dream_time := 0.0
 
 func _setup_world() -> void:
-	# Traumhimmel: violett oben, rosa Dunst am Horizont
+	# Poolrooms: heller, leicht bewoelkter Nachmittagshimmel, weisser Dunst
 	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Color(0.07, 0.04, 0.16)
-	sky_mat.sky_horizon_color = Color(0.55, 0.32, 0.55)
-	sky_mat.ground_horizon_color = Color(0.4, 0.25, 0.45)
-	sky_mat.ground_bottom_color = Color(0.03, 0.02, 0.06)
-	sky_mat.sun_angle_max = 0.0
+	sky_mat.sky_top_color = Color(0.55, 0.72, 0.9)
+	sky_mat.sky_horizon_color = Color(0.9, 0.92, 0.95)
+	sky_mat.ground_horizon_color = Color(0.85, 0.9, 0.93)
+	sky_mat.ground_bottom_color = Color(0.6, 0.7, 0.75)
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
 	var env := Environment.new()
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.7
-	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_exposure = 1.05
+	env.ambient_light_energy = 0.3
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.tonemap_exposure = 0.75
 	env.glow_enabled = true
-	env.glow_intensity = 0.9
-	env.glow_bloom = 0.25
-	env.glow_hdr_threshold = 0.9
+	env.glow_intensity = 0.6
+	env.glow_bloom = 0.2
+	env.glow_hdr_threshold = 1.0
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.42, 0.28, 0.5)
-	env.fog_density = 0.018
-	env.fog_sky_affect = 0.6
-	env.fog_height = 2.0
-	env.fog_height_density = 0.05
+	env.fog_light_color = Color(0.85, 0.92, 0.95)
+	env.fog_density = 0.007
+	env.fog_sky_affect = 0.3
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 0.9
-	env.adjustment_contrast = 0.95
+	env.adjustment_saturation = 1.1
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 	var sun := DirectionalLight3D.new()
-	sun.light_color = Color(1.0, 0.75, 0.9)
-	sun.light_energy = 0.3
-	sun.rotation = Vector3(-0.5, 0.8, 0)
+	sun.light_color = Color(1.0, 0.96, 0.88)
+	sun.light_energy = 0.45
+	sun.rotation = Vector3(-1.2, 0.5, 0)
+	sun.shadow_enabled = true
 	add_child(sun)
-	# Traum-Filter ueber dem ganzen Bild
+	# niedrige Aufloesung fuer den Retro-Look (UI bleibt scharf)
+	if Game.retro:
+		get_viewport().scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+		get_viewport().scaling_3d_scale = 0.5
+	# VHS-Filter ueber dem ganzen Bild
 	var post := CanvasLayer.new()
 	post.layer = 0
 	add_child(post)
@@ -177,7 +178,9 @@ func _setup_world() -> void:
 	dream_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	dream_mat = ShaderMaterial.new()
 	dream_mat.shader = load("res://scripts3d/dream.gdshader")
+	dream_mat.set_shader_parameter("strength", 1.0 if Game.retro else 0.0)
 	dream_rect.material = dream_mat
+	dream_rect.visible = Game.retro
 	post.add_child(dream_rect)
 
 func _dust() -> void:
@@ -189,10 +192,10 @@ func _dust() -> void:
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	m.albedo_color = Color(1, 0.9, 1, 0.7)
+	m.albedo_color = Color(1, 1, 1, 0.5)
 	m.emission_enabled = true
-	m.emission = Color(1, 0.85, 1)
-	m.emission_energy_multiplier = 2.0
+	m.emission = Color(1, 1, 0.95)
+	m.emission_energy_multiplier = 1.0
 	qm.material = m
 	p.mesh = qm
 	p.amount = 160
@@ -552,7 +555,7 @@ func on_boss_killed(b) -> void:
 	clear_projectiles()
 	for e in get_tree().get_nodes_in_group("enemies"):
 		e.queue_free()
-	Game.play_music("dream")
+	Game.play_music("pool")
 	Game.sfx("enemy_die", 0.5, 1.0)
 	if Game.best_time <= 0.0 or play_time < Game.best_time:
 		Game.best_time = play_time

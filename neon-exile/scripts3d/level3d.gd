@@ -2,7 +2,7 @@ extends Node3D
 # Baut Kapitel 1 in 3D aus derselben Textkarte wie die 2D-Version.
 
 const T := 3.0          # Kantenlaenge einer Kachel in Metern
-const WALL_H := 9.0
+const WALL_H := 6.0
 var grid: Array = []
 var w := 0
 var h := 0
@@ -10,19 +10,15 @@ var door_nodes := {}    # Vector2i -> Node3D
 var spawns: Array = []
 var triggers := {}
 
-var wall_mat := StandardMaterial3D.new()
+var wall_mat := ShaderMaterial.new()
 var trim_mat := StandardMaterial3D.new()
 var door_mat := StandardMaterial3D.new()
 var gate_mat := StandardMaterial3D.new()
 
 func _init() -> void:
-	wall_mat.albedo_color = Color(0.13, 0.11, 0.22)
-	wall_mat.roughness = 0.6
-	wall_mat.metallic = 0.3
-	trim_mat.albedo_color = Color.BLACK
-	trim_mat.emission_enabled = true
-	trim_mat.emission = Color("#7a4dff")
-	trim_mat.emission_energy_multiplier = 3.0
+	wall_mat.shader = load("res://scripts3d/tiles.gdshader")
+	trim_mat.albedo_color = Color(0.8, 0.87, 0.9)
+	trim_mat.roughness = 0.2
 	for pair in [[door_mat, Color("#ff2d55")], [gate_mat, Color("#ffd23d")]]:
 		var m: StandardMaterial3D = pair[0]
 		m.albedo_color = Color(pair[1], 0.35)
@@ -90,10 +86,9 @@ func _box(pos: Vector3, size: Vector3, mat: Material, collide: bool) -> Node3D:
 
 func _build() -> void:
 	# Boden mit leuchtendem Raster (Shader)
-	var floor_mat := ShaderMaterial.new()
-	floor_mat.shader = load("res://scripts3d/floor.gdshader")
-	var fl := _box(Vector3(w * T / 2.0, -0.25, h * T / 2.0), Vector3(w * T, 0.5, h * T), floor_mat, true)
+	var fl := _box(Vector3(w * T / 2.0, -0.25, h * T / 2.0), Vector3(w * T, 0.5, h * T), wall_mat, true)
 	fl.name = "Floor"
+	_build_water_and_ceiling()
 	# Waende: nur Randkacheln, zu horizontalen Streifen zusammengefasst
 	for y in h:
 		var x := 0
@@ -115,12 +110,12 @@ func _build() -> void:
 				x += 1
 	_decorate()
 	# Farbiges Licht pro Raum fuer Stimmung
-	for l in [[Vector3(8, 4, 14), "#38f5c4"], [Vector3(33, 4, 14), "#ff9f3d"], [Vector3(54, 4, 14), "#ff4d6d"], [Vector3(83, 5, 14), "#ff2d55"]]:
+	for l in [[Vector3(8, 4, 14), "#dff6ff"], [Vector3(33, 4, 14), "#fff4e6"], [Vector3(54, 4, 14), "#e6f0ff"], [Vector3(83, 5, 14), "#ffe0e6"]]:
 		var o := OmniLight3D.new()
 		o.position = Vector3(l[0].x * T, l[0].y, l[0].z * T)
 		o.light_color = Color(l[1])
-		o.light_energy = 2.0
-		o.omni_range = 45.0
+		o.light_energy = 0.6
+		o.omni_range = 50.0
 		add_child(o)
 
 func open_doors(kind: String, max_x: float = INF) -> bool:
@@ -140,22 +135,13 @@ func doors_of(kind: String) -> Array:
 			out.append(c)
 	return out
 
-# ---------------- Traumhafte, liminale Deko ----------------
+# ---------------- Poolrooms: Wasser, Decke, Saeulen, Leitern, Erinnerungstext ----------------
 var rng := RandomNumberGenerator.new()
-var floaters: Array = []
 var memories: Array = []
-const MEMORY_TEXT := ["DO YOU REMEMBER?", "you were here before", "SHE CALLED YOU ECHO", "10 YEARS AGO", "wake up", "THE CITY FORGOT", "it was raining", "don't be afraid", "MIRA", "who turned off the sun?"]
-
-func _emit_mat(col: Color, energy: float, alpha: float = 1.0) -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(col, alpha)
-	m.emission_enabled = true
-	m.emission = col
-	m.emission_energy_multiplier = energy
-	if alpha < 1.0:
-		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	return m
+var skylights: Array = []
+const MEMORY_TEXT := ["do you remember this place?", "you learned to swim here", "SHE was waiting by the edge", "it's always 4 PM here", "the water is warm", "don't run near the pool", "MIRA", "nobody comes here anymore", "wake up, ECHO"]
+var water_mat := ShaderMaterial.new()
+var chrome := StandardMaterial3D.new()
 
 func _floor_cells() -> Array:
 	var out: Array = []
@@ -165,129 +151,130 @@ func _floor_cells() -> Array:
 				out.append(Vector2i(x, y))
 	return out
 
-func _frame(pos: Vector3, size: Vector2, col: Color, rot: float) -> void:
-	# leuchtender Tuerrahmen, der ins Nichts fuehrt
-	var root := Node3D.new()
-	root.position = pos
-	root.rotation.y = rot
-	add_child(root)
-	var m := _emit_mat(col, 2.0)
-	for part in [[Vector3(-size.x / 2, size.y / 2, 0), Vector3(0.12, size.y, 0.12)], [Vector3(size.x / 2, size.y / 2, 0), Vector3(0.12, size.y, 0.12)], [Vector3(0, size.y, 0), Vector3(size.x + 0.12, 0.12, 0.12)]]:
-		var mi := MeshInstance3D.new()
+func _build_water_and_ceiling() -> void:
+	rng.seed = 11
+	water_mat.shader = load("res://scripts3d/water.gdshader")
+	chrome.albedo_color = Color(0.85, 0.88, 0.9)
+	chrome.metallic = 1.0
+	chrome.roughness = 0.15
+	# Wasser: flache Schicht ueber dem ganzen Boden (man watet hindurch)
+	var wm := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(w * T, h * T)
+	pm.subdivide_width = 60
+	pm.subdivide_depth = 20
+	wm.mesh = pm
+	wm.material_override = water_mat
+	wm.position = Vector3(w * T / 2.0, 0.12, h * T / 2.0)
+	wm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(wm)
+	# Decke in Streifen, einzelne Felder bleiben offen als Dachfenster
+	for y in h:
+		var x := 0
+		while x < w:
+			var open: bool = grid[y][x] != "#" and (x * 7 + y * 13) % 17 == 0
+			if open:
+				skylights.append(Vector2i(x, y))
+				x += 1
+				continue
+			var st := x
+			while x < w and not (grid[y][x] != "#" and (x * 7 + y * 13) % 17 == 0):
+				x += 1
+			var ln := (x - st) * T
+			_box(Vector3(st * T + ln / 2.0, WALL_H + 0.25, y * T + T / 2.0), Vector3(ln, 0.5, T), wall_mat, false)
+	# Licht durch die Dachfenster
+	for i in skylights.size():
+		var c: Vector2i = skylights[i]
+		if i % 2 == 0:
+			var sl := SpotLight3D.new()
+			sl.light_color = Color("#fffaf0")
+			sl.light_energy = 2.0
+			sl.spot_range = 16.0
+			sl.spot_angle = 30.0
+			sl.position = cell_center(c) + Vector3(0, WALL_H + 2.0, 0)
+			sl.rotation.x = -PI / 2.0
+			add_child(sl)
+		# heller Lichtschacht (leicht sichtbarer Strahl)
+		var beam := MeshInstance3D.new()
 		var bm := BoxMesh.new()
-		bm.size = part[1]
-		mi.mesh = bm
-		mi.material_override = m
-		mi.position = part[0]
-		root.add_child(mi)
-	# schwacher Schimmer im Rahmen
-	var q := MeshInstance3D.new()
-	var qm := QuadMesh.new()
-	qm.size = size
-	q.mesh = qm
-	q.material_override = _emit_mat(col, 0.6, 0.12)
-	q.position = Vector3(0, size.y / 2, 0)
-	root.add_child(q)
+		bm.size = Vector3(T * 0.9, WALL_H, T * 0.9)
+		beam.mesh = bm
+		var m := StandardMaterial3D.new()
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.albedo_color = Color(1, 0.98, 0.9, 0.05)
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		beam.material_override = m
+		beam.position = cell_center(c) + Vector3(0, WALL_H / 2.0, 0)
+		beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(beam)
 
 func _decorate() -> void:
-	rng.seed = 7
 	var cells := _floor_cells()
-	# 1) riesige Monolithen weit draussen im Nebel
-	for i in 26:
-		var a := rng.randf() * TAU
-		var r := rng.randf_range(160.0, 320.0)
-		var center := Vector3(w * T / 2.0, 0, h * T / 2.0)
-		var hgt := rng.randf_range(60.0, 220.0)
-		var wd := rng.randf_range(10.0, 30.0)
-		var mi := MeshInstance3D.new()
-		var bm := BoxMesh.new()
-		bm.size = Vector3(wd, hgt, wd)
-		mi.mesh = bm
-		mi.material_override = wall_mat
-		mi.position = center + Vector3(cos(a) * r, hgt / 2.0 - 5.0, sin(a) * r)
-		mi.rotation.y = rng.randf() * TAU
-		add_child(mi)
-		# Fensterlichter in den Tuermen
-		for k in rng.randi_range(2, 6):
-			var lm := MeshInstance3D.new()
-			var lb := BoxMesh.new()
-			lb.size = Vector3(wd + 0.2, 0.6, 1.5)
-			lm.mesh = lb
-			lm.material_override = _emit_mat([Color("#ff8fd0"), Color("#8fe9ff"), Color("#ffe08f")][rng.randi() % 3], 2.5)
-			lm.position = Vector3(0, rng.randf_range(-hgt / 2.0 + 8.0, hgt / 2.0 - 4.0), rng.randf_range(-wd / 3.0, wd / 3.0))
-			mi.add_child(lm)
-	# 2) schwebende Wuerfel und Ringe ueber den Raeumen
-	for i in 40:
+	# gekachelte Saeulen in regelmaessigem Raster (gleichfoermig = liminal)
+	for y in range(3, h - 2, 5):
+		for x in range(4, w - 2, 6):
+			var ok := true
+			for dy in [-1, 0, 1]:
+				for dx in [-1, 0, 1]:
+					if grid[y + dy][x + dx] != "." :
+						ok = false
+			if ok and rng.randf() < 0.7:
+				var c := cell_center(Vector2i(x, y))
+				_box(Vector3(c.x, WALL_H / 2.0, c.z), Vector3(1.0, WALL_H, 1.0), wall_mat, true)
+	# Pool-Leitern an Waenden
+	for i in 14:
 		var c: Vector2i = cells[rng.randi() % cells.size()]
-		var n := MeshInstance3D.new()
-		if rng.randf() < 0.6:
-			var bm2 := BoxMesh.new()
-			var s := rng.randf_range(0.6, 2.5)
-			bm2.size = Vector3(s, s, s)
-			n.mesh = bm2
-			n.material_override = wall_mat if rng.randf() < 0.5 else _emit_mat(Color("#c9a8ff"), 0.8, 0.5)
-		else:
-			var tm := TorusMesh.new()
-			tm.inner_radius = rng.randf_range(1.5, 3.0)
-			tm.outer_radius = tm.inner_radius + 0.15
-			n.mesh = tm
-			n.material_override = _emit_mat(Color("#ff9bd6"), 1.5)
-		n.position = cell_center(c) + Vector3(0, rng.randf_range(10.0, 22.0), 0)
-		n.rotation = Vector3(rng.randf() * TAU, rng.randf() * TAU, 0)
-		add_child(n)
-		floaters.append({"n": n, "base": n.position.y, "spd": rng.randf_range(0.2, 0.6), "ph": rng.randf() * TAU})
-	# 3) haengende Lichtpaneele, die weiches Licht nach unten werfen
-	for i in 22:
+		var dir := Vector2i.ZERO
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var n: Vector2i = c + d
+			if grid[n.y][n.x] == "#":
+				dir = d
+		if dir == Vector2i.ZERO:
+			continue
+		var base := cell_center(c) + Vector3(dir.x, 0, dir.y) * (T / 2.0 - 0.2)
+		var side := Vector3(dir.y, 0, dir.x) * 0.3
+		for sgn in [-1, 1]:
+			var rail := MeshInstance3D.new()
+			var cm := CylinderMesh.new()
+			cm.top_radius = 0.035
+			cm.bottom_radius = 0.035
+			cm.height = 1.6
+			rail.mesh = cm
+			rail.material_override = chrome
+			rail.position = base + side * sgn + Vector3(0, 0.8, 0)
+			add_child(rail)
+		for k in 3:
+			var step_m := MeshInstance3D.new()
+			var sm := BoxMesh.new()
+			sm.size = Vector3(0.6 if dir.y != 0 else 0.08, 0.04, 0.6 if dir.x != 0 else 0.08)
+			step_m.mesh = sm
+			step_m.material_override = chrome
+			step_m.position = base + Vector3(0, 0.3 + k * 0.4, 0)
+			add_child(step_m)
+	# Durchgaenge ohne Zweck: Rundboegen aus Fliesen
+	for i in 6:
 		var c: Vector2i = cells[rng.randi() % cells.size()]
-		var p := MeshInstance3D.new()
-		var pm := BoxMesh.new()
-		pm.size = Vector3(3.5, 0.08, 1.2)
-		p.mesh = pm
-		p.material_override = _emit_mat(Color("#fff3e0"), 3.0)
-		p.position = cell_center(c) + Vector3(0, 8.0, 0)
-		add_child(p)
-		var cable := MeshInstance3D.new()
-		var cm := BoxMesh.new()
-		cm.size = Vector3(0.03, 12.0, 0.03)
-		cable.mesh = cm
-		cable.material_override = wall_mat
-		cable.position = Vector3(0, 6.0, 0)
-		p.add_child(cable)
-		if i % 3 == 0:
-			var sl := SpotLight3D.new()
-			sl.light_color = Color("#ffe6d0")
-			sl.light_energy = 3.0
-			sl.spot_range = 14.0
-			sl.spot_angle = 40.0
-			sl.rotation.x = -PI / 2.0
-			p.add_child(sl)
-	# 4) Tuerrahmen ins Nichts
-	for i in 9:
-		var c: Vector2i = cells[rng.randi() % cells.size()]
-		_frame(cell_center(c), Vector2(2.2, 3.6), [Color("#8fe9ff"), Color("#ff8fd0"), Color("#ffffff")][i % 3], rng.randf() * TAU)
-	# 5) Erinnerungsfetzen: schwebender Text im Nebel
+		var p := cell_center(c)
+		_box(p + Vector3(-1.4, 1.5, 0), Vector3(0.4, 3.0, 0.4), wall_mat, true)
+		_box(p + Vector3(1.4, 1.5, 0), Vector3(0.4, 3.0, 0.4), wall_mat, true)
+		_box(p + Vector3(0, 3.2, 0), Vector3(3.2, 0.4, 0.4), wall_mat, false)
+	# Erinnerungstext: dunkelblau, erscheint aus mittlerer Entfernung
 	for i in MEMORY_TEXT.size():
 		var c: Vector2i = cells[rng.randi() % cells.size()]
 		var lab := Label3D.new()
 		lab.text = MEMORY_TEXT[i]
-		lab.font_size = 96
+		lab.font_size = 80
 		lab.pixel_size = 0.01
-		lab.modulate = Color(1, 0.85, 0.95, 0.0)
+		lab.modulate = Color(0.15, 0.3, 0.45, 0.0)
 		lab.outline_size = 0
 		lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		lab.no_depth_test = false
-		lab.position = cell_center(c) + Vector3(0, rng.randf_range(3.0, 6.0), 0)
+		lab.position = cell_center(c) + Vector3(0, rng.randf_range(2.0, 3.5), 0)
 		add_child(lab)
 		memories.append(lab)
 
-func dream_update(delta: float, player_pos: Vector3, t: float) -> void:
-	for f in floaters:
-		var n: Node3D = f.n
-		n.position.y = f.base + sin(t * f.spd + f.ph) * 1.2
-		n.rotate_y(delta * f.spd * 0.3)
-		n.rotate_x(delta * f.spd * 0.2)
-	# Erinnerungstext erscheint nur, wenn man in mittlerer Entfernung ist, und verblasst nah dran
+func dream_update(delta: float, player_pos: Vector3, _t: float) -> void:
 	for lab in memories:
 		var d: float = lab.global_position.distance_to(player_pos)
-		var a := clampf((d - 6.0) / 6.0, 0.0, 1.0) * clampf((30.0 - d) / 10.0, 0.0, 1.0)
-		lab.modulate.a = lerpf(lab.modulate.a, a * 0.55, minf(1.0, delta * 2.0))
+		var a := clampf((d - 5.0) / 5.0, 0.0, 1.0) * clampf((26.0 - d) / 8.0, 0.0, 1.0)
+		lab.modulate.a = lerpf(lab.modulate.a, a * 0.7, minf(1.0, delta * 2.0))

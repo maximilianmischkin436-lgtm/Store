@@ -13,7 +13,7 @@ const SPEAKERS := {
 const DIALOG := {
 	"intro": [
 		["SYSTEM", "Reboot complete. Unit ECHO online. Memory core: EMPTY."],
-		["NOVA", "It worked! Hey, tin can. I'm Nova. You're in the Sump, where HALCYON dumps what it doesn't need."],
+		["NOVA", "It worked! Hey, tin can. I'm Nova. You're in the Drain, the old pools under the city. HALCYON floods everything it wants forgotten down here."],
 		["NOVA", "Including you. Head east, I'll guide you over radio."],
 	],
 	"shard": [

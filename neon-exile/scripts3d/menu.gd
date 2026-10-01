@@ -9,7 +9,7 @@ var font := ThemeDB.fallback_font
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	Game.play_music("dream")
+	Game.play_music("pool")
 	main_box = _box()
 	if Game.progress > 0 and Game.progress < 3:
 		_button(main_box, "CONTINUE", func(): _start(true))
@@ -27,6 +27,12 @@ func _ready() -> void:
 	fs.add_theme_font_size_override("font_size", 20)
 	fs.toggled.connect(func(on): Game.fullscreen = on; Game.apply_settings())
 	settings_box.add_child(fs)
+	var rt := CheckBox.new()
+	rt.text = "Retro VHS look"
+	rt.button_pressed = Game.retro
+	rt.add_theme_font_size_override("font_size", 20)
+	rt.toggled.connect(func(on): Game.retro = on)
+	settings_box.add_child(rt)
 	_button(settings_box, "BACK", func(): Game.write_save(); settings_box.visible = false; main_box.visible = true)
 
 func _box() -> VBoxContainer:

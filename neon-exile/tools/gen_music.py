@@ -112,5 +112,38 @@ def ambient(path, secs, chords):
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR)
         w.writeframes(b"".join(struct.pack("<h", int(x / peak * 0.8 * 32767)) for x in out))
 
+def pool(path, secs):
+    # Poolrooms-Ambience: tiefes Brummen der Lueftung, Wassertropfen mit langem Hall, ferne Spieluhr
+    total = int(SR * secs)
+    out = [0.0] * total
+    rnd = random.Random(5)
+    for i in range(total):
+        t = i / SR
+        out[i] += 0.05 * math.sin(2 * math.pi * 60 * t) + 0.03 * math.sin(2 * math.pi * 120.4 * t)
+        out[i] += 0.02 * (rnd.random() * 2 - 1) * (0.6 + 0.4 * math.sin(t * 0.3))
+    for k in range(int(secs * 0.8)):
+        tb = rnd.randint(0, total - SR)
+        f = rnd.uniform(900, 1600)
+        for i in range(int(SR * 0.25)):
+            if tb + i >= total: break
+            ff = f * (1 + 2.5 * math.exp(-i / (SR * 0.01)))
+            out[tb + i] += 0.12 * math.exp(-i / (SR * 0.04)) * math.sin(2 * math.pi * ff * i / SR)
+    melody = [72, 76, 79, 76, 74, 71, 72, 67]
+    for k, n in enumerate(melody * 2):
+        tb = int(SR * (6 + k * 1.6))
+        f = note(n)
+        for i in range(int(SR * 2.5)):
+            if tb + i >= total: break
+            out[tb + i] += 0.05 * math.exp(-i / (SR * 0.7)) * (math.sin(2 * math.pi * f * i / SR) + 0.3 * math.sin(2 * math.pi * f * 3 * i / SR))
+    for d, g in [(0.11, 0.45), (0.23, 0.35), (0.41, 0.28), (0.67, 0.2), (1.03, 0.14)]:
+        ds = int(SR * d)
+        for i in range(total - 1, ds, -1):
+            out[i] += out[i - ds] * g
+    peak = max(abs(x) for x in out) or 1
+    with wave.open(path, "w") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR)
+        w.writeframes(b"".join(struct.pack("<h", int(x / peak * 0.8 * 32767)) for x in out))
+
+pool("assets/music/pool.wav", 40)
 ambient("assets/music/dream.wav", 48, [[57, 60, 64, 71], [53, 57, 60, 67], [48, 55, 59, 64], [55, 59, 62, 66]])
 print("ok")
