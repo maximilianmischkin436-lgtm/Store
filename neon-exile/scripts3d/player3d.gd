@@ -10,7 +10,7 @@ var gun: Node3D
 var muzzle: Node3D
 var yaw := 0.0
 var pitch := 0.0
-var sens := 0.0025
+var sens := 0.0025   # wird mit Game.sensitivity multipliert
 const SPEED := 7.5
 const ACCEL := 70.0
 const AIR_ACCEL := 25.0
@@ -23,7 +23,7 @@ var inv := 0.0
 var shoot_cd := 0.0
 var bob := 0.0
 var recoil := 0.0
-var gun_base := Vector3(0.2, -0.17, -0.32)
+var gun_base := Vector3(0.17, -0.15, -0.3)
 # Waffen: Name, Farbe, Feuerrate, Schaden, Kugeln pro Schuss, Streuung, Reichweite, durchschlagend, automatisch
 const WEAPONS := [
 	{"name": "PULSE RIFLE", "col": Color("#38f5c4"), "rate": 0.13, "dmg": 1, "pellets": 1, "spread": 0.008, "range": 90.0, "pierce": false, "auto": true},
@@ -57,46 +57,59 @@ func _ready() -> void:
 	head.add_child(cam)
 	_build_gun()
 
+var models: Array = []
+var was_on_floor := true
+const GUN_MODELS := ["res://assets/kenney/models/blaster-repeater.glb", "res://assets/kenney/models/blaster.glb", "res://assets/kenney/models/blaster-repeater.glb"]
+
 func _build_gun() -> void:
 	gun = Node3D.new()
 	gun.position = gun_base
-	gun.scale = Vector3.ONE * 0.6
 	cam.add_child(gun)
+	for i in 3:
+		var m: Node3D = load(GUN_MODELS[i]).instantiate()
+		m.rotation_degrees.y = 180.0
+		m.scale = Vector3.ONE * 0.13 if i < 2 else Vector3(0.12, 0.12, 0.18)
+		m.visible = i == 0
+		gun.add_child(m)
+		_no_shadow(m)
+		if i == 2:
+			_tint(m, Color("#c77dff"))   # Railgun: lila Leuchten
+		models.append(m)
+	glow_mat = StandardMaterial3D.new()
+	muzzle = Node3D.new()
+	muzzle.position = Vector3(0, 0.03, -0.22)
+	gun.add_child(muzzle)
 	# schwaches Licht am Spieler, damit Waffe und nahe Waende sichtbar sind
 	var lamp := OmniLight3D.new()
 	lamp.light_color = Color("#9fe8ff")
-	lamp.light_energy = 0.8
-	lamp.omni_range = 7.0
+	lamp.light_energy = 0.5
+	lamp.omni_range = 9.0
+	lamp.position = Vector3(0, 0.6, -2.5)
 	cam.add_child(lamp)
-	var dark := StandardMaterial3D.new()
-	dark.albedo_color = Color(0.3, 0.3, 0.4)
-	dark.metallic = 0.8
-	dark.roughness = 0.3
-	var glow := StandardMaterial3D.new()
-	glow_mat = glow
-	glow.albedo_color = Color.BLACK
-	glow.emission_enabled = true
-	glow.emission = Color("#38f5c4")
-	glow.emission_energy_multiplier = 1.2
-	for part in [[Vector3(0, 0, 0), Vector3(0.09, 0.12, 0.5), dark], [Vector3(0, -0.1, 0.12), Vector3(0.06, 0.16, 0.08), dark],
-			[Vector3(0, 0.035, -0.32), Vector3(0.05, 0.05, 0.25), dark], [Vector3(0.048, 0.02, -0.05), Vector3(0.01, 0.025, 0.4), glow],
-			[Vector3(-0.048, 0.02, -0.05), Vector3(0.01, 0.025, 0.4), glow], [Vector3(0, 0.035, -0.45), Vector3(0.06, 0.06, 0.02), glow]]:
-		var mi := MeshInstance3D.new()
-		var bm := BoxMesh.new()
-		bm.size = part[1]
-		mi.mesh = bm
-		mi.material_override = part[2]
-		mi.position = part[0]
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		gun.add_child(mi)
-	muzzle = Node3D.new()
-	muzzle.position = Vector3(0, 0.035, -0.47)
-	gun.add_child(muzzle)
+
+func _no_shadow(n: Node) -> void:
+	if n is GeometryInstance3D:
+		n.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for c in n.get_children():
+		_no_shadow(c)
+
+func _tint(n: Node, col: Color) -> void:
+	if n is MeshInstance3D:
+		var m := StandardMaterial3D.new()
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		m.albedo_color = Color(col, 0.35)
+		m.emission_enabled = true
+		m.emission = col
+		m.emission_energy_multiplier = 0.6
+		n.material_overlay = m
+	for c in n.get_children():
+		_tint(c, col)
 
 func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		yaw -= e.relative.x * sens
-		pitch = clampf(pitch - e.relative.y * sens, -1.45, 1.45)
+		yaw -= e.relative.x * sens * Game.sensitivity
+		pitch = clampf(pitch - e.relative.y * sens * Game.sensitivity, -1.45, 1.45)
 	if e is InputEventMouseButton and e.pressed and e.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
 		var dir := 1 if e.button_index == MOUSE_BUTTON_WHEEL_DOWN else -1
 		for i in range(1, 4):
@@ -111,8 +124,9 @@ func select_weapon(n: int) -> void:
 	weapon = n
 	swap_t = 0.25
 	shoot_cd = maxf(shoot_cd, 0.2)
-	glow_mat.emission = WEAPONS[n].col
-	gun.scale = [Vector3(1, 1, 1), Vector3(1.5, 1.3, 0.75), Vector3(0.8, 0.8, 1.4)][n] * 0.6
+	for i in 3:
+		models[i].visible = i == n
+	Game.sfx("swap")
 
 func _physics_process(delta: float) -> void:
 	inv = maxf(0.0, inv - delta)
@@ -124,6 +138,7 @@ func _physics_process(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y -= GRAV * delta
 	if not main.can_control():
+		Game.set_walking(false)
 		velocity.x = 0.0
 		velocity.z = 0.0
 		move_and_slide()
@@ -135,6 +150,7 @@ func _physics_process(delta: float) -> void:
 	velocity.z = move_toward(velocity.z, dir.z * SPEED, acc * delta)
 	if is_on_floor() and Input.is_action_just_pressed("jump"):
 		velocity.y = JUMP
+		Game.sfx("jump", 1.0, 0.6)
 	if Input.is_action_just_pressed("dash") and dash_cd <= 0.0:
 		dash_dir = dir if dir != Vector3.ZERO else -transform.basis.z
 		dash_t = 0.18
@@ -144,6 +160,10 @@ func _physics_process(delta: float) -> void:
 		velocity.x = dash_dir.x * 24.0
 		velocity.z = dash_dir.z * 24.0
 	move_and_slide()
+	if is_on_floor() and not was_on_floor:
+		Game.sfx("land", 1.0, 0.6)
+	was_on_floor = is_on_floor()
+	Game.set_walking(is_on_floor() and Vector2(velocity.x, velocity.z).length() > 2.0 and dash_t <= 0.0)
 	cam.fov = lerpf(cam.fov, 98.0 if dash_t > 0.0 else 85.0, minf(1.0, delta * 10.0))
 	var moving := Vector2(velocity.x, velocity.z).length() > 1.0 and is_on_floor()
 	if moving:
@@ -163,6 +183,7 @@ func _physics_process(delta: float) -> void:
 	var trigger := Input.is_action_pressed("shoot") if wd.auto else Input.is_action_just_pressed("shoot")
 	if trigger and shoot_cd <= 0.0:
 		shoot_cd = wd.rate
+		Game.sfx(["pulse", "scatter", "rail"][weapon], [1.25, 0.85, 0.5][weapon], [0.5, 0.9, 1.0][weapon])
 		recoil = 1.0 if weapon == 0 else 2.2
 		for i in wd.pellets:
 			var spread: Vector3 = Vector3(randf_range(-1, 1), randf_range(-1, 1), 0) * float(wd.spread)

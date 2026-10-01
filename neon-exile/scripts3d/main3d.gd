@@ -71,12 +71,47 @@ func _ready() -> void:
 	title_t = 6.0
 	objective = "Find a way out of the Sump"
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	Game.play_music("explore")
+	if Game.continue_game:
+		_apply_progress(Game.progress)
+
+# Spielstand fortsetzen: Bereiche, die schon geschafft sind, ueberspringen
+func _apply_progress(stage: int) -> void:
+	var T: float = level.T
+	seen["intro"] = true
+	seen["intro_done"] = true
+	title_t = 0.0
+	if stage >= 1:
+		seen["2"] = true
+		level.open_doors("D")
+		player.unlocked[1] = true
+		for e in get_tree().get_nodes_in_group("enemies"):
+			if e != boss and e.position.x < 43 * T:
+				e.queue_free()
+		checkpoint = Vector3(44.5 * T, 0, 14.5 * T)
+		objective = "Recover the memory shard"
+	if stage >= 2:
+		seen["3"] = true
+		for e in get_tree().get_nodes_in_group("enemies"):
+			if e != boss and e.position.x < 64 * T:
+				e.queue_free()
+		if shard_node:
+			shard_node.queue_free()
+			shard_node = null
+		shards = 1
+		player.unlocked[2] = true
+		player.ability_unlocked = true
+		level.open_doors("G")
+		checkpoint = Vector3(66.5 * T, 0, 14.5 * T)
+		objective = "Reach the lift"
+	player.position = checkpoint + Vector3(0, 0.2, 0)
+	radio("death")
 
 func _setup_input() -> void:
 	var keys := {
 		"up": [KEY_W, KEY_UP], "down": [KEY_S, KEY_DOWN], "left": [KEY_A, KEY_LEFT], "right": [KEY_D, KEY_RIGHT],
 		"jump": [KEY_SPACE], "dash": [KEY_SHIFT], "shoot": [KEY_J], "interact": [KEY_E, KEY_ENTER],
-		"weapon1": [KEY_1], "weapon2": [KEY_2], "weapon3": [KEY_3], "ability": [KEY_Q],
+		"menu": [KEY_M], "weapon1": [KEY_1], "weapon2": [KEY_2], "weapon3": [KEY_3], "ability": [KEY_Q],
 	}
 	for action in keys:
 		if not InputMap.has_action(action):
@@ -298,7 +333,16 @@ func _process(delta: float) -> void:
 	player.cam.h_offset = randf_range(-1, 1) * 0.12 * shake_t if shake_t > 0.0 else 0.0
 	player.cam.v_offset = randf_range(-1, 1) * 0.12 * shake_t if shake_t > 0.0 else 0.0
 	if Input.is_action_just_pressed("ui_cancel"):
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		if state == "play":
+			state = "paused"
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		elif state == "paused":
+			state = "play"
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if (state == "paused" or state == "end") and Input.is_action_just_pressed("menu"):
+		Game.write_save()
+		get_tree().change_scene_to_file("res://menu.tscn")
+		return
 	if state == "play" and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	if title_t < 4.5 and not seen.has("intro"):
@@ -360,6 +404,7 @@ func _check_triggers() -> void:
 		"5":
 			if boss:
 				say("boss", func():
+					Game.play_music("boss")
 					boss.active = true
 					banner("WARDEN-07", Color("#ff2d55"))
 					shake(0.5))
@@ -378,6 +423,7 @@ func _check_doors() -> void:
 	if not alive and level.doors_of("D").size() > 0 and player.global_position.x > 15 * T:
 		level.open_doors("D", 44 * T)
 		banner("DOOR UNLOCKED", Color("#38f5c4"))
+		Game.reach_stage(1)
 		if not player.unlocked[1]:
 			player.unlocked[1] = true
 			radio("scatter")
@@ -391,6 +437,7 @@ func _check_shard() -> void:
 		shards += 1
 		checkpoint = player.global_position
 		player.hp = player.max_hp
+		Game.reach_stage(2)
 		say("shard", func():
 			player.unlocked[2] = true
 			player.ability_unlocked = true
@@ -436,6 +483,12 @@ func on_boss_killed(b) -> void:
 	clear_projectiles()
 	for e in get_tree().get_nodes_in_group("enemies"):
 		e.queue_free()
+	Game.play_music("explore")
+	Game.sfx("enemy_die", 0.5, 1.0)
+	if Game.best_time <= 0.0 or play_time < Game.best_time:
+		Game.best_time = play_time
+	Game.reach_stage(3)
+	Game.write_save()
 	say("victory", func():
 		state = "end"
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE)

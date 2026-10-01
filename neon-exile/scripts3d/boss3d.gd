@@ -126,6 +126,7 @@ func _physics_process(delta: float) -> void:
 			mode_t -= delta
 			if get_slide_collision_count() > 0 or mode_t <= 0.0:
 				main.shake(0.4)
+				Game.sfx("land", 0.4, 1.0)
 				_ring(16 + phase * 4, 9.0, 0.6)
 				mode = "idle"
 				cd = 1.3
@@ -198,5 +199,7 @@ func hit(dmg: int, _dir: Vector3) -> void:
 		return
 	hp -= dmg
 	flash = 0.06
+	if randf() < 0.3:
+		Game.sfx("enemy_hurt", 0.6, 0.5)
 	if hp <= 0:
 		main.on_boss_killed(self)

@@ -20,7 +20,7 @@ Aktueller Stand: **Kapitel 1 "The Sump"** ist komplett spielbar (Story, 2 Gegner
 | E / Enter / Klick | Dialog weiter, nach dem Tod neu starten |
 | 1 / 2 / 3 oder Mausrad | Waffe wechseln (Pulse, Scatter, Rail) |
 | Q | Fähigkeit OVERLOAD (Schockwelle) |
-| Esc | Maus freigeben (Klick fängt sie wieder) |
+| Esc | Pause (dort M = Hauptmenü, Fortschritt wird gespeichert) |
 
 ## Aufbau
 - `game3d.tscn` / `scripts3d/` – die 3D-Version (Hauptszene): `main3d.gd`, `player3d.gd`, `enemy3d.gd`, `boss3d.gd`, `level3d.gd`, `hud3d.gd`
@@ -33,3 +33,12 @@ Aktueller Stand: **Kapitel 1 "The Sump"** ist komplett spielbar (Story, 2 Gegner
 - `scripts/dialog.gd`, `scripts/hud.gd` – Oberfläche
 - `tests/autotest.tscn` – automatischer Durchlauf von Kapitel 1 (für Entwicklung)
 - `docs/STORY.md` – Story und Plan für das ganze Spiel
+
+## Menü, Speichern, Einstellungen
+- Hauptmenü mit **Continue / New Game / Settings / Quit**.
+- Fortschritt wird automatisch an 3 Punkten gespeichert (Schrottplatz geschafft, Fragment geholt, Kapitel fertig).
+- Einstellungen: Maus-Empfindlichkeit, Musik- und Soundlautstärke, Vollbild.
+
+## Credits
+- 3D-Modelle (Waffen, Drohne) und Soundeffekte: **Kenney – Starter Kit FPS** (MIT-Lizenz, siehe `assets/kenney/LICENSE-Kenney-Starter-Kit-FPS.md`).
+- Musik: selbst erzeugt mit `tools/gen_music.py`.

@@ -95,7 +95,12 @@ func _draw() -> void:
 		draw_rect(Rect2(Vector2.ZERO, sz), Color(0.1, 0, 0.02, 0.6))
 		draw_string(font, Vector2(0, sz.y * 0.45), "SYSTEM FAILURE", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 56, Color("#ff2d55"))
 		draw_string(font, Vector2(0, sz.y * 0.45 + 50), "Press E to reboot", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 20, Color.WHITE)
+	if main.state == "paused":
+		draw_rect(Rect2(Vector2.ZERO, sz), Color(0, 0, 0, 0.6))
+		draw_string(font, Vector2(0, sz.y * 0.42), "PAUSED", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 56, Color.WHITE)
+		draw_string(font, Vector2(0, sz.y * 0.42 + 50), "ESC  resume      M  main menu (progress is saved)", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 18, Color(1, 1, 1, 0.7))
 	if main.state == "end":
+		draw_string(font, Vector2(0, sz.y * 0.4 + 130), "Press M for main menu", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 16, Color(1, 1, 1, 0.5))
 		draw_rect(Rect2(Vector2.ZERO, sz), Color(0, 0, 0, 0.8))
 		draw_string(font, Vector2(0, sz.y * 0.4), "CHAPTER 1 COMPLETE", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 48, Color("#ffd23d"))
 		draw_string(font, Vector2(0, sz.y * 0.4 + 50), "To be continued in Chapter 2: The Neon Market", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 20, Color.WHITE)

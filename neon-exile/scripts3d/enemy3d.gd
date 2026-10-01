@@ -59,22 +59,32 @@ func _ready() -> void:
 		eye.emission_energy_multiplier = 4.0
 		_mesh(SphereMesh.new(), Vector3(0, 0.15, -radius * 0.85), Vector3.ONE * 0.22, eye)
 	else:
-		var core := SphereMesh.new()
-		core.radial_segments = 4
-		core.rings = 2
-		_mesh(core, Vector3.ZERO, Vector3(1.2, 1.6, 1.2), mat)
+		# Drohne: Kenney-Modell mit rotem Neon-Schimmer
+		var model: Node3D = load("res://assets/kenney/models/enemy-flying.glb").instantiate()
+		model.rotation_degrees.y = 180.0
+		model.scale = Vector3.ONE * 0.9
+		model.position.y = -0.4
+		visual.add_child(model)
+		_overlay(model)
 		var ring := TorusMesh.new()
 		ring.inner_radius = 0.95
 		ring.outer_radius = 1.05
 		var r := _mesh(ring, Vector3.ZERO, Vector3.ONE, mat)
 		r.rotation.x = PI / 2.0
 		legs.append(r)
-		var eye := StandardMaterial3D.new()
-		eye.emission_enabled = true
-		eye.emission = Color.WHITE
-		eye.emission_energy_multiplier = 5.0
-		_mesh(SphereMesh.new(), Vector3(0, 0, -0.5), Vector3.ONE * 0.3, eye)
 		position.y = 2.0
+
+var ovl: StandardMaterial3D
+func _overlay(n: Node) -> void:
+	if ovl == null:
+		ovl = StandardMaterial3D.new()
+		ovl.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		ovl.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		ovl.albedo_color = Color(col, 0.25)
+	if n is MeshInstance3D:
+		n.material_overlay = ovl
+	for c in n.get_children():
+		_overlay(c)
 
 func _mesh(m: Mesh, pos: Vector3, scl: Vector3, material: Material) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
@@ -89,6 +99,8 @@ func _physics_process(delta: float) -> void:
 	t += delta
 	flash = maxf(0.0, flash - delta)
 	mat.emission = Color.WHITE if flash > 0.0 else col
+	if ovl:
+		ovl.albedo_color = Color(1, 1, 1, 0.8) if flash > 0.0 else Color(col, 0.25)
 	if not main.can_control():
 		return
 	var p = main.player
@@ -124,6 +136,7 @@ func _physics_process(delta: float) -> void:
 			fire_t = randf_range(1.3, 1.9)
 			var from := global_position + Vector3(0, radius, 0)
 			var aim: Vector3 = (p.center() - from).normalized()
+			Game.sfx("enemy_shot", 1.2, 0.35)
 			for s in [-0.08, 0.0, 0.08]:
 				main.spawn_proj(from, aim.rotated(Vector3.UP, s) * 15.0, col)
 		if randf() < delta * 0.4:
@@ -136,7 +149,10 @@ func hit(dmg: int, dir: Vector3) -> void:
 	flash = 0.08
 	awake = true
 	knock = Vector3(dir.x, 0, dir.z).normalized() * 5.0
+	if hp > 0:
+		Game.sfx("enemy_hurt", 1.0, 0.4)
 	if hp <= 0:
+		Game.sfx("enemy_die", 1.0, 0.7)
 		main.burst(global_position + Vector3(0, radius, 0), col, 30)
 		main.on_enemy_killed(self)
 		queue_free()

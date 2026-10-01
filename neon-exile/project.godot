@@ -5,7 +5,7 @@ config_version=5
 
 config/name="Neon Exile"
 config/description="A neon sci-fi action RPG."
-run/main_scene="res://game3d.tscn"
+run/main_scene="res://menu.tscn"
 config/features=PackedStringArray("4.3", "GL Compatibility")
 
 [display]
@@ -20,3 +20,7 @@ window/stretch/aspect="expand"
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 environment/defaults/default_clear_color=Color(0.027, 0.027, 0.06, 1)
+
+[autoload]
+
+Game="*res://scripts3d/game_state.gd"
