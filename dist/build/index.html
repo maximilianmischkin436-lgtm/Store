@@ -211,7 +211,7 @@ const stars = Array.from({ length: 50 }, () => ({ x: Math.random() * W, y: Math.
 
 // --- Zustand ---
 let state = "menu";                     // menu | skins | tree | missions | play | over | win
-let devRun = false;                     // Boss-Test-Lauf (nur in der Dev-Version): kein Fortschritt, kein Rang
+let devRun = false, trailer = null;                     // Boss-Test-Lauf (nur in der Dev-Version): kein Fortschritt, kein Rang
 let rings = [], lasers = [], addQ = [], coreT = 6, deathSlow = 0;                         // Schockwellen-Effekte
 let nearMiss = 0, missText = 0, orbsCollected = 0, maxCombo = 1, powersTaken = 0, shieldKills = 0, goldTaken = 0, flash = 0, pops = [];
 let boss = null, bossBanner = 0, beamT = 0;
@@ -438,7 +438,7 @@ function damageBoss(d) {
     banner = { text: boss.def.name + " defeated!  +" + bonus, color: "#ffd23d", t: 3 };
     enemies = []; shieldT = Math.max(shieldT, 3); boss = null;
     beep(500, 0.5, "triangle", 0.09);
-    if (devRun) { openScreen("devboss"); return; }
+    if (devRun) { if (!trailer) openScreen("devboss"); return; }
     if (final) { save.won = true; finishRun(); checkUnlocks(); persist(); if (score > best) { best = Math.floor(score); try { localStorage.setItem("neondodge_best", best); } catch (e) {} } state = "win"; overT = 0; return; }
     persist();
   }
@@ -453,6 +453,7 @@ function startGame() {
 }
 
 function gameOver() {
+  if (trailer) return;                         // Trailer: unverwundbar
   if (devRun) { openScreen("devboss"); return; }
   if (lvl("wind") > 0 && !revived) {               // Second Wind: einmal pro Run wiederbeleben
     revived = true; shieldT = 3; enemies = [];
