@@ -5,7 +5,7 @@ config_version=5
 
 config/name="Neon Exile"
 config/description="A neon sci-fi action RPG."
-run/main_scene="res://main.tscn"
+run/main_scene="res://game3d.tscn"
 config/features=PackedStringArray("4.3", "GL Compatibility")
 
 [display]

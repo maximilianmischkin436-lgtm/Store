@@ -18,7 +18,7 @@ const DIALOG := {
 		["NOVA", "Including people. And apparently, including you."],
 		["ECHO", "HALCYON..."],
 		["NOVA", "The AI that runs the city. It erased everyone's memories ten years ago. Yours too, it seems."],
-		["NOVA", "Listen, I can't stay on this channel long. Head east. Move with WASD, dash with SPACE. Aim with the mouse and hold LEFT CLICK to shoot."],
+		["NOVA", "Listen, I can't stay on this channel long. Head east. Move with WASD, jump with SPACE, dash with SHIFT. Aim with the mouse and hold LEFT CLICK to shoot."],
 	],
 	"scrap": [
 		["NOVA", "Careful, those are scrap crawlers. They used to recycle junk. Now they recycle anything that moves."],
@@ -38,6 +38,7 @@ const DIALOG := {
 	"gate": [
 		["NOVA", "That's the Warden. It has guarded the lift since before I was born. Nobody gets past it."],
 		["ECHO", "Then I'll be the first."],
+		["NOVA", "Watch out for its shockwaves along the floor. JUMP over them!"],
 	],
 	"boss": [
 		["WARDEN-07", "UNIT ECHO. STATUS: DECOMMISSIONED. YOU SHOULD NOT EXIST."],

@@ -1,6 +1,7 @@
 # Neon Exile
 
-Ein 2D-Action-RPG im Neon-Sci-Fi-Stil, gebaut mit **Godot 4.3**.
+Ein **First-Person** Action-RPG im Neon-Sci-Fi-Stil, gebaut mit **Godot 4.3**.
+(Die alte 2D-Version liegt noch als `main.tscn` im Projekt.)
 Aktueller Stand: **Kapitel 1 "The Sump"** ist komplett spielbar (Story, 2 Gegnertypen, Speicherfragment, Boss WARDEN-07).
 
 ## Spielen / Testen
@@ -12,13 +13,16 @@ Aktueller Stand: **Kapitel 1 "The Sump"** ist komplett spielbar (Story, 2 Gegner
 | Taste | Aktion |
 |---|---|
 | WASD / Pfeiltasten | Bewegen |
-| Maus | Zielen |
+| Maus | Umschauen / Zielen |
 | Linksklick (oder J) halten | Schießen |
-| Leertaste / Shift | Dash (kurz unverwundbar) |
+| Leertaste | Springen (über die Schockwellen des Bosses!) |
+| Shift | Dash (kurz unverwundbar) |
 | E / Enter / Klick | Dialog weiter, nach dem Tod neu starten |
+| Esc | Maus freigeben (Klick fängt sie wieder) |
 
 ## Aufbau
-- `main.tscn` / `scripts/main.gd` – Spielablauf, Kugeln, Effekte, Story-Trigger
+- `game3d.tscn` / `scripts3d/` – die 3D-Version (Hauptszene): `main3d.gd`, `player3d.gd`, `enemy3d.gd`, `boss3d.gd`, `level3d.gd`, `hud3d.gd`
+- `main.tscn` / `scripts/main.gd` – alte 2D-Version
 - `scripts/player.gd` – ECHO (Spieler)
 - `scripts/enemy.gd` – Crawler und Drohnen
 - `scripts/boss.gd` – WARDEN-07 (3 Phasen)
