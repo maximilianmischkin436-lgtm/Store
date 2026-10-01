@@ -5,7 +5,7 @@ var main
 var kind := "crawler"
 var hp := 3
 var radius := 0.7
-var col := Color("#ff9f3d")
+var col := Color("#d9e6ea")   # blasses Porzellan
 var flash := 0.0
 var knock := Vector3.ZERO
 var fire_t := 1.5
@@ -26,7 +26,7 @@ func setup(m, k: String) -> void:
 	if kind == "drone":
 		hp = 4
 		radius = 0.8
-		col = Color("#ff4d6d")
+		col = Color("#bcd3dc")
 		fire_t = randf_range(0.8, 1.8)
 		strafe = 1.0 if randf() < 0.5 else -1.0
 
@@ -40,10 +40,12 @@ func _ready() -> void:
 	cs.shape = sh
 	cs.position.y = radius
 	add_child(cs)
-	mat.albedo_color = Color(0.05, 0.05, 0.08)
+	mat.albedo_color = col
+	mat.roughness = 0.15
+	mat.metallic = 0.1
 	mat.emission_enabled = true
-	mat.emission = col
-	mat.emission_energy_multiplier = 1.6
+	mat.emission = Color("#ff4d6d")
+	mat.emission_energy_multiplier = 0.0
 	visual = Node3D.new()
 	visual.position.y = radius
 	add_child(visual)
@@ -54,9 +56,8 @@ func _ready() -> void:
 			leg.rotation.y = i * TAU / 6.0
 			legs.append(leg)
 		var eye := StandardMaterial3D.new()
-		eye.emission_enabled = true
-		eye.emission = Color.WHITE
-		eye.emission_energy_multiplier = 4.0
+		eye.albedo_color = Color(0.02, 0.03, 0.05)
+		eye.roughness = 0.05
 		_mesh(SphereMesh.new(), Vector3(0, 0.15, -radius * 0.85), Vector3.ONE * 0.22, eye)
 	else:
 		# Drohne: Kenney-Modell mit rotem Neon-Schimmer
@@ -98,9 +99,9 @@ func _mesh(m: Mesh, pos: Vector3, scl: Vector3, material: Material) -> MeshInsta
 func _physics_process(delta: float) -> void:
 	t += delta
 	flash = maxf(0.0, flash - delta)
-	mat.emission = Color.WHITE if flash > 0.0 else col
+	mat.emission_energy_multiplier = 2.0 if flash > 0.0 else 0.0
 	if ovl:
-		ovl.albedo_color = Color(1, 1, 1, 0.8) if flash > 0.0 else Color(col, 0.25)
+		ovl.albedo_color = Color(1, 0.3, 0.4, 0.7) if flash > 0.0 else Color(0.85, 0.92, 0.95, 0.35)
 	if not main.can_control():
 		return
 	var p = main.player
@@ -138,7 +139,7 @@ func _physics_process(delta: float) -> void:
 			var aim: Vector3 = (p.center() - from).normalized()
 			Game.sfx("enemy_shot", 1.2, 0.35)
 			for s in [-0.08, 0.0, 0.08]:
-				main.spawn_proj(from, aim.rotated(Vector3.UP, s) * 15.0, col)
+				main.spawn_proj(from, aim.rotated(Vector3.UP, s) * 15.0, Color("#0e2a44"))
 		if randf() < delta * 0.4:
 			strafe = -strafe
 	knock = knock.lerp(Vector3.ZERO, minf(1.0, delta * 8.0))

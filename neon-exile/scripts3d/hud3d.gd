@@ -15,6 +15,18 @@ func _draw() -> void:
 	var sz := get_viewport_rect().size
 	var c := sz / 2.0
 	var p = main.player
+	# Augenlider beim Aufwachen
+	var lid: float = main.eyelid()
+	if lid < 1.0:
+		var hh := sz.y * 0.5 * (1.0 - lid)
+		draw_rect(Rect2(0, 0, sz.x, hh + 30), Color.BLACK)
+		draw_rect(Rect2(0, sz.y - hh - 30, sz.x, hh + 30), Color.BLACK)
+		for i in 8:
+			var a := 0.12 * (1.0 - i / 8.0)
+			draw_rect(Rect2(0, hh + 30 + i * 12, sz.x, 12), Color(0, 0, 0, a * 4.0 * (1.0 - lid)))
+			draw_rect(Rect2(0, sz.y - hh - 42 - i * 12, sz.x, 12), Color(0, 0, 0, a * 4.0 * (1.0 - lid)))
+	if main.state == "wake":
+		return
 	# VHS-Anzeige wie auf alter Kassette
 	if Game.retro and main.state != "end":
 		var blink := int(Time.get_ticks_msec() / 600) % 2 == 0

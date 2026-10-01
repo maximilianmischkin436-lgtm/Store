@@ -69,11 +69,13 @@ func _ready() -> void:
 	ui.add_child(hud)
 	dialog = Dialog.new()
 	ui.add_child(dialog)
-	title_t = 6.0
 	objective = "Find a way out of the Drain"
+	state = "wake"
+	wake_t = 0.0
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	Game.play_music("pool")
 	if Game.continue_game:
+		state = "play"
 		_apply_progress(Game.progress)
 
 # Spielstand fortsetzen: Bereiche, die schon geschafft sind, ueberspringen
@@ -128,6 +130,37 @@ func _setup_input() -> void:
 var dream_rect: ColorRect
 var dream_mat: ShaderMaterial
 var glitch_t := 0.0
+var wake_t := 0.0
+const WAKE_LEN := 7.0
+
+# Aufwachen: liegend, Blick nach oben ins Dachfenster, Augen blinzeln, langsam aufrichten
+func _update_wake(delta: float) -> void:
+	wake_t += delta
+	var k := clampf((wake_t - 3.0) / 3.5, 0.0, 1.0)
+	var e := k * k * (3.0 - 2.0 * k)
+	player.head.position.y = lerpf(0.25, 1.6, e)
+	player.pitch = lerpf(1.25, 0.0, e)
+	player.cam.rotation.z = lerpf(0.5, 0.0, e) + sin(wake_t * 1.3) * 0.03 * (1.0 - e)
+	player.gun.visible = wake_t > 5.5
+	glitch_t = maxf(glitch_t, 0.35 * (1.0 - clampf(wake_t / 4.0, 0.0, 1.0)))
+	if wake_t > 1.2 and wake_t < 1.3:
+		Game.sfx("land", 0.5, 0.5)
+	if wake_t >= WAKE_LEN:
+		player.cam.rotation.z = 0.0
+		state = "play"
+		title_t = 6.0
+
+func eyelid() -> float:
+	# 0 = Augen zu, 1 = offen
+	if state != "wake":
+		return 1.0
+	var t := wake_t
+	if t < 1.0: return 0.0
+	if t < 1.6: return (t - 1.0) / 0.6 * 0.35
+	if t < 2.0: return 0.35 - (t - 1.6) / 0.4 * 0.35
+	if t < 2.6: return (t - 2.0) / 0.6 * 0.6
+	if t < 2.9: return 0.6 - (t - 2.6) / 0.3 * 0.4
+	return clampf(0.2 + (t - 2.9) / 1.2, 0.0, 1.0)
 var dream_time := 0.0
 
 func _setup_world() -> void:
@@ -168,7 +201,7 @@ func _setup_world() -> void:
 	# niedrige Aufloesung fuer den Retro-Look (UI bleibt scharf)
 	if Game.retro:
 		get_viewport().scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
-		get_viewport().scaling_3d_scale = 0.5
+		get_viewport().scaling_3d_scale = 0.66
 	# VHS-Filter ueber dem ganzen Bild
 	var post := CanvasLayer.new()
 	post.layer = 0
@@ -178,7 +211,7 @@ func _setup_world() -> void:
 	dream_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	dream_mat = ShaderMaterial.new()
 	dream_mat.shader = load("res://scripts3d/dream.gdshader")
-	dream_mat.set_shader_parameter("strength", 1.0 if Game.retro else 0.0)
+	dream_mat.set_shader_parameter("strength", 0.45 if Game.retro else 0.0)
 	dream_rect.material = dream_mat
 	dream_rect.visible = Game.retro
 	post.add_child(dream_rect)
@@ -272,7 +305,7 @@ func spawn_enemy(kind: String, pos: Vector3) -> void:
 func spawn_proj(pos: Vector3, vel: Vector3, col: Color) -> void:
 	var mi := MeshInstance3D.new()
 	mi.mesh = proj_mesh
-	mi.material_override = _mat(col, 4.0)
+	mi.material_override = _mat(col, 0.6)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mi.position = pos
 	add_child(mi)
@@ -409,7 +442,9 @@ func _process(delta: float) -> void:
 		return
 	if state == "play" and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	if title_t < 4.5 and not seen.has("intro"):
+	if state == "wake":
+		_update_wake(delta)
+	if state == "play" and title_t > 0.0 and title_t < 4.5 and not seen.has("intro"):
 		seen["intro"] = true
 		say("intro", func(): radio("controls"))
 	_update_radio(delta)
@@ -547,7 +582,7 @@ func on_enemy_killed(_e) -> void:
 	shake(0.1)
 
 func on_boss_killed(b) -> void:
-	burst(b.global_position, Color("#ff2d55"), 150)
+	burst(b.global_position, Color("#dfe9ec"), 150)
 	burst(b.global_position, Color.WHITE, 80)
 	shake(1.0)
 	b.queue_free()

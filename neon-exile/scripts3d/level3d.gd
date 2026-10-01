@@ -19,7 +19,7 @@ func _init() -> void:
 	wall_mat.shader = load("res://scripts3d/tiles.gdshader")
 	trim_mat.albedo_color = Color(0.8, 0.87, 0.9)
 	trim_mat.roughness = 0.2
-	for pair in [[door_mat, Color("#ff2d55")], [gate_mat, Color("#ffd23d")]]:
+	for pair in [[door_mat, Color("#e07a8a")], [gate_mat, Color("#e8c86a")]]:
 		var m: StandardMaterial3D = pair[0]
 		m.albedo_color = Color(pair[1], 0.35)
 		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA

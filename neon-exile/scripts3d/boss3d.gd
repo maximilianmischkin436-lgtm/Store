@@ -17,7 +17,8 @@ var volley_n := 0
 var spin := 0.0
 var spin_acc := 0.0
 var pat := 0
-const COL := Color("#ff2d55")
+const COL := Color("#0e2a44")       # dunkles Tiefwasser-Blau (Kugeln)
+const BODY := Color("#dfe9ec")
 var mat := StandardMaterial3D.new()
 var plates: Node3D
 var eye: Node3D
@@ -34,10 +35,12 @@ func _ready() -> void:
 	cs.shape = sh
 	add_child(cs)
 	position.y = 2.8
-	mat.albedo_color = Color(0.05, 0.02, 0.04)
+	mat.albedo_color = BODY
+	mat.roughness = 0.1
+	mat.metallic = 0.2
 	mat.emission_enabled = true
-	mat.emission = COL
-	mat.emission_energy_multiplier = 1.2
+	mat.emission = Color("#ff4d6d")
+	mat.emission_energy_multiplier = 0.0
 	visual = Node3D.new()
 	add_child(visual)
 	var body := MeshInstance3D.new()
@@ -63,9 +66,10 @@ func _ready() -> void:
 	es.height = 1.1
 	eye.mesh = es
 	var em := StandardMaterial3D.new()
+	em.albedo_color = Color(0.05, 0.08, 0.12)
 	em.emission_enabled = true
-	em.emission = Color.WHITE
-	em.emission_energy_multiplier = 2.5
+	em.emission = Color("#38c9ff")
+	em.emission_energy_multiplier = 1.2
 	eye.material_override = em
 	eye.position = Vector3(0, 0, -2.2)
 	visual.add_child(eye)
@@ -85,7 +89,7 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	t += delta
 	flash = maxf(0.0, flash - delta)
-	mat.emission = Color.WHITE if flash > 0.0 else (COL.lerp(Color("#ffd23d"), 0.4 * (0.5 + 0.5 * sin(t * 10.0))) if phase >= 2 else COL)
+	mat.emission_energy_multiplier = 1.5 if flash > 0.0 else (0.4 * (0.5 + 0.5 * sin(t * 6.0)) if phase >= 2 else 0.0)
 	plates.rotation.y += delta * (0.8 + phase * 0.7)
 	plates.rotation.x = sin(t) * 0.2
 	if not active or not main.can_control():
@@ -100,8 +104,8 @@ func _physics_process(delta: float) -> void:
 		mode = "idle"
 		cd = 1.5
 		main.shake(0.6)
-		main.burst(global_position, COL, 60)
-		main.banner("PHASE 2" if phase == 1 else "WARDEN-07 OVERLOAD", COL)
+		main.burst(global_position, BODY, 60)
+		main.banner("PHASE 2" if phase == 1 else "WARDEN-07 OVERLOAD", Color("#ff4d6d"))
 		main.clear_projectiles()
 		if phase == 1:
 			main.radio("halfway")
@@ -149,7 +153,7 @@ func _physics_process(delta: float) -> void:
 				spin_acc = 0.0
 				for k in 4:
 					var a := spin + k * TAU / 4.0
-					main.spawn_proj(global_position + Vector3(0, -1.6, 0), Vector3(cos(a), 0, sin(a)) * 10.0, Color("#ffd23d"))
+					main.spawn_proj(global_position + Vector3(0, -1.6, 0), Vector3(cos(a), 0, sin(a)) * 10.0, Color("#123a5a"))
 			if mode_t <= 0.0:
 				mode = "idle"
 				cd = 1.2
