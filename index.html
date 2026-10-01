@@ -212,7 +212,7 @@ const stars = Array.from({ length: 50 }, () => ({ x: Math.random() * W, y: Math.
 // --- Zustand ---
 let state = "menu";                     // menu | skins | tree | missions | play | over | win
 let devRun = false;                     // Boss-Test-Lauf (nur in der Dev-Version): kein Fortschritt, kein Rang
-let rings = [], lasers = [], addQ = [];                         // Schockwellen-Effekte
+let rings = [], lasers = [], addQ = [], coreT = 6, deathSlow = 0;                         // Schockwellen-Effekte
 let nearMiss = 0, missText = 0, orbsCollected = 0, maxCombo = 1, powersTaken = 0, shieldKills = 0, goldTaken = 0, flash = 0, pops = [];
 let boss = null, bossBanner = 0, beamT = 0;
 let paused = false, wave = 1, waveBanner = 0, musicT = 0, musicStep = 0;
@@ -225,7 +225,7 @@ function reset() {
   target.x = player.x; target.y = player.y;
   enemies = []; orbs = []; powers = []; particles = [];
   score = 0; combo = 1; comboTimer = 0; time = 0; spawnT = 1.5; orbT = 0; shake = 0;
-  rings = []; lasers = []; addQ = []; devRun = false; runDone = false; runBosses = 0; revived = false; powersTaken = 0; shieldKills = 0; goldTaken = 0; flash = 0; pops = [];
+  rings = []; lasers = []; addQ = []; coreT = 6; deathSlow = 0; devRun = false; runDone = false; runBosses = 0; revived = false; powersTaken = 0; shieldKills = 0; goldTaken = 0; flash = 0; pops = [];
   powerT = 8; shieldT = 0; slowT = 0; nearMiss = 0; missText = 0; orbsCollected = 0; maxCombo = 1; boss = null; bossBanner = 0; beamT = 0; wave = 1; waveBanner = 0; paused = false;
 }
 reset();
@@ -266,16 +266,16 @@ function spawnPower() {
 
 // 10 verschiedene Bosse: Welle 10, 20, ... 100 (Welle 100 = Endboss)
 const BOSSES = [
-  { name: "PULSE",    title: "The Heartbeat",      color: "#ff2d55", hp: 16, rate: 1.6, spd: 0.6, patterns: ["aim", "nova", "fan"] },
-  { name: "SPINNER",  title: "Blade of a Thousand Turns", color: "#b45cff", hp: 20, rate: 2.0, spd: 0.7, patterns: ["blades", "aim", "spiral"] },
-  { name: "SWEEPER",  title: "The Laser Wall",     color: "#ff9f3d", hp: 24, rate: 1.8, spd: 1.0, patterns: ["laser", "columns", "fan", "laser"] },
-  { name: "HUNTER",   title: "Mines and Teeth",    color: "#ff4df0", hp: 28, rate: 1.8, spd: 0.7, patterns: ["mines", "summon", "aim"] },
-  { name: "PRISM",    title: "The Shattering Light", color: "#4da3ff", hp: 32, rate: 1.5, spd: 0.8, patterns: ["split", "ring", "split", "aim"] },
-  { name: "TEMPEST",  title: "Bringer of Storms",  color: "#38c9ff", hp: 36, rate: 2.0, spd: 0.7, patterns: ["rain", "storm", "aim"] },
-  { name: "VORTEX",   title: "The Hungry Void",    color: "#9dff4d", hp: 40, rate: 1.9, spd: 0.9, patterns: ["pull", "spiral2", "ring"] },
-  { name: "DASHER",   title: "Faster Than Light",  color: "#ffd23d", hp: 44, rate: 1.7, spd: 0.8, patterns: ["dash3", "fan", "aim", "dash"] },
-  { name: "HYDRA",    title: "Three Heads, No Mercy", color: "#ff5f3d", hp: 50, rate: 1.5, spd: 0.9, patterns: ["heads", "summon", "mines", "heads", "fan"] },
-  { name: "OVERLORD", title: "End of All Things",  color: "#ffffff", hp: 95, rate: 1.3, spd: 0.9, r: 60,
+  { name: "PULSE",    title: "The Heartbeat",      color: "#ff2d55", rage: "heartbeat", hp: 16, rate: 1.6, spd: 0.6, patterns: ["aim", "nova", "fan"] },
+  { name: "SPINNER", rage: "reverse",  title: "Blade of a Thousand Turns", color: "#b45cff", hp: 20, rate: 2.0, spd: 0.7, patterns: ["blades", "aim", "spiral"] },
+  { name: "SWEEPER", rage: "sweep",  title: "The Laser Wall",     color: "#ff9f3d", hp: 24, rate: 1.8, spd: 1.0, patterns: ["laser", "columns", "fan", "laser"] },
+  { name: "HUNTER", rage: "minefield",   title: "Mines and Teeth",    color: "#ff4df0", hp: 28, rate: 1.8, spd: 0.7, patterns: ["mines", "summon", "aim"] },
+  { name: "PRISM", rage: "split2",    title: "The Shattering Light", color: "#4da3ff", hp: 32, rate: 1.5, spd: 0.8, patterns: ["split", "ring", "split", "aim"] },
+  { name: "TEMPEST", rage: "chase",  title: "Bringer of Storms",  color: "#38c9ff", hp: 36, rate: 2.0, spd: 0.7, patterns: ["rain", "storm", "aim"] },
+  { name: "VORTEX", rage: "blackhole",   title: "The Hungry Void",    color: "#9dff4d", hp: 40, rate: 1.9, spd: 0.9, patterns: ["pull", "spiral2", "ring"] },
+  { name: "DASHER", rage: "trail",   title: "Faster Than Light",  color: "#ffd23d", hp: 44, rate: 1.7, spd: 0.8, patterns: ["dash3", "fan", "aim", "dash"] },
+  { name: "HYDRA", rage: "barrage",    title: "Three Heads, No Mercy", color: "#ff5f3d", hp: 50, rate: 1.5, spd: 0.9, patterns: ["heads", "summon", "mines", "heads", "fan"] },
+  { name: "OVERLORD", rage: "grid", title: "End of All Things",  color: "#ffffff", hp: 95, rate: 1.3, spd: 0.9, r: 60,
     patterns: ["cross", "spiral2", "laser3", "split", "dash3", "nova", "mines", "storm", "blades", "pull"] },
 ];
 function laser(x, y, vert, warn) { lasers.push({ x, y, vert, warn: warn || (boss && boss.phase >= 2 ? 0.6 : 0.8), live: 0.55, w: 26, c: boss ? boss.def.color : "#ff2d55" }); }
@@ -283,7 +283,7 @@ function hydraHeads(b) { return [-0.9, 0, 0.9].map((o, i) => [b.x + Math.sin(o) 
 
 function startBoss() {
   const n = wave <= 100 ? wave / 10 - 1 : (wave / 10 - 1) % 9, def = BOSSES[n];   // nach Welle 100: Endless, Bosse wiederholen sich staerker
-  const mul = (wave > 100 ? 1 + (wave - 100) / 40 : 1) * 1.3, hp = Math.round(def.hp * mul);   // +25% Leben
+  const mul = (wave > 100 ? 1 + (wave - 100) / 40 : 1) * 1.5, hp = Math.round(def.hp * mul);   // mehr Leben   // +25% Leben
   enemies = [];
   boss = { x: W / 2, y: -80, r: def.r || 44, n, def, hp, maxhp: hp, final: wave === 100, t: 0, fireT: 2, pat: 0,
            hitCd: 0, flash: 0, intro: 2.6, pull: 0, arms: 1, spin: 0.5, dashes: 0, phase: 0, pending: 0, mode: "idle", modeT: 0, vx: 0, vy: 0, spiral: 0, spT: 0, ang: 0, dbl: false, rain: 0, rainT: 0 };
@@ -297,7 +297,7 @@ function bullet(x, y, a, sp) {
 function bossFire() {
   const b = boss, n = b.n, sp = 140 + n * 9, aim = Math.atan2(player.y - b.y, player.x - b.x);
   let cd = b.def.rate;
-  const name = b.def.patterns[b.pat++ % b.def.patterns.length];
+  const name = b.phase >= 2 && b.pat % 3 === 0 ? (b.pat++, b.def.rage) : b.def.patterns[b.pat++ % b.def.patterns.length];   // ENRAGED: Signatur-Angriff
   cd += pattern(name, b, n, sp, aim);
   if (b.phase >= 1) bullet(b.x, b.y, aim, sp + 45);                   // ab Phase 2: Extra-Zielschuss
   if (b.phase >= 2 && !["spiral", "spiral2", "rain", "dash"].includes(name))   // Phase 3: zweites Muster gleichzeitig
@@ -337,7 +337,20 @@ function pattern(name, b, n, sp, aim) {
       enemies.push({ x: b.x, y: b.y, vx: (tx - b.x) / 0.8, vy: (ty - b.y) / 0.8, r: 9, type: "mine", timer: 1.8, fly: 0.8, c: b.def.color });
     } cd += 0.5; break;
     case "split": for (const d of [-0.5, -0.25, 0, 0.25, 0.5]) { bullet(b.x, b.y, aim + d, sp * 0.9); enemies[enemies.length - 1].split = 0.75; enemies[enemies.length - 1].r = 8; } break;
-    case "pull": b.pull = 2.6; b.spiral = 2.2; b.arms = 2; b.spin = 0.45; b.ang = Math.random() * 6; cd += 2.4; break;
+    case "pull": b.pullF = 95; b.pull = 2.6; b.spiral = 2.2; b.arms = 2; b.spin = 0.45; b.ang = Math.random() * 6; cd += 2.4; break;
+    case "heartbeat": b.beats = 3; b.beatT = 0; cd += 1.4; break;
+    case "reverse": b.spiral = 2.6; b.arms = 4; b.spin = 0.22; b.flipT = 1.3; b.ang = Math.random() * 6; cd += 2.4; break;
+    case "sweep": { const left = player.x > W / 2; lasers.push({ x: left ? 10 : W - 10, y: 0, vert: true, warn: 0.7, live: 2.4, w: 30, vx: left ? 230 : -230, c: b.def.color }); cd += 2.2; break; }
+    case "minefield": for (let i = 0; i < 6; i++) { const a = i / 6 * 6.28, tx = player.x + Math.cos(a) * 110, ty = player.y + Math.sin(a) * 110;
+      enemies.push({ x: b.x, y: b.y, vx: (tx - b.x) / 0.8, vy: (ty - b.y) / 0.8, r: 9, type: "mine", timer: 1.9, fly: 0.8, c: b.def.color }); } cd += 1; break;
+    case "split2": for (const d of [-0.4, 0, 0.4]) { bullet(b.x, b.y, aim + d, sp * 0.85); Object.assign(enemies[enemies.length - 1], { split: 0.6, gen: 2, r: 9 }); } break;
+    case "chase": b.chase = 4; b.chaseT = 0; cd += 2; break;
+    case "blackhole": b.pull = 3; b.pullF = 150; b.spiral = 2.6; b.arms = 3; b.spin = 0.35; b.ang = Math.random() * 6; cd += 2.8; break;
+    case "trail": b.mode = "tele"; b.modeT = 0.6; b.dashes = 3; b.trailFire = true; cd += 3.8; break;
+    case "barrage": b.barrage = 1.8; b.barT = 0; cd += 1.8; break;
+    case "grid": { const o = (Math.random() - 0.5) * 60;
+      for (const fx of [0.2, 0.5, 0.8]) laser(W * fx + o, 0, true, 0.95);
+      for (const fy of [0.45, 0.75]) laser(0, H * fy + o, false, 0.95); cd += 1.8; break; }
     case "heads": for (const [hx, hy] of hydraHeads(b)) { const a = Math.atan2(player.y - hy, player.x - hx); for (const d of [-0.18, 0, 0.18]) bullet(hx, hy, a + d, sp + 30); } break;
   }
   return cd;
@@ -358,6 +371,7 @@ function updateBoss(edt, dt) {
     b.x = homeX; b.y += (homeY - b.y) * Math.min(1, 2 * edt);
     b.fireT -= edt;
     if (b.intro > 0) { b.intro -= dt; if (b.intro <= 0) { shake = 0.4; rings.push({ x: b.x, y: b.y, r: b.r, t: 0.8, c: b.def.color }); beep(70, 0.6, "sawtooth", 0.1); } }
+    else if (b.stun > 0) {}
     else if (b.fireT <= 0 && b.y > 150 && b.pending <= 0) b.pending = 0.4;      // Aufladen als Warnung
     if (b.pending > 0) { b.pending -= edt; if (b.pending <= 0) bossFire(); }
   } else if (b.mode === "tele") {                       // Dash ankuendigen (blinkt)
@@ -386,9 +400,18 @@ function updateBoss(edt, dt) {
       b.ang += b.spin || 0.5; b.spT = arms >= 4 ? 0.09 : 0.1;
     }
   }
+  b.jit = Math.max(0, (b.jit || 0) - dt);
+  if (b.stun > 0) { b.stun -= dt; b.spiral = 0; b.rain = 0; b.pull = 0; b.beats = 0; b.chase = 0; b.barrage = 0; b.pending = 0; }
+  if (b.flipT > 0) { b.flipT -= edt; if (b.flipT <= 0) { b.spin = -b.spin; rings.push({ x: b.x, y: b.y, r: b.r, t: 0.4, c: "#ffffff" }); } }
+  if (b.beats > 0) { b.beatT -= edt; if (b.beatT <= 0) { pattern("nova", b, b.n, 140 + b.n * 9, 0); rings.push({ x: b.x, y: b.y, r: b.r, t: 0.5, c: b.def.color }); shake = Math.max(shake, 0.12); b.beats--; b.beatT = 0.4; } }
+  if (b.chase > 0) { b.chaseT -= edt; if (b.chaseT <= 0) { laser(player.x, 0, true, 0.55); b.chase--; b.chaseT = 0.45; } }
+  if (b.barrage > 0) { b.barrage -= edt; b.barT -= edt;
+    if (b.barT <= 0) { const hd = hydraHeads(b)[Math.floor(Math.random() * 3)]; bullet(hd[0], hd[1], Math.atan2(player.y - hd[1], player.x - hd[0]), 230); b.barT = 0.1; } }
+  if (b.mode === "dash" && b.trailFire && Math.random() < 0.6) { const a = Math.random() * 6.28; bullet(b.x, b.y, a, 35); }
+  if (b.mode === "idle" && b.dashes <= 1) b.trailFire = false;
   if (b.pull > 0) {                                     // Sog zum Boss hin
     b.pull -= edt;
-    const d = Math.hypot(b.x - player.x, b.y - player.y) || 1, f = 95 * edt;
+    const d = Math.hypot(b.x - player.x, b.y - player.y) || 1, f = (b.pullF || 95) * edt;
     target.x += (b.x - player.x) / d * f; target.y += (b.y - player.y) / d * f;
   }
   if (Math.random() < 0.5 + b.phase * 0.25) {           // Funken
@@ -402,14 +425,15 @@ function updateBoss(edt, dt) {
 }
 function damageBoss(d) {
   if (!boss) return;
-  boss.hp -= d; boss.flash = 0.15; shake = Math.max(shake, 0.08);
+  boss.hp -= d; boss.flash = 0.15; boss.jit = 0.15;
+  pops.push({ x: boss.x + (Math.random() - 0.5) * 50, y: boss.y - boss.r, t: 0.7, txt: "-" + d, c: "#ffffff" }); shake = Math.max(shake, 0.08);
   burst(boss.x + (Math.random() - 0.5) * 40, boss.y + (Math.random() - 0.5) * 40, "#ffd23d", 10);
   beep(260, 0.08, "sawtooth", 0.06);
   if (boss.hp <= 0) {
     const bonus = 500 + boss.n * 400, final = boss.final;
     runBosses++;
     score += bonus; if (!devRun) save.bosses++;
-    burst(boss.x, boss.y, boss.def.color, 120); burst(boss.x, boss.y, "#ffffff", 50); shake = 0.8; flash = 0.5;
+    deathSlow = 1.2; burst(boss.x, boss.y, boss.def.color, 120); burst(boss.x, boss.y, "#ffffff", 50); shake = 0.8; flash = 0.5;
     for (let i = 0; i < 4; i++) rings.push({ x: boss.x, y: boss.y, r: boss.r * (0.3 + i * 0.3), t: 0.7 + i * 0.25, c: i % 2 ? "#ffffff" : boss.def.color });
     banner = { text: boss.def.name + " defeated!  +" + bonus, color: "#ffd23d", t: 3 };
     enemies = []; shieldT = Math.max(shieldT, 3); boss = null;
@@ -623,6 +647,7 @@ function update(dt) {
   if (spawnT <= 0 && !boss) { spawnEnemy(); spawnT = Math.max(0.22, 1.15 - wave * 0.011); }
   orbT -= dt;
   if (orbT <= 0) { spawnOrb(); orbT = boss ? 0.8 : 1.1; }
+  if (boss && boss.intro <= 0) { coreT -= dt; if (coreT <= 0) { coreT = 9; orbs.push({ x: 60 + Math.random() * (W - 120), y: 300 + Math.random() * (H - 380), r: 14, life: 5, core: true }); } }
 
   powerT -= dt;
   if (powerT <= 0) { spawnPower(); powerT = (9 + Math.random() * 4) * (1 - 0.12 * lvl("luck")); }
@@ -640,7 +665,7 @@ function update(dt) {
   }
   for (const L of lasers) {                                  // Laser: erst Warnlinie, dann toedlicher Strahl
     if (L.warn > 0) { L.warn -= edt; if (L.warn <= 0) { shake = Math.max(shake, 0.12); beep(90, 0.25, "sawtooth", 0.06); } continue; }
-    L.live -= edt;
+    L.live -= edt; if (L.vx) L.x += L.vx * edt;
     const hit = L.vert ? Math.abs(player.x - L.x) < L.w / 2 + player.r - 4 : Math.abs(player.y - L.y) < L.w / 2 + player.r - 4;
     if (hit && shieldT <= 0) { gameOver(); return; }
   }
@@ -660,7 +685,7 @@ function update(dt) {
       e.split -= edt;
       if (e.split <= 0) {
         e.dead = true; const a = Math.atan2(e.vy, e.vx), v = Math.hypot(e.vx, e.vy) * 1.1;
-        for (const d of [-0.55, 0, 0.55]) addQ.push({ x: e.x, y: e.y, vx: Math.cos(a + d) * v, vy: Math.sin(a + d) * v, r: 5, type: "bullet", c: "#ffffff" });
+        for (const d of [-0.55, 0, 0.55]) addQ.push(Object.assign({ x: e.x, y: e.y, vx: Math.cos(a + d) * v, vy: Math.sin(a + d) * v, r: e.gen === 2 ? 7 : 5, type: "bullet", c: "#ffffff" }, e.gen === 2 ? { split: 0.5, gen: 1 } : {}));
       }
     }
     if (e.type === "seeker") {
@@ -709,7 +734,10 @@ function update(dt) {
       pops.push({ x: o.x, y: o.y, t: 0.8, txt: "+" + pts, c: o.gold ? "#ffd23d" : "#38f5c4" });
       combo = Math.min(combo + (o.gold ? 2 : 1), 10); maxCombo = Math.max(maxCombo, combo); orbsCollected++;
       if (!devRun) { save.orbs++; persist(); }
-      if (boss) { damageBoss((combo >= 5 ? 3 : 2) + lvl("breaker")); beamT = 0.12; }
+      if (boss && o.core) {                       // Kern-Orb: grosser Schaden + Boss betaeubt
+        damageBoss(6 + lvl("breaker") * 2); beamT = 0.3;
+        if (boss) { boss.stun = 1.8; rings.push({ x: boss.x, y: boss.y, r: boss.r, t: 0.7, c: "#c77dff" }); banner = { text: "STUNNED!", color: "#c77dff", t: 1.5 }; }
+      } else if (boss) { damageBoss((combo >= 5 ? 3 : 2) + lvl("breaker")); beamT = 0.12; }
       comboTimer = comboDur();
       burst(o.x, o.y, o.gold ? "#ffd23d" : "#38f5c4", o.gold ? 20 : 12);
       beep(600 + combo * 60, 0.1, "triangle");
@@ -891,7 +919,7 @@ function draw() {
 
   // Spielfeld-Hintergrund mit Raster
   ctx.fillStyle = "#10101f"; ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = "rgba(120,120,255,0.08)"; ctx.lineWidth = 1;
+  ctx.strokeStyle = boss ? (boss.phase >= 2 ? "#ff2d55" : boss.def.color === "#ffffff" ? "#ff4d6d" : boss.def.color) + "1c" : "rgba(120,120,255,0.08)"; ctx.lineWidth = 1;
   const off = (time * 30) % 40;
   for (let y = off; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
   for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
@@ -904,7 +932,10 @@ function draw() {
   for (const o of orbs) {
     const pulse = 1 + Math.sin(o.life * 8) * 0.12;
     ctx.globalAlpha = Math.min(1, o.life);
-    circle(o.x, o.y, o.r * pulse, o.gold ? "#ffd23d" : "#38f5c4", o.gold ? 26 : 18);
+    if (o.core) {
+      ctx.strokeStyle = "#c77dff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(o.x, o.y, o.r + 8 + Math.sin(o.life * 10) * 3, 0, 6.28); ctx.stroke();
+      shape(ngon(o.x, o.y, 4, o.r * 1.2 * pulse, o.life * 2, o.r * 0.5), "#c77dff", 30);
+    } else circle(o.x, o.y, o.r * pulse, o.gold ? "#ffd23d" : "#38f5c4", o.gold ? 26 : 18);
   }
   ctx.globalAlpha = 1;
   for (const pw of powers) {
@@ -958,7 +989,27 @@ function draw() {
       ctx.strokeStyle = "rgba(255,255,255," + (1 - boss.pending / 0.4) + ")"; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(boss.x, boss.y, boss.r + 8 + boss.pending * 70, 0, Math.PI * 2); ctx.stroke();
     }
+    const rr = boss.r + 30, rc = boss.phase >= 2 ? "#ff2d55" : boss.def.color === "#ffffff" ? "#ffd23d" : boss.def.color;
+    ctx.globalAlpha = 0.55; ctx.strokeStyle = rc; ctx.lineWidth = 3; ctx.setLineDash([14, 10]); ctx.lineDashOffset = -boss.t * 50 * (boss.n % 2 ? 1 : -1);
+    ctx.beginPath(); ctx.arc(boss.x, boss.y, rr, 0, 6.28); ctx.stroke();
+    ctx.setLineDash([4, 18]); ctx.lineDashOffset = boss.t * 30; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(boss.x, boss.y, rr + 12, 0, 6.28); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha = 1;
+    const jx = boss.jit > 0 || boss.phase >= 2 ? (Math.random() - 0.5) * (boss.jit > 0 ? 8 : 3) : 0, jy = jx ? (Math.random() - 0.5) * 6 : 0;
+    ctx.save(); ctx.translate(jx, jy);
     drawBoss(boss, bc, k);
+    const cracks = Math.floor((1 - boss.hp / boss.maxhp) * 8);            // Risse bei wenig Leben
+    ctx.strokeStyle = "rgba(10,10,20,0.75)"; ctx.lineWidth = 2.5;
+    for (let i = 0; i < cracks; i++) {
+      let a = i * 2.39 + boss.n, px = boss.x, py = boss.y;
+      ctx.beginPath(); ctx.moveTo(px, py);
+      for (let q = 1; q <= 3; q++) { a += (q % 2 ? 0.5 : -0.4); px = boss.x + Math.cos(a) * boss.r * 0.3 * q; py = boss.y + Math.sin(a) * boss.r * 0.3 * q; ctx.lineTo(px, py); }
+      ctx.stroke();
+    }
+    ctx.restore();
+    if (boss.stun > 0) for (let i = 0; i < 4; i++) {                      // betaeubt: kreisende Sterne
+      const a = boss.t * 5 + i * 1.57;
+      shape(ngon(boss.x + Math.cos(a) * boss.r * 0.8, boss.y - boss.r - 10 + Math.sin(a) * 8, 5, 7, a, 3), "#c77dff", 10);
+    }
     if (beamT > 0) {
       ctx.strokeStyle = "rgba(255,210,61," + beamT * 6 + ")"; ctx.lineWidth = 4;
       ctx.beginPath(); ctx.moveTo(player.x, player.y); ctx.lineTo(boss.x, boss.y); ctx.stroke();
@@ -1151,8 +1202,10 @@ function drawOverlay() {
 // --- Loop ---
 let last = performance.now();
 function frame(now) {
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const real = Math.min(0.05, (now - last) / 1000);
   last = now;
+  deathSlow = Math.max(0, deathSlow - real);
+  const dt = deathSlow > 0 ? real * 0.3 : real;           // Zeitlupe beim Boss-Tod
   update(dt);
   draw();
   drawOverlay();
