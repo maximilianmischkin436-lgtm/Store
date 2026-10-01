@@ -55,11 +55,34 @@ func apply_settings() -> void:
 	if DisplayServer.get_name() != "headless":
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen else DisplayServer.WINDOW_MODE_WINDOWED)
 
+var amb: AudioStreamPlayer
+var current_amb := ""
+
+# Hintergrund-Geraeusche je Ort (Wasser, Neon-Brummen, Uhr-Ticken...)
+func play_ambience(theme: String) -> void:
+	if theme == current_amb:
+		return
+	current_amb = theme
+	if amb == null:
+		amb = AudioStreamPlayer.new()
+		amb.volume_db = -6.0
+		amb.finished.connect(func(): amb.play())
+		add_child(amb)
+	var path := "res://assets/amb/%s.ogg" % theme
+	if ResourceLoader.exists(path):
+		amb.stream = load(path)
+		amb.play()
+	else:
+		amb.stop()
+
 func play_music(track: String) -> void:
 	if track == current_track:
 		return
 	current_track = track
-	music.stream = load("res://assets/music/%s.ogg" % track)
+	var path := "res://assets/music/%s.ogg" % track
+	if not ResourceLoader.exists(path):
+		path = "res://assets/music/school.ogg"
+	music.stream = load(path)
 	music.play()
 
 func sfx(name: String, pitch: float = 1.0, vol: float = 1.0) -> void:

@@ -14,7 +14,7 @@ var door_nodes := {}    # Vector2i -> Node3D
 var spawns: Array = []
 var triggers := {}
 
-var wall_mat: ShaderMaterial = ShaderMaterial.new()
+var wall_mat: Material = ShaderMaterial.new()
 var trim_mat := StandardMaterial3D.new()
 var door_mat := StandardMaterial3D.new()
 var gate_mat := StandardMaterial3D.new()
@@ -29,11 +29,47 @@ func _surf(mode: int, a: Color, b: Color, c: Color, sc: float) -> ShaderMaterial
 	m.set_shader_parameter("scale", sc)
 	return m
 
+# Echte Texturen (generiert, nahtlos) – werden mit Weltkoordinaten (triplanar) aufgelegt
+func _tex(name: String, scale: float, tint: Color = Color.WHITE, rough: float = 0.7) -> Material:
+	var path := "res://assets/tex/%s.jpg" % name
+	if not ResourceLoader.exists(path):
+		return null
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = load(path)
+	m.albedo_color = tint
+	m.uv1_triplanar = true
+	m.uv1_world_triplanar = true
+	m.uv1_scale = Vector3.ONE / scale
+	m.roughness = rough
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	return m
+
+func _apply_textures() -> void:
+	var cfg := {
+		"pool": [["pool_tiles", 2.0], ["pool_tiles", 2.0]],
+		"mall": [["mall_wall", 4.0], ["mall_floor", 4.0]],
+		"office": [["office_wall", 3.0], ["office_floor", 3.0]],
+		"school": [["school_wall", 3.0], ["school_floor", 3.0]],
+		"crown": [["crown_floor", 5.0], ["crown_floor", 5.0]],
+	}
+	if not cfg.has(theme):
+		return
+	var w = _tex(cfg[theme][0][0], cfg[theme][0][1], Color(0.95, 0.95, 0.95), 0.6)
+	var f = _tex(cfg[theme][1][0], cfg[theme][1][1], Color.WHITE, 0.35 if theme in ["pool", "mall", "crown"] else 0.85)
+	if w:
+		wall_mat = w
+	if f:
+		floor_mat = f
+
 func setup(chapter: Dictionary) -> void:
 	ch = chapter
 	theme = ch.theme
 	WALL_H = ch.wall_h
 	MEMORY_TEXT = ch.memories
+	_setup_mats()
+	_apply_textures()
+
+func _setup_mats() -> void:
 	match theme:
 		"pool":
 			wall_mat = _surf(0, Color(0.86, 0.89, 0.9), Color(0.7, 0.78, 0.8), Color(0.35, 0.62, 0.78), 0.75)
@@ -57,8 +93,10 @@ func setup(chapter: Dictionary) -> void:
 			floor_mat = _surf(3, Color(0.8, 0.78, 0.7), Color(0.5, 0.35, 0.3), Color.WHITE, 0.6)
 			ceil_mat = _surf(5, Color(0.92, 0.9, 0.85), Color(0.7, 0.68, 0.6), Color.WHITE, 1.2)
 
+var secret_cells: Array = []
+
 func _init() -> void:
-	wall_mat.shader = load("res://scripts3d/tiles.gdshader")
+	(wall_mat as ShaderMaterial).shader = load("res://scripts3d/tiles.gdshader")
 	trim_mat.albedo_color = Color(0.8, 0.87, 0.9)
 	trim_mat.roughness = 0.2
 	for pair in [[door_mat, Color("#e07a8a")], [gate_mat, Color("#e8c86a")]]:
@@ -78,7 +116,7 @@ func load_map(path: String) -> void:
 		var row: Array = []
 		for x in w:
 			var c := rows[y][x]
-			if c in ["P", "c", "d", "S", "B"]:
+			if c in ["P", "c", "d", "S", "B", "X"]:
 				spawns.append({"c": c, "pos": cell_center(Vector2i(x, y))})
 				c = "."
 			elif c in ["1", "2", "3", "4", "5"]:
@@ -98,7 +136,7 @@ func solid(p: Vector3) -> bool:
 	var c := cell_of(p)
 	if c.x < 0 or c.y < 0 or c.x >= w or c.y >= h:
 		return true
-	return grid[c.y][c.x] != "." and p.y < WALL_H
+	return grid[c.y][c.x] != "." and grid[c.y][c.x] != "H" and p.y < WALL_H
 
 func _is_edge(x: int, y: int) -> bool:
 	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 1), Vector2i(-1, -1), Vector2i(1, -1), Vector2i(-1, 1)]:
@@ -146,6 +184,11 @@ func _build() -> void:
 				_box(Vector3(cx, WALL_H + 0.03, cz), Vector3(ln + 0.06, 0.08, T + 0.06), trim_mat, false)
 				_box(Vector3(cx, 0.12, cz), Vector3(ln + 0.06, 0.08, T + 0.06), trim_mat, false)
 			else:
+				if grid[y][x] == "H":
+					# falsche Wand: sieht aus wie Wand, man kann aber hindurchgehen
+					var fake := _box(cell_center(Vector2i(x, y)) + Vector3(0, WALL_H / 2.0, 0), Vector3(T, WALL_H, T), wall_mat, false)
+					fake.name = "FakeWall"
+					secret_cells.append(Vector2i(x, y))
 				if grid[y][x] in ["D", "G"]:
 					var m := door_mat if grid[y][x] == "D" else gate_mat
 					door_nodes[Vector2i(x, y)] = _box(cell_center(Vector2i(x, y)) + Vector3(0, WALL_H / 2.0, 0), Vector3(T, WALL_H, T * 0.3), m, true)
@@ -620,11 +663,11 @@ func dream_update(delta: float, player_pos: Vector3, t: float) -> void:
 
 # ---------- echte 3D-Modelle (Khronos glTF Sample Assets) ----------
 const PROPS := {
-	"pool": [["ToyCar", 3, 0.35]],
-	"mall": [["GlamVelvetSofa", 5, 0.9]],
-	"office": [["SheenChair", 9, 1.0]],
-	"school": [["SheenChair", 3, 1.0], ["ToyCar", 3, 0.35]],
-	"crown": [["SheenChair", 3, 1.0], ["ToyCar", 2, 0.35], ["GlamVelvetSofa", 2, 0.9]],
+	"pool": [["ToyCar", 3, 0.35], ["Duck", 10, 0.35], ["WaterBottle", 3, 0.3]],
+	"mall": [["GlamVelvetSofa", 5, 0.9], ["Corset", 4, 1.1], ["Avocado", 4, 0.25], ["BarramundiFish", 2, 0.6], ["ChairDamaskPurplegold", 3, 1.0]],
+	"office": [["SheenChair", 9, 1.0], ["WaterBottle", 6, 0.3], ["Lantern", 2, 1.6], ["AntiqueCamera", 2, 0.5]],
+	"school": [["SheenChair", 3, 1.0], ["ToyCar", 3, 0.35], ["Duck", 2, 0.3], ["Lantern", 2, 1.4], ["Avocado", 2, 0.2]],
+	"crown": [["SheenChair", 3, 1.0], ["ToyCar", 2, 0.35], ["GlamVelvetSofa", 2, 0.9], ["ChairDamaskPurplegold", 4, 1.0], ["AntiqueCamera", 2, 0.5], ["Lantern", 3, 1.6], ["Duck", 3, 0.3], ["Corset", 2, 1.1]],
 }
 
 func _aabb_world(n: Node) -> AABB:

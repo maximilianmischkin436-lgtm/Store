@@ -24,28 +24,46 @@ var shoot_cd := 0.0
 var bob := 0.0
 var recoil := 0.0
 var gun_base := Vector3(0.17, -0.15, -0.3)
-# Waffen: Name, Farbe, Feuerrate, Schaden, Kugeln pro Schuss, Streuung, Reichweite, durchschlagend, automatisch
-# mag = Magazin, reload = Nachladezeit (kurz!). Besonderheiten:
-#  PULSE: dreht beim Dauerfeuer hoch (schneller), die letzten 5 Schuss sind "Overdrive" (2 Schaden)
+# Waffen. Man traegt hoechstens 3 gleichzeitig (slots). Eine neue Waffe ersetzt die aktuelle,
+# die alte faellt auf den Boden. Typen: hitscan, lob (Granate), beam (Kette), disc (springt zwischen Gegnern)
+#  PULSE: dreht beim Dauerfeuer hoch, die letzten 5 Schuss machen doppelten Schaden
 #  SCATTER: im Rutschen/Dash doppelter Schaden, letzte Patrone = Brandladung mit Explosion
-#  RAIL: Schuss gedrueckt halten zum Aufladen (bis 3x Schaden + Explosion beim Einschlag)
-# Aktives Nachladen: nochmal R im leuchtenden Fenster = sofort fertig + naechstes Magazin +1 Schaden
+#  RAIL: halten zum Aufladen (bis 3x Schaden + Explosion beim Einschlag)
+#  HUMMINGBIRD: sehr schnelle MP, beim Zielen extrem praezise
+#  LAST WORD: Revolver, Kopftreffer x2.5, der letzte Schuss im Lauf trifft immer kritisch
+#  CHALK BOMB: Granatwerfer, Kreidebomben explodieren beim Aufprall
+#  LULLABY: Strahl, springt auf bis zu 3 Gegner in der Naehe ueber
+#  TIDE: Scheibe, die von Gegner zu Gegner und von Waenden abprallt
+#  KATANA: Hieb im Bogen, zerschlaegt gegnerische Geschosse, rechte Maustaste = Sprung-Schnitt nach vorn
+#  KNIFE: schnelle Stiche, 3x Schaden gegen Gegner, die dich noch nicht bemerkt haben, rechte Maustaste = werfen
+# Aktives Nachladen: nochmal R im leuchtenden Fenster = sofort fertig + naechstes Magazin mehr Schaden
 const WEAPONS := [
-	{"name": "PULSE RIFLE", "col": Color("#38f5c4"), "rate": 0.12, "dmg": 1, "pellets": 1, "spread": 0.008, "range": 90.0, "pierce": false, "auto": true, "mag": 32, "reload": 0.9},
-	{"name": "SCATTER GUN", "col": Color("#ff9f3d"), "rate": 0.5, "dmg": 1, "pellets": 9, "spread": 0.075, "range": 26.0, "pierce": false, "auto": false, "mag": 6, "reload": 1.0},
-	{"name": "RAIL CANNON", "col": Color("#c77dff"), "rate": 0.55, "dmg": 6, "pellets": 1, "spread": 0.0, "range": 120.0, "pierce": true, "auto": false, "mag": 4, "reload": 1.1},
+	{"name": "PULSE RIFLE", "col": Color("#38f5c4"), "type": "hitscan", "rate": 0.12, "dmg": 1, "pellets": 1, "spread": 0.008, "range": 90.0, "pierce": false, "auto": true, "mag": 32, "reload": 0.9, "crit": 2.0},
+	{"name": "SCATTER GUN", "col": Color("#ff9f3d"), "type": "hitscan", "rate": 0.5, "dmg": 1, "pellets": 9, "spread": 0.075, "range": 26.0, "pierce": false, "auto": false, "mag": 6, "reload": 1.0, "crit": 1.5},
+	{"name": "RAIL CANNON", "col": Color("#c77dff"), "type": "hitscan", "rate": 0.55, "dmg": 6, "pellets": 1, "spread": 0.0, "range": 120.0, "pierce": true, "auto": false, "mag": 4, "reload": 1.1, "crit": 2.0},
+	{"name": "HUMMINGBIRD", "col": Color("#7dffb0"), "type": "hitscan", "rate": 0.055, "dmg": 1, "pellets": 1, "spread": 0.022, "range": 60.0, "pierce": false, "auto": true, "mag": 48, "reload": 0.8, "crit": 2.0},
+	{"name": "LAST WORD", "col": Color("#ffe066"), "type": "hitscan", "rate": 0.32, "dmg": 4, "pellets": 1, "spread": 0.0, "range": 100.0, "pierce": false, "auto": false, "mag": 6, "reload": 0.95, "crit": 2.5},
+	{"name": "CHALK BOMB", "col": Color("#f4f1e8"), "type": "lob", "rate": 0.6, "dmg": 5, "pellets": 1, "spread": 0.0, "range": 0.0, "pierce": false, "auto": false, "mag": 4, "reload": 1.1, "crit": 1.0},
+	{"name": "LULLABY", "col": Color("#9fd8ff"), "type": "beam", "rate": 0.07, "dmg": 1, "pellets": 1, "spread": 0.0, "range": 16.0, "pierce": false, "auto": true, "mag": 70, "reload": 1.0, "crit": 1.0},
+	{"name": "TIDE", "col": Color("#4db8ff"), "type": "disc", "rate": 0.45, "dmg": 3, "pellets": 1, "spread": 0.0, "range": 0.0, "pierce": false, "auto": false, "mag": 3, "reload": 0.9, "crit": 1.0},
+	{"name": "KATANA", "col": Color("#ff4d6d"), "type": "melee", "rate": 0.38, "dmg": 4, "pellets": 1, "spread": 0.0, "range": 3.3, "arc": 0.45, "pierce": false, "auto": true, "mag": 0, "reload": 0.0, "crit": 1.0},
+	{"name": "KNIFE", "col": Color("#e0e6ee"), "type": "melee", "rate": 0.18, "dmg": 2, "pellets": 1, "spread": 0.0, "range": 2.2, "arc": 0.65, "pierce": false, "auto": true, "mag": 0, "reload": 0.0, "crit": 3.0},
 ]
-var ammo := [32, 6, 4]
+var ammo: Array = []
 var reload_t := 0.0          # >0 waehrend des Nachladens
 var reload_len := 1.0
 var reload_tried := false    # aktives Nachladen nur ein Versuch
-var perfect := [false, false, false]   # Bonus-Magazin nach perfektem Nachladen
+var perfect: Array = []      # Bonus-Magazin nach perfektem Nachladen
 var spin := 0.0              # PULSE: Hochdrehen 0..1
 var charge := 0.0            # RAIL: Aufladung 0..1
 const SWEET_A := 0.45        # Anteil des Nachladebalkens, in dem "perfekt" moeglich ist
 const SWEET_B := 0.62
-var unlocked := [false, false, false]
+const MAX_SLOTS := 3
+var slots: Array = []        # Waffen-IDs, die man gerade traegt (max 3)
+var unlocked: Array = []     # unlocked[id] = gerade im Inventar
 var weapon := 0
+var aim := 0.0               # 0..1 Zielen mit rechter Maustaste
+var sway := Vector2.ZERO     # Waffe zieht der Mausbewegung nach
 var ability_unlocked := false
 var ability_cd := 0.0
 const ABILITY_CD := 8.0
@@ -53,6 +71,10 @@ var glow_mat: StandardMaterial3D
 var swap_t := 0.0
 
 func _ready() -> void:
+	for wd in WEAPONS:
+		ammo.append(wd.mag)
+		perfect.append(false)
+		unlocked.append(false)
 	collision_layer = 2
 	collision_mask = 1
 	var cs := CollisionShape3D.new()
@@ -75,24 +97,112 @@ var models: Array = []
 var was_on_floor := true
 const GUN_MODELS := ["res://assets/kenney/models/blaster-repeater.glb", "res://assets/kenney/models/blaster.glb", "res://assets/kenney/models/blaster-repeater.glb"]
 
+# Waffenmodell bauen (0-2 Kenney-Modelle, die anderen aus Formen zusammengesetzt)
+func make_gun_model(id: int) -> Node3D:
+	if id < 3:
+		var m: Node3D = load(GUN_MODELS[id]).instantiate()
+		if id == 2:
+			_tint(m, Color("#c77dff"))
+		return m
+	var root := Node3D.new()
+	var col: Color = WEAPONS[id].col
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.13, 0.13, 0.16)
+	dark.metallic = 0.6
+	dark.roughness = 0.35
+	var light := StandardMaterial3D.new()
+	light.albedo_color = Color(0.75, 0.76, 0.8)
+	light.metallic = 0.8
+	light.roughness = 0.25
+	var glow := StandardMaterial3D.new()
+	glow.albedo_color = col
+	glow.emission_enabled = true
+	glow.emission = col
+	glow.emission_energy_multiplier = 2.5
+	var parts: Array = []
+	match id:
+		3:  # HUMMINGBIRD: kompakte MP mit langem Magazin
+			parts = [[Vector3(0, 0, 0), Vector3(0.9, 0.9, 2.6), dark], [Vector3(0, 0.3, -1.9), Vector3(0.45, 0.45, 1.6), light],
+				[Vector3(0, -1.1, -0.3), Vector3(0.5, 1.6, 0.6), dark], [Vector3(0, -0.8, 1.0), Vector3(0.6, 1.2, 0.6), dark],
+				[Vector3(0.48, 0.15, 0), Vector3(0.05, 0.25, 2.0), glow], [Vector3(-0.48, 0.15, 0), Vector3(0.05, 0.25, 2.0), glow]]
+		4:  # LAST WORD: Revolver mit Trommel
+			parts = [[Vector3(0, 0.25, -1.4), Vector3(0.45, 0.45, 2.6), light], [Vector3(0, 0.05, 0), Vector3(0.9, 0.9, 0.9), dark],
+				[Vector3(0, -0.8, 0.8), Vector3(0.6, 1.5, 0.7), Color(0.35, 0.2, 0.12)], [Vector3(0, 0.55, -2.6), Vector3(0.12, 0.2, 0.12), glow],
+				[Vector3(0, 0.05, 0), Vector3(0.95, 0.3, 0.3), glow]]
+		5:  # CHALK BOMB: dicker Werfer mit Trommel
+			parts = [[Vector3(0, 0.1, -0.6), Vector3(1.1, 1.1, 3.0), Color(0.3, 0.42, 0.34)], [Vector3(0, 0.1, -2.2), Vector3(1.3, 1.3, 0.3), dark],
+				[Vector3(0, -0.9, 0.6), Vector3(0.6, 1.4, 0.7), dark], [Vector3(0, 0.1, 0.4), Vector3(1.4, 1.4, 1.0), dark],
+				[Vector3(0, 0.1, -2.38), Vector3(0.7, 0.7, 0.05), glow]]
+		6:  # LULLABY: Spulen um eine Glasroehre
+			parts = [[Vector3(0, 0, 0), Vector3(0.8, 0.9, 2.4), light], [Vector3(0, 0.1, -1.6), Vector3(0.35, 0.35, 1.6), glow],
+				[Vector3(0, -0.9, 0.6), Vector3(0.55, 1.3, 0.6), dark]]
+			for k in 3:
+				parts.append([Vector3(0, 0.1, -1.0 - k * 0.5), Vector3(0.8, 0.8, 0.12), dark])
+		7:  # TIDE: Werfer mit sichtbarer Scheibe vorne
+			parts = [[Vector3(0, 0, 0.2), Vector3(0.8, 0.8, 2.2), dark], [Vector3(0, -0.85, 0.7), Vector3(0.55, 1.3, 0.6), dark],
+				[Vector3(0, 0.25, -1.3), Vector3(1.6, 0.12, 1.6), glow], [Vector3(0, 0.1, -0.9), Vector3(0.3, 0.3, 0.8), light]]
+		8:  # KATANA: lange, leicht gebogene Klinge mit Tsuba und umwickeltem Griff
+			for k in 6:
+				parts.append([Vector3(0, 0.6 + k * 0.05 * k * 0.15, -1.2 - k * 1.5), Vector3(0.12, 0.42, 1.55), light])
+			parts.append([Vector3(0, 0.62, -0.1), Vector3(0.9, 0.9, 0.15), Color(0.7, 0.55, 0.2)])
+			parts.append([Vector3(0, 0.6, 1.3), Vector3(0.32, 0.36, 2.6), Color(0.12, 0.05, 0.06)])
+			parts.append([Vector3(0.07, 0.75, -4.5), Vector3(0.02, 0.1, 8.4), glow])
+		9:  # KNIFE: kurze Klinge
+			parts = [[Vector3(0, 0.3, -1.3), Vector3(0.1, 0.55, 2.2), light], [Vector3(0, 0.3, 0.0), Vector3(0.5, 0.75, 0.2), dark],
+				[Vector3(0, 0.25, 1.0), Vector3(0.35, 0.45, 1.8), Color(0.15, 0.12, 0.1)], [Vector3(0.06, 0.48, -1.3), Vector3(0.02, 0.08, 2.0), glow]]
+	for pr in parts:
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = pr[1]
+		mi.mesh = bm
+		if pr[2] is Color:
+			var cm := StandardMaterial3D.new()
+			cm.albedo_color = pr[2]
+			cm.roughness = 0.6
+			mi.material_override = cm
+		else:
+			mi.material_override = pr[2]
+		mi.position = pr[0]
+		root.add_child(mi)
+	# Formen sind in "Einheiten" gebaut: auf die Groesse der Kenney-Modelle bringen
+	root.scale = Vector3.ONE * 0.045
+	var outer := Node3D.new()
+	outer.add_child(root)
+	return outer
+
 func _build_gun() -> void:
 	gun = Node3D.new()
 	gun.position = gun_base
 	cam.add_child(gun)
-	for i in 3:
-		var m: Node3D = load(GUN_MODELS[i]).instantiate()
-		m.rotation_degrees.y = 180.0
-		m.scale = Vector3.ONE * 0.13 if i < 2 else Vector3(0.12, 0.12, 0.18)
-		m.visible = i == 0
+	for i in WEAPONS.size():
+		var m: Node3D = make_gun_model(i)
+		if i < 3:
+			m.rotation_degrees.y = 180.0
+			m.scale = Vector3.ONE * 0.13 if i < 2 else Vector3(0.12, 0.12, 0.18)
+		else:
+			m.scale = Vector3.ONE * 0.95
+		m.visible = false
 		gun.add_child(m)
 		_no_shadow(m)
-		if i == 2:
-			_tint(m, Color("#c77dff"))   # Railgun: lila Leuchten
 		models.append(m)
 	glow_mat = StandardMaterial3D.new()
 	muzzle = Node3D.new()
 	muzzle.position = Vector3(0, 0.03, -0.22)
 	gun.add_child(muzzle)
+	# Muendungsfeuer: kurz aufleuchtender Stern
+	flash_mesh = MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(0.16, 0.16)
+	flash_mesh.mesh = qm
+	var fm := StandardMaterial3D.new()
+	fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	fm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	fm.albedo_texture = _star_tex()
+	flash_mesh.material_override = fm
+	flash_mesh.visible = false
+	muzzle.add_child(flash_mesh)
 	# schwaches Licht am Spieler, damit Waffe und nahe Waende sichtbar sind
 	var lamp := OmniLight3D.new()
 	lamp.light_color = Color("#9fe8ff")
@@ -100,6 +210,19 @@ func _build_gun() -> void:
 	lamp.omni_range = 9.0
 	lamp.position = Vector3(0, 0.6, -2.5)
 	cam.add_child(lamp)
+
+var flash_mesh: MeshInstance3D
+
+func _star_tex() -> ImageTexture:
+	var img := Image.create(32, 32, false, Image.FORMAT_RGBA8)
+	for y in 32:
+		for x in 32:
+			var d := Vector2(x - 15.5, y - 15.5)
+			var a := maxf(0.0, 1.0 - d.length() / 16.0)
+			var spike := maxf(maxf(0.0, 1.0 - absf(d.x) / 2.5), maxf(0.0, 1.0 - absf(d.y) / 2.5)) * maxf(0.0, 1.0 - d.length() / 16.0)
+			var v := clampf(a * a * 1.5 + spike, 0.0, 1.0)
+			img.set_pixel(x, y, Color(1, 1, 1, v))
+	return ImageTexture.create_from_image(img)
 
 func _no_shadow(n: Node) -> void:
 	if n is GeometryInstance3D:
@@ -122,28 +245,42 @@ func _tint(n: Node, col: Color) -> void:
 
 func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		yaw -= e.relative.x * sens * Game.sensitivity
-		pitch = clampf(pitch - e.relative.y * sens * Game.sensitivity, -1.45, 1.45)
-	if e is InputEventMouseButton and e.pressed and e.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+		var sm := sens * Game.sensitivity * (1.0 - aim * 0.35)
+		yaw -= e.relative.x * sm
+		pitch = clampf(pitch - e.relative.y * sm, -1.45, 1.45)
+		sway += Vector2(e.relative.x, e.relative.y) * 0.0006
+	if e is InputEventMouseButton and e.pressed and e.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN] and slots.size() > 1:
 		var dir := 1 if e.button_index == MOUSE_BUTTON_WHEEL_DOWN else -1
-		for i in range(1, 4):
-			var n := posmod(weapon + dir * i, 3)
-			if unlocked[n]:
-				select_weapon(n)
-				break
+		var i := slots.find(weapon)
+		select_weapon(slots[posmod(i + dir, slots.size())])
 
+# Waffe aufnehmen. Volle Slots: die aktuelle Waffe wird ersetzt und faellt zu Boden.
 func give_weapon(n: int) -> void:
-	var first := not unlocked.has(true)
+	if slots.has(n):
+		select_weapon(n)
+		return
+	if slots.size() >= MAX_SLOTS:
+		var i := slots.find(weapon)
+		if i < 0:
+			i = 0
+		var old: int = slots[i]
+		slots[i] = n
+		unlocked[old] = false
+		if main and main.has_method("spawn_pickup") and is_inside_tree():
+			var fwd: Vector3 = -global_basis.z
+			main.spawn_pickup("weapon", old, global_position + fwd * 1.6)
+	else:
+		slots.append(n)
 	unlocked[n] = true
-	if first:
-		weapon = -1
+	ammo[n] = WEAPONS[n].mag
+	weapon = -1
 	select_weapon(n)
 
 func has_gun() -> bool:
-	return unlocked.has(true)
+	return not slots.is_empty()
 
 func select_weapon(n: int) -> void:
-	if not unlocked[n] or n == weapon:
+	if not slots.has(n) or n == weapon:
 		return
 	weapon = n
 	reload_t = 0.0
@@ -151,7 +288,7 @@ func select_weapon(n: int) -> void:
 	spin = 0.0
 	swap_t = 0.25
 	shoot_cd = maxf(shoot_cd, 0.2)
-	for i in 3:
+	for i in models.size():
 		models[i].visible = i == n
 	gun.visible = true
 	Game.sfx("swap")
@@ -269,9 +406,17 @@ func _physics_process(delta: float) -> void:
 	head.position.y = lerpf(head.position.y, target_h + (sin(bob) * 0.06 if moving else 0.0) - land_dip, minf(1.0, delta * 14.0))
 	swap_t = maxf(0.0, swap_t - delta)
 	ability_cd = maxf(0.0, ability_cd - delta)
-	for i in 3:
+	for i in slots.size():
 		if Input.is_action_just_pressed("weapon%d" % (i + 1)):
-			select_weapon(i)
+			select_weapon(slots[i])
+	# Zielen (rechte Maustaste): reinzoomen, Waffe in die Mitte, weniger Streuung
+	var aiming: bool = Input.is_action_pressed("aim") and has_gun() and WEAPONS[maxi(weapon, 0)].type != "melee" and reload_t <= 0.0 and slide_t <= 0.0
+	aim = move_toward(aim, 1.0 if aiming else 0.0, delta * 7.0)
+	sway = sway.lerp(Vector2.ZERO, minf(1.0, delta * 9.0))
+	flash_mesh.visible = flash_t > 0.0
+	if flash_t > 0.0:
+		flash_mesh.rotation.z = randf() * TAU
+		flash_mesh.scale = Vector3.ONE * randf_range(0.8, 1.4)
 	if ability_unlocked and Input.is_action_just_pressed("ability") and ability_cd <= 0.0:
 		ability_cd = ABILITY_CD
 		main.overload(global_position)
@@ -280,9 +425,12 @@ func _physics_process(delta: float) -> void:
 	if reload_t > 0.0:
 		rl = sin((1.0 - reload_t / reload_len) * PI)
 	var shake_c := charge * 0.006 * sin(Time.get_ticks_msec() * 0.08)
-	gun.position = gun_base + Vector3(sin(bob * 0.5) * 0.015 + shake_c, abs(sin(bob * 0.5)) * -0.015 - swap_t * 0.6 - land_dip * 0.2 - rl * 0.12, recoil * 0.08 + charge * 0.03)
-	gun.rotation.x = recoil * 0.15 + rl * 0.7
-	gun.rotation.z = -tilt * 2.0 + rl * 0.9
+	var base: Vector3 = gun_base.lerp(Vector3(0.0, -0.11, -0.26), aim)
+	var bobk := 1.0 - aim * 0.8
+	gun.position = base + Vector3((sin(bob * 0.5) * 0.015 + shake_c) * bobk - sway.x * 0.5, (abs(sin(bob * 0.5)) * -0.015) * bobk - swap_t * 0.6 - land_dip * 0.2 - rl * 0.12 + sway.y * 0.5, recoil * 0.08 + charge * 0.03)
+	gun.rotation.x = recoil * 0.15 + rl * 0.7 + sway.y * 2.0
+	gun.rotation.y = -sway.x * 2.0 + (sin(swing_t / 0.22 * PI) * 1.2 * swing_dir if swing_t > 0.0 else 0.0)
+	gun.rotation.z = -tilt * 2.0 + rl * 0.9 - sway.x * 1.5
 	gun.visible = has_gun() and gun.visible
 	if not has_gun() or weapon < 0:
 		return
@@ -305,13 +453,90 @@ func _physics_process(delta: float) -> void:
 			_fire(wd)
 			charge = 0.0
 		return
+	if wd.type == "melee":
+		swing_t = maxf(0.0, swing_t - delta)
+		if Input.is_action_just_pressed("aim") and special_cd <= 0.0:
+			_melee_special(weapon)
+		if Input.is_action_pressed("shoot") and shoot_cd <= 0.0:
+			_slash(wd)
+		special_cd = maxf(0.0, special_cd - delta)
+		return
+	if wd.type == "beam":
+		beam_on = Input.is_action_pressed("shoot") and ammo[weapon] > 0
 	var trigger := Input.is_action_pressed("shoot") if wd.auto else Input.is_action_just_pressed("shoot")
 	if weapon == 0:
 		spin = minf(1.0, spin + delta * 0.8) if trigger else maxf(0.0, spin - delta * 2.0)
 	if trigger and shoot_cd <= 0.0:
 		_fire(wd)
 
+var beam_on := false
+
+var swing_t := 0.0
+var swing_dir := 1.0
+var special_cd := 0.0
+
+# Nahkampf: alles im Bogen vor dir treffen, Klinge zerschlaegt Geschosse
+func _slash(wd: Dictionary) -> void:
+	shoot_cd = wd.rate
+	swing_t = 0.22
+	swing_dir = -swing_dir
+	var fwd: Vector3 = -cam.global_basis.z
+	var origin: Vector3 = cam.global_position
+	var hit_any := false
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(e):
+			continue
+		var c: Vector3 = e.global_position + Vector3(0, 1.0, 0)
+		var to: Vector3 = c - origin
+		var reach: float = wd.range + (1.5 if e.is_in_group("boss") else 0.0)
+		if to.length() < reach and fwd.dot(to.normalized()) > float(wd.arc):
+			var dmg: int = wd.dmg + (1 if perfect[weapon] else 0)
+			var crit := false
+			if weapon == 9 and e.get("awake") == false:
+				dmg = int(dmg * wd.crit)
+				crit = true
+			e.hit(dmg, to)
+			main.hit_feedback(c, dmg, crit)
+			main.burst(c, wd.col, 10)
+			hit_any = true
+	# Katana: Geschosse vor dir werden zerschlagen
+	if weapon == 8:
+		for pr in main.projs:
+			var to2: Vector3 = pr.n.global_position - origin
+			if to2.length() < wd.range + 0.8 and fwd.dot(to2.normalized()) > 0.3:
+				pr.life = 0.0
+				main.burst(pr.n.global_position, Color.WHITE, 8)
+				hit_any = true
+	main._tracer(origin + fwd * 0.6 + cam.global_basis.x * swing_dir * 0.8, origin + fwd * 1.4 - cam.global_basis.x * swing_dir * 0.8, wd.col, 0.02, 0.08)
+	Game.sfx("jump", 2.4 if weapon == 8 else 3.0, 0.4)
+	if hit_any:
+		main.shake(0.12)
+		Game.sfx("land", 1.8, 0.7)
+	kick += 0.015
+
+func _melee_special(w: int) -> void:
+	var fwd: Vector3 = -cam.global_basis.z
+	if w == 8:
+		# Sprung-Schnitt: nach vorn schnellen und alles auf dem Weg treffen
+		special_cd = 1.0
+		velocity = Vector3(fwd.x, 0.15, fwd.z).normalized() * 22.0
+		inv = maxf(inv, 0.3)
+		shoot_cd = 0.0
+		_slash(WEAPONS[8])
+		main.shake(0.2)
+	else:
+		# Messer werfen: fliegt gerade, kommt nach kurzer Zeit zurueck in die Hand
+		special_cd = 0.9
+		var shot: Dictionary = WEAPONS[9].duplicate()
+		shot.dmg = 4
+		main.spawn_knife(muzzle.global_position, fwd, shot)
+		models[9].visible = false
+		get_tree().create_timer(0.9).timeout.connect(func(): if weapon == 9: models[9].visible = true)
+		Game.sfx("jump", 3.0, 0.5)
+
 func _update_reload(delta: float, wd: Dictionary) -> void:
+	if int(wd.mag) == 0:
+		return
 	if reload_t > 0.0:
 		var prog := 1.0 - reload_t / reload_len
 		if Input.is_action_just_pressed("reload") and not reload_tried:
@@ -357,35 +582,68 @@ func _fire(wd: Dictionary) -> void:
 	var last: bool = ammo[w] == 1
 	ammo[w] -= 1
 	shoot_cd = wd.rate
-	if w == 0:
-		shoot_cd = lerpf(wd.rate, 0.065, spin)
-		shot.dmg = (2 if ammo[w] < 5 else 1) + bonus
-		shot.spread = wd.spread + spin * 0.012
-		if ammo[w] < 5:
-			shot.col = Color("#eaffff")
-	elif w == 1:
-		shot.dmg = (2 if slide_t > 0.0 or dash_t > 0.0 else 1) + bonus
-		if last:
-			shot.pellets = 14
-			shot.col = Color("#ff4d2e")
-	else:
-		shot.dmg = int(round(wd.dmg * lerpf(0.6, 3.0, charge))) + bonus * 2
-	Game.sfx(["pulse", "scatter", "rail"][w], [1.25 + spin * 0.25, 0.85 if not last else 0.6, 0.7 - charge * 0.25][w], [0.5, 0.9, 1.0][w])
-	recoil = [1.0, 2.2, 1.5 + charge * 1.5][w]
-	kick += [0.012 + spin * 0.006, 0.05, 0.04 + charge * 0.06][w]
-	flash_t = 0.05
+	shot.spread = float(wd.spread) * lerpf(1.0, 0.3, aim)
+	shot.crit_always = false
+	match w:
+		0:
+			shoot_cd = lerpf(wd.rate, 0.065, spin)
+			shot.dmg = (2 if ammo[w] < 5 else 1) + bonus
+			shot.spread = shot.spread + spin * 0.012 * (1.0 - aim * 0.7)
+			if ammo[w] < 5:
+				shot.col = Color("#eaffff")
+		1:
+			shot.dmg = (2 if slide_t > 0.0 or dash_t > 0.0 else 1) + bonus
+			if last:
+				shot.pellets = 14
+				shot.col = Color("#ff4d2e")
+		2:
+			shot.dmg = int(round(wd.dmg * lerpf(0.6, 3.0, charge))) + bonus * 2
+		3:
+			shot.dmg = 1 + bonus
+			shot.spread = float(wd.spread) * lerpf(1.0, 0.15, aim)
+		4:
+			shot.dmg = wd.dmg + bonus * 2
+			shot.crit_always = last
+		_:
+			shot.dmg = wd.dmg + bonus
+	var snd: String = ["pulse", "scatter", "rail", "pulse", "rail", "scatter", "pulse", "scatter"][w]
+	var pitch: float = [1.25 + spin * 0.25, 0.85 if not last else 0.6, 0.7 - charge * 0.25, 1.7, 0.95, 0.55, 2.2, 1.4][w]
+	var vol: float = [0.5, 0.9, 1.0, 0.35, 1.0, 0.8, 0.15, 0.7][w]
+	Game.sfx(snd, pitch * randf_range(0.96, 1.04), vol)
+	if w == 4:
+		Game.sfx("scatter", 0.5, 0.6)   # tiefer Knall unter dem Revolver
+	recoil = [1.0, 2.2, 1.5 + charge * 1.5, 0.5, 2.6, 2.0, 0.15, 1.2][w] * lerpf(1.0, 0.6, aim)
+	kick += [0.012 + spin * 0.006, 0.05, 0.04 + charge * 0.06, 0.006, 0.07, 0.04, 0.0, 0.02][w] * lerpf(1.0, 0.6, aim)
+	flash_t = 0.05 if w != 6 else 0.0
 	flash_light.light_color = shot.col.lerp(Color.WHITE, 0.5)
-	for i in shot.pellets:
-		var spread: Vector3 = Vector3(randf_range(-1, 1), randf_range(-1, 1), 0) * float(shot.spread)
-		var fwd: Vector3 = (-cam.global_basis.z + cam.global_basis * spread).normalized()
-		var end: Vector3 = main.player_shoot(cam.global_position, fwd, muzzle.global_position, shot)
-		if w == 1 and last and i == 0:
-			main.explode(end, 3.0, 3, shot.col)
-		if w == 2 and charge >= 0.95:
-			main.explode(end, 3.5, 4, wd.col)
-	if w > 0:
-		main.shake(0.15 if w == 1 else 0.15 + charge * 0.25)
-		velocity -= -cam.global_basis.z * (5.0 if w == 1 else 2.0 + charge * 8.0)
+	if flash_mesh:
+		flash_mesh.material_override.albedo_color = shot.col.lerp(Color.WHITE, 0.4)
+	var fwd0: Vector3 = -cam.global_basis.z
+	match wd.type:
+		"lob":
+			main.spawn_bomb(muzzle.global_position, fwd0 * 22.0 + Vector3(0, 4.0, 0) + velocity * 0.5, shot)
+		"disc":
+			main.spawn_disc(muzzle.global_position, fwd0, shot)
+		"beam":
+			var end: Vector3 = main.player_shoot(cam.global_position, fwd0, muzzle.global_position, shot)
+			main.chain_from(end, shot, 3)
+		_:
+			for i in shot.pellets:
+				var spread: Vector3 = Vector3(randf_range(-1, 1), randf_range(-1, 1), 0) * float(shot.spread)
+				var fwd: Vector3 = (fwd0 + cam.global_basis * spread).normalized()
+				var end: Vector3 = main.player_shoot(cam.global_position, fwd, muzzle.global_position, shot)
+				if w == 1 and last and i == 0:
+					main.explode(end, 3.0, 3, shot.col)
+				if w == 2 and charge >= 0.95:
+					main.explode(end, 3.5, 4, wd.col)
+			if w != 2:
+				main.spawn_casing(muzzle.global_position - cam.global_basis.z * -0.1, cam.global_basis.x * randf_range(2.0, 3.0) + Vector3(0, 2.5, 0), w == 1)
+	if w in [1, 2, 4, 5]:
+		main.shake([0, 0.15, 0.15 + charge * 0.25, 0, 0.12, 0.18][w])
+	if w == 1:
+		velocity -= fwd0 * 5.0
+	elif w == 2:
+		velocity -= fwd0 * (2.0 + charge * 8.0)
 
 func center() -> Vector3:
 	return global_position + Vector3(0, 0.9, 0)

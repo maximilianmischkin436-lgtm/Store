@@ -72,6 +72,8 @@ func _ready() -> void:
 				spawn_enemy("drone", s.pos)
 			"S":
 				_make_shard(s.pos)
+			"X":
+				secret_pos = s.pos
 			"B":
 				boss = Boss.new()
 				boss.main = self
@@ -96,6 +98,7 @@ func _ready() -> void:
 	objective = ch.objectives[0]
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	Game.play_music(ch.music)
+	Game.play_ambience(ch.theme)
 	if chapter == 1:
 		state = "wake"
 		wake_t = 0.0
@@ -113,14 +116,227 @@ func _ready() -> void:
 		_make_tears()
 	elif chapter == 2:
 		player.give_weapon(1); player.give_weapon(0)
-		player.unlocked[1] = true
 	else:
 		for i in [2, 1, 0]:
 			player.give_weapon(i)
 		player.ability_unlocked = true
+	_build_secret()
+	_make_dust()
+	# Kassette im Level: im Raum mit dem Splitter
+	if Story.TAPES.has("c%d_a" % chapter) and door_cols.size() > 1:
+		spawn_pickup("tape", 0, _free_spot(Vector2i(door_cols[1] + 4, 20)))
+	# neue Waffen liegen irgendwo im Level (zweiter Raum)
+	var level_weapon := {1: 9, 2: 3, 3: 7, 4: 8, 5: 6}
+	if level_weapon.has(chapter) and door_cols.size() > 1:
+		var cx: int = int((door_cols[0] + door_cols[1]) / 2)
+		spawn_pickup("weapon", level_weapon[chapter], _free_spot(Vector2i(cx, 8)))
 	if Game.continue_game and Game.progress > 0:
 		state = "play"
 		_apply_progress(Game.progress)
+
+# ---------- Geheimraeume, Kassetten, Easter Eggs ----------
+const PropHit = preload("res://scripts3d/prop_hit.gd")
+var secret_pos := Vector3.INF
+var secret_found := false
+var interactables: Array = []     # [{pos, text, cb}]
+const SECRET_WEAPON := {1: 3, 2: 4, 3: 8, 4: 6, 5: 7}
+
+func _build_secret() -> void:
+	if secret_pos == Vector3.INF:
+		return
+	var sp := secret_pos
+	# warmes Licht, damit der Raum sich "besonders" anfuehlt
+	var l := OmniLight3D.new()
+	l.light_color = Color(1, 0.85, 0.6)
+	l.light_energy = 1.6
+	l.omni_range = 9.0
+	l.position = sp + Vector3(0, 2.6, 0)
+	add_child(l)
+	spawn_pickup("tape", 1, sp + Vector3(-1.2, 0, 0))
+	if SECRET_WEAPON.has(chapter):
+		spawn_pickup("weapon", SECRET_WEAPON[chapter], sp + Vector3(1.4, 0, 0))
+	match chapter:
+		1:
+			# goldene Badeente: anschiessen!
+			var duck := PropHit.new()
+			duck.collision_layer = 4
+			var cs := CollisionShape3D.new()
+			var sh := SphereShape3D.new()
+			sh.radius = 0.45
+			cs.shape = sh
+			duck.add_child(cs)
+			var body := MeshInstance3D.new()
+			body.mesh = _sphere(0.35)
+			var gold := StandardMaterial3D.new()
+			gold.albedo_color = Color(1, 0.8, 0.2)
+			gold.metallic = 1.0
+			gold.roughness = 0.2
+			body.material_override = gold
+			body.scale = Vector3(1.2, 0.9, 1.0)
+			duck.add_child(body)
+			var hd := MeshInstance3D.new()
+			hd.mesh = _sphere(0.2)
+			hd.material_override = gold
+			hd.position = Vector3(0.3, 0.35, 0)
+			duck.add_child(hd)
+			var beak := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			bm.size = Vector3(0.18, 0.06, 0.12)
+			beak.mesh = bm
+			beak.material_override = _mat(Color(1, 0.4, 0.1), 1.0)
+			beak.position = Vector3(0.5, 0.33, 0)
+			duck.add_child(beak)
+			add_child(duck)
+			duck.global_position = sp + Vector3(0, 0.4, -1.2)
+			duck.on_hit = func():
+				Game.sfx("jump", 3.5, 1.0)
+				banner("QUACK.", Color(1, 0.85, 0.2))
+				for i in 4:
+					burst(duck.global_position, Color.from_hsv(randf(), 0.7, 1.0), 20)
+				duck.rotation.y += 1.0
+		2:
+			# Automat aus dem ersten Spiel
+			var cab := _crate(sp + Vector3(0, 1.0, -1.6), Vector3(1.0, 2.0, 0.8), Color(0.08, 0.05, 0.15))
+			var screen := MeshInstance3D.new()
+			var qm := QuadMesh.new()
+			qm.size = Vector2(0.75, 0.55)
+			screen.mesh = qm
+			screen.material_override = _mat(Color("#ff4df0"), 1.5)
+			screen.position = Vector3(0, 0.35, 0.41)
+			cab.add_child(screen)
+			var t := Label3D.new()
+			t.text = "NEON DODGE\nHI-SCORE  ECHO 999999"
+			t.font_size = 40
+			t.modulate = Color("#38f5c4")
+			t.position = Vector3(0, 0.36, 0.43)
+			cab.add_child(t)
+			interactables.append({"pos": cab.global_position, "text": "[E] PLAY NEON DODGE", "cb": func():
+				banner("INSERT COIN. ...you don't have any.", Color("#ff4df0"))})
+		3:
+			var desk := _crate(sp + Vector3(0, 0.4, -1.4), Vector3(1.6, 0.8, 0.8), Color(0.45, 0.35, 0.2))
+			var t := Label3D.new()
+			t.text = "MAX WAS HERE"
+			t.font_size = 48
+			t.modulate = Color(0.15, 0.1, 0.05)
+			t.rotation.x = -PI / 2.0
+			t.position = Vector3(0, 0.41, 0)
+			desk.add_child(t)
+			interactables.append({"pos": desk.global_position, "text": "[E] READ THE DESK", "cb": func():
+				banner("Someone carved this a long time ago. Before the Reset.", Color(0.9, 0.8, 0.6))})
+		4:
+			# Miras Versteck: ihre Zeichnung von Echo an der Wand
+			var board := _crate(sp + Vector3(0, 1.6, -1.8), Vector3(2.4, 1.4, 0.1), Color(0.1, 0.22, 0.16))
+			var t := Label3D.new()
+			t.text = "MAX WAS HERE\n\n   :)  <- ECHO\n   (my brother)"
+			t.font_size = 36
+			t.modulate = Color(0.95, 0.95, 0.9)
+			t.position = Vector3(0, 0, 0.06)
+			board.add_child(t)
+		5:
+			# Raum voller Uhren, alle auf 4:40, die rueckwaerts laufen
+			for i in 6:
+				var t := Label3D.new()
+				t.text = "4:40"
+				t.font_size = 64
+				t.modulate = Color(1, 0.3, 0.3)
+				t.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+				t.position = sp + Vector3(randf_range(-2, 2), randf_range(1, 3), randf_range(-2, 2))
+				add_child(t)
+				clocks.append(t)
+
+# Staub, der langsam im Licht schwebt (folgt dem Spieler)
+func _make_dust() -> void:
+	var dust := CPUParticles3D.new()
+	dust.amount = 220
+	dust.lifetime = 9.0
+	dust.preprocess = 9.0
+	dust.local_coords = false
+	dust.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	dust.emission_box_extents = Vector3(12, 3, 12)
+	dust.direction = Vector3(0, 1, 0)
+	dust.spread = 180.0
+	dust.gravity = Vector3(0, -0.02, 0)
+	dust.initial_velocity_min = 0.02
+	dust.initial_velocity_max = 0.12
+	var qm := QuadMesh.new()
+	qm.size = Vector2(0.025, 0.025)
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	var dc: Color = (ch.env.fog as Color).lerp(Color.WHITE, 0.6)
+	m.albedo_color = Color(dc, 0.35)
+	qm.material = m
+	dust.mesh = qm
+	dust.position = Vector3(0, 1.5, 0)
+	player.add_child(dust)
+
+var clocks: Array = []
+var bighead := false
+var code_buf := ""
+
+func _sphere(r: float) -> SphereMesh:
+	var sm := SphereMesh.new()
+	sm.radius = r
+	sm.height = r * 2.0
+	return sm
+
+func _crate(pos: Vector3, size: Vector3, col: Color) -> Node3D:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size
+	mi.mesh = bm
+	var m := StandardMaterial3D.new()
+	m.albedo_color = col
+	m.roughness = 0.6
+	mi.material_override = m
+	add_child(mi)
+	mi.global_position = pos
+	return mi
+
+func _update_secrets(delta: float) -> void:
+	if secret_pos != Vector3.INF and not secret_found:
+		var c: Vector2i = level.cell_of(player.global_position)
+		if level.secret_cells.has(c):
+			secret_found = true
+			Game.sfx("swap", 1.2, 1.0)
+			banner("SECRET FOUND", Color(1, 0.85, 0.5))
+	for t in clocks:
+		var sec := 59 - int(play_time * 3.0) % 60
+		t.text = "4:%02d" % [40 - (sec % 41)]
+	# Interaktionen in der Naehe
+	for it in interactables:
+		if player.global_position.distance_to(it.pos) < 2.4:
+			pickup_hint = it.text
+			if Input.is_action_just_pressed("interact"):
+				it.cb.call()
+
+# Geheimcode: E-C-H-O tippen = grosse Koepfe fuer alle Geister
+func _unhandled_key_input(e: InputEvent) -> void:
+	if e is InputEventKey and e.pressed and not e.echo:
+		var ch_s: String = OS.get_keycode_string(e.physical_keycode)
+		if ch_s.length() == 1:
+			code_buf = (code_buf + ch_s).right(8)
+			if code_buf.ends_with("ECHO") and not bighead:
+				bighead = true
+				banner("BIG HEAD MODE", Color("#ffd23d"))
+				for n in get_tree().get_nodes_in_group("npcs"):
+					if n.P.has("head"):
+						n.P.head.scale = Vector3.ONE * 2.2
+
+# naechste freie Bodenzelle um eine Wunsch-Zelle
+func _free_spot(c: Vector2i) -> Vector3:
+	for r in 12:
+		for dy in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				var cc := c + Vector2i(dx, dy)
+				if cc.x <= 0 or cc.y <= 0 or cc.x >= level.w - 1 or cc.y >= level.h - 1:
+					continue
+				var p: Vector3 = level.cell_center(cc)
+				if not level.solid(p) and level.grid[cc.y][cc.x] == ".":
+					return p
+	return level.cell_center(c)
 
 # ---------- Gegenstaende zum Aufheben ----------
 func spawn_pickup(kind: String, idx: int, pos: Vector3, cb: Callable = Callable()) -> void:
@@ -131,11 +347,24 @@ func spawn_pickup(kind: String, idx: int, pos: Vector3, cb: Callable = Callable(
 	holder.position.y = 0.6
 	root.add_child(holder)
 	if kind == "weapon":
-		var m: Node3D = load(player.GUN_MODELS[idx]).instantiate()
-		m.scale = Vector3.ONE * (0.55 if idx < 2 else 0.5)
+		var m: Node3D = player.make_gun_model(idx)
+		m.scale = Vector3.ONE * (0.55 if idx < 2 else (0.5 if idx == 2 else 2.6))
 		holder.add_child(m)
-		if idx == 2:
-			player._tint(m, Color("#c77dff"))
+	elif kind == "tape":
+		# Kassette
+		var cas := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.5, 0.32, 0.08)
+		cas.mesh = bm
+		cas.material_override = _mat(Color(0.12, 0.12, 0.14), 0.3)
+		holder.add_child(cas)
+		var lab := MeshInstance3D.new()
+		var lm := BoxMesh.new()
+		lm.size = Vector3(0.42, 0.14, 0.09)
+		lab.mesh = lm
+		lab.material_override = _mat(Color(0.95, 0.9, 0.8), 1.2)
+		lab.position.y = 0.05
+		holder.add_child(lab)
 	else:
 		var core := MeshInstance3D.new()
 		var sm := SphereMesh.new()
@@ -145,7 +374,7 @@ func spawn_pickup(kind: String, idx: int, pos: Vector3, cb: Callable = Callable(
 		core.material_override = _mat(Color("#c77dff"), 3.0)
 		holder.add_child(core)
 	var light := OmniLight3D.new()
-	light.light_color = player.WEAPONS[idx].col if kind == "weapon" else Color("#c77dff")
+	light.light_color = player.WEAPONS[idx].col if kind == "weapon" else (Color(1, 0.9, 0.75) if kind == "tape" else Color("#c77dff"))
 	light.light_energy = 1.5
 	light.omni_range = 4.0
 	light.position.y = 1.0
@@ -170,8 +399,10 @@ func _update_pickups(delta: float) -> void:
 	for pk in pickups:
 		var d: float = Vector2(pk.n.position.x - player.global_position.x, pk.n.position.z - player.global_position.z).length()
 		if d < 2.2:
-			var nm: String = player.WEAPONS[pk.idx].name if pk.kind == "weapon" else "OVERLOAD CORE"
+			var nm: String = player.WEAPONS[pk.idx].name if pk.kind == "weapon" else ("TAPE" if pk.kind == "tape" else "OVERLOAD CORE")
 			pickup_hint = "[E]  PICK UP  " + nm
+			if pk.kind == "weapon" and player.slots.size() >= player.MAX_SLOTS and not player.slots.has(pk.idx):
+				pickup_hint += "   (replaces " + player.WEAPONS[player.weapon].name + ")"
 			if Input.is_action_just_pressed("interact"):
 				_take(pk)
 				return
@@ -183,7 +414,15 @@ func _take(pk: Dictionary) -> void:
 	Game.sfx("swap", 0.8, 1.0)
 	if pk.kind == "weapon":
 		player.give_weapon(pk.idx)
-		radio(["got_pulse", "scatter", "rail"][pk.idx])
+		if pk.idx < 3:
+			radio(["got_pulse", "scatter", "rail"][pk.idx])
+		else:
+			banner(player.WEAPONS[pk.idx].name, player.WEAPONS[pk.idx].col)
+	elif pk.kind == "tape":
+		var key := "c%d_%s" % [chapter, "a" if pk.idx == 0 else "b"]
+		tapes_found += 1
+		radio_queue.push_front(["HALCYON LOG", Story.TAPES[key], "res://assets/voice/tape_%s.ogg" % key])
+		radio_t = 0.0
 	else:
 		player.ability_unlocked = true
 		radio("got_overload")
@@ -261,6 +500,11 @@ func _setup_input() -> void:
 	var m := InputEventMouseButton.new()
 	m.button_index = MOUSE_BUTTON_LEFT
 	InputMap.action_add_event("shoot", m)
+	if not InputMap.has_action("aim"):
+		InputMap.add_action("aim")
+	var mr := InputEventMouseButton.new()
+	mr.button_index = MOUSE_BUTTON_RIGHT
+	InputMap.action_add_event("aim", mr)
 
 var dream_rect: ColorRect
 var dream_mat: ShaderMaterial
@@ -437,9 +681,13 @@ var radio_line: Array = []
 var radio_t := 0.0
 const Story = preload("res://scripts/story.gd")
 
+var radio_voice: AudioStreamPlayer
+
 func radio(id: String) -> void:
+	var i := 0
 	for l in Story.RADIO[id]:
-		radio_queue.append(l)
+		radio_queue.append([l[0], l[1], "res://assets/voice/radio_%s_%d.ogg" % [id, i]])
+		i += 1
 
 func _update_radio(delta: float) -> void:
 	radio_t -= delta
@@ -449,6 +697,15 @@ func _update_radio(delta: float) -> void:
 		else:
 			radio_line = radio_queue.pop_front()
 			radio_t = 2.0 + radio_line[1].length() * 0.045
+			# vertonter Funkspruch: Text bleibt stehen, bis die Stimme fertig ist
+			if radio_voice == null:
+				radio_voice = AudioStreamPlayer.new()
+				add_child(radio_voice)
+			if radio_line.size() > 2 and ResourceLoader.exists(radio_line[2]):
+				var st: AudioStream = load(radio_line[2])
+				radio_voice.stream = st
+				radio_voice.play()
+				radio_t = maxf(radio_t, st.get_length() + 0.4)
 
 func banner(text: String, col: Color) -> void:
 	banner_text = text
@@ -613,8 +870,15 @@ func player_shoot(origin: Vector3, dir: Vector3, muzzle: Vector3, wd: Dictionary
 		end = hit.position
 		var c = hit.collider
 		if c and c.has_method("hit"):
-			c.hit(wd.dmg, dir)
-			hitmark_t = 0.15
+			# Kopftreffer: oberer Teil einer Figur (nicht bei Bossen)
+			var crit: bool = wd.get("crit_always", false)
+			if not c.is_in_group("boss") and c.is_in_group("npcs") and end.y - c.global_position.y > 1.42:
+				crit = true
+			var dmg: int = wd.dmg
+			if crit:
+				dmg = int(ceil(dmg * float(wd.get("crit", 2.0))))
+			c.hit(dmg, dir)
+			hit_feedback(end, dmg, crit)
 			burst(end, Color.WHITE, 6)
 			exclude.append(hit.rid)
 			if not wd.pierce:
@@ -626,6 +890,176 @@ func player_shoot(origin: Vector3, dir: Vector3, muzzle: Vector3, wd: Dictionary
 		end = end if end.distance_to(origin) < rng - 0.1 else origin + dir * rng
 	_tracer(muzzle, end, wd.col, 0.05 if wd.pierce else 0.012, 0.25 if wd.pierce else 0.06)
 	return end
+
+# ---------- Treffer-Rueckmeldung: Zahlen, Marker, Klick ----------
+var killmark_t := 0.0
+var tapes_found := 0
+var crit_t := 0.0
+
+func hit_feedback(pos: Vector3, dmg: int, crit: bool) -> void:
+	hitmark_t = 0.15
+	if crit:
+		crit_t = 0.2
+		Game.sfx("swap", 2.6, 0.55)
+	else:
+		Game.sfx("swap", 3.2, 0.18)
+	var lab := Label3D.new()
+	lab.text = str(dmg)
+	lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	lab.no_depth_test = true
+	lab.font_size = 56 if crit else 40
+	lab.outline_size = 10
+	lab.modulate = Color("#ffd23d") if crit else Color.WHITE
+	lab.pixel_size = 0.004
+	add_child(lab)
+	lab.global_position = pos + Vector3(randf_range(-0.2, 0.2), 0.2, randf_range(-0.2, 0.2))
+	var tw := lab.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(lab, "global_position:y", lab.global_position.y + 0.9, 0.6).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	tw.tween_property(lab, "modulate:a", 0.0, 0.6).set_delay(0.25)
+	tw.chain().tween_callback(lab.queue_free)
+
+# Patronenhuelsen fliegen aus der Waffe (rein optisch)
+func spawn_casing(pos: Vector3, vel: Vector3, shell: bool) -> void:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.025, 0.025, 0.06) if not shell else Vector3(0.04, 0.04, 0.09)
+	mi.mesh = bm
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.85, 0.65, 0.25) if not shell else Color(0.8, 0.15, 0.1)
+	m.metallic = 0.9
+	m.roughness = 0.3
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+	mi.global_position = pos
+	gibs.append({"n": mi, "v": vel, "spin": Vector3(randf_range(-20, 20), randf_range(-20, 20), randf_range(-20, 20)), "life": 1.6})
+
+# ---------- Geschosse der Spezialwaffen ----------
+var pproj: Array = []
+
+func _proj_mesh(col: Color, size: Vector3) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size
+	mi.mesh = bm
+	mi.material_override = _mat(col, 2.5)
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+	var l := OmniLight3D.new()
+	l.light_color = col
+	l.light_energy = 1.2
+	l.omni_range = 3.0
+	mi.add_child(l)
+	return mi
+
+func spawn_bomb(pos: Vector3, vel: Vector3, wd: Dictionary) -> void:
+	var mi := _proj_mesh(wd.col, Vector3(0.18, 0.18, 0.18))
+	mi.global_position = pos
+	pproj.append({"kind": "bomb", "n": mi, "v": vel, "life": 2.5, "wd": wd})
+
+func spawn_knife(pos: Vector3, dir: Vector3, wd: Dictionary) -> void:
+	var mi := _proj_mesh(wd.col, Vector3(0.05, 0.05, 0.4))
+	mi.global_position = pos
+	mi.look_at(pos + dir, Vector3.UP if absf(dir.y) < 0.99 else Vector3.RIGHT)
+	pproj.append({"kind": "knife", "n": mi, "v": dir.normalized() * 34.0, "life": 0.8, "wd": wd})
+
+func spawn_disc(pos: Vector3, dir: Vector3, wd: Dictionary) -> void:
+	var mi := _proj_mesh(wd.col, Vector3(0.45, 0.04, 0.45))
+	mi.global_position = pos
+	pproj.append({"kind": "disc", "n": mi, "v": dir.normalized() * 24.0, "life": 3.0, "wd": wd, "hits": [], "left": 5})
+
+func _enemy_near(pos: Vector3, r: float, skip: Array = []):
+	var best = null
+	var bd := r
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(e) or skip.has(e):
+			continue
+		var c: Vector3 = e.global_position + Vector3(0, 1.0, 0)
+		var d := c.distance_to(pos)
+		if d < bd:
+			bd = d
+			best = e
+	return best
+
+func _update_pproj(delta: float) -> void:
+	for pr in pproj:
+		pr.life -= delta
+		var n: MeshInstance3D = pr.n
+		if pr.kind == "bomb":
+			pr.v.y -= 20.0 * delta
+			var np: Vector3 = n.global_position + pr.v * delta
+			n.rotation += Vector3(9, 7, 0) * delta
+			var hit_e = _enemy_near(np, 1.1)
+			if hit_e or level.solid(np) or np.y < 0.1 or pr.life <= 0.0:
+				explode(n.global_position, 3.6, pr.wd.dmg, pr.wd.col)
+				burst(n.global_position, Color(0.95, 0.95, 0.9), 50)
+				pr.life = -1.0
+			else:
+				n.global_position = np
+		elif pr.kind == "knife":
+			var np: Vector3 = n.global_position + pr.v * delta
+			var e = _enemy_near(np, 1.0)
+			if e:
+				var dmg: int = pr.wd.dmg * (3 if e.get("awake") == false else 1)
+				e.hit(dmg, pr.v)
+				hit_feedback(np, dmg, dmg > pr.wd.dmg)
+				burst(np, Color.WHITE, 10)
+				pr.life = -1.0
+			elif level.solid(np):
+				burst(n.global_position, Color(0.8, 0.8, 0.85), 6)
+				Game.sfx("land", 2.5, 0.4)
+				pr.life = -1.0
+			else:
+				n.global_position = np
+		else:
+			# Scheibe: sucht naechsten Gegner, prallt von Waenden ab
+			n.rotation.y += delta * 30.0
+			var tgt = _enemy_near(n.global_position, 14.0, pr.hits)
+			if tgt and pr.hits.size() > 0:
+				var to: Vector3 = (tgt.global_position + Vector3(0, 1.0, 0) - n.global_position).normalized()
+				pr.v = pr.v.lerp(to * 26.0, minf(1.0, delta * 10.0))
+			var np: Vector3 = n.global_position + pr.v * delta
+			if level.solid(Vector3(np.x, 1, n.global_position.z)):
+				pr.v.x = -pr.v.x
+				np.x = n.global_position.x
+				Game.sfx("land", 2.0, 0.3)
+			if level.solid(Vector3(n.global_position.x, 1, np.z)):
+				pr.v.z = -pr.v.z
+				np.z = n.global_position.z
+				Game.sfx("land", 2.0, 0.3)
+			n.global_position = np
+			var e = _enemy_near(np, 1.2, pr.hits)
+			if e:
+				pr.hits.append(e)
+				e.hit(pr.wd.dmg, pr.v)
+				hit_feedback(np, pr.wd.dmg, false)
+				burst(np, pr.wd.col, 12)
+				pr.left -= 1
+				if pr.left <= 0:
+					pr.life = -1.0
+			if pr.life <= 0.0:
+				burst(np, pr.wd.col, 10)
+	for pr in pproj:
+		if pr.life <= 0.0:
+			pr.n.queue_free()
+	pproj = pproj.filter(func(pr): return pr.life > 0.0)
+
+# LULLABY: Strahl springt vom Treffer auf Gegner in der Naehe ueber
+func chain_from(pos: Vector3, wd: Dictionary, n: int) -> void:
+	var done: Array = []
+	var from := pos
+	for i in n:
+		var e = _enemy_near(from, 6.0, done)
+		if e == null:
+			break
+		done.append(e)
+		var c: Vector3 = e.global_position + Vector3(0, 1.0, 0)
+		if c.distance_to(pos) > 0.3:
+			_tracer(from, c, wd.col, 0.02, 0.07)
+			e.hit(wd.dmg, c - from)
+			hit_feedback(c, wd.dmg, false)
+		from = c
 
 # Explosion (Railgun-Aufschlag, letzte Schrot-Patrone): Flaechenschaden + Wegschleudern
 func explode(pos: Vector3, radius: float, dmg: int, col: Color) -> void:
@@ -764,6 +1198,11 @@ func _process(delta: float) -> void:
 	_update_radio(delta)
 	_update_pickups(delta)
 	_update_gibs(delta)
+	_update_pproj(delta)
+	if state == "play":
+		_update_secrets(delta)
+	killmark_t = maxf(0.0, killmark_t - delta)
+	crit_t = maxf(0.0, crit_t - delta)
 	_update_lights(delta)
 	if state == "play":
 		_update_hazards(delta)
@@ -906,14 +1345,23 @@ func _respawn() -> void:
 	radio("death")
 
 func on_enemy_killed(e) -> void:
-	shake(0.15)
-	hitstop(0.07)
+	shake(0.18)
+	# Superhot-Gefuehl: kurzer Zeitlupen-Moment, Kill-Marker, heller "Ping"
+	slowmo(0.12, 0.2)
+	killmark_t = 0.35
+	Game.sfx("swap", 1.9, 0.6)
+	burst(e.global_position + Vector3(0, 1.0, 0), Color(1, 1, 1), 24)
+	burst(e.global_position + Vector3(0, 1.0, 0), Color(1, 0.2, 0.25), 14)
 	if randf() < 0.35:
 		_spawn_health(e.global_position)
 
 # ---------- Treffer-Gefuehl ----------
 var gibs: Array = []
 var health_orbs: Array = []
+
+func slowmo(dur: float, scale: float) -> void:
+	Engine.time_scale = scale
+	get_tree().create_timer(dur, true, false, true).timeout.connect(func(): Engine.time_scale = 1.0)
 
 func hitstop(dur: float) -> void:
 	Engine.time_scale = 0.05
@@ -996,7 +1444,7 @@ func on_boss_killed(b) -> void:
 	Game.reach_stage(3)
 	Game.write_save()
 	var drop_pos: Vector3 = b.global_position
-	var drop := {1: ["weapon", 1], 2: ["ability", 0]}
+	var drop := {1: ["weapon", 1], 2: ["ability", 0], 3: ["weapon", 4], 4: ["weapon", 5]}
 	say(sid("victory"), func():
 		state = "play"
 		if drop.has(chapter):

@@ -99,8 +99,17 @@ func _draw() -> void:
 		draw_circle(c, 1.6, cc)
 		if main.hitmark_t > 0.0:
 			var hc := Color(1, 1, 1, main.hitmark_t * 5.0)
+			if main.crit_t > 0.0:
+				hc = Color(1, 0.82, 0.24, main.hitmark_t * 5.0)
 			for d in [Vector2(1, 1), Vector2(-1, 1), Vector2(1, -1), Vector2(-1, -1)]:
 				draw_line(c + d * 7.0, c + d * 15.0, hc, 2.5)
+		# Kill-Marker: grosses rotes X, das kurz aufpoppt
+		if main.killmark_t > 0.0:
+			var k: float = main.killmark_t / 0.35
+			var kc := Color(1, 0.2, 0.3, k)
+			var sz2: float = 14.0 + (1.0 - k) * 10.0
+			for d in [Vector2(1, 1), Vector2(-1, 1), Vector2(1, -1), Vector2(-1, -1)]:
+				draw_line(c + d * (sz2 * 0.4), c + d * sz2, kc, 4.0)
 	# Leben
 	for i in p.max_hp:
 		var r := Rect2(30 + i * 34, sz.y - 62, 28, 34)
@@ -113,21 +122,27 @@ func _draw() -> void:
 	draw_rect(Rect2(dr.position, Vector2(dr.size.x * (1.0 - p.dash_cd / 0.7), dr.size.y)), Color("#c77dff"))
 	# Waffen und Faehigkeit (unten rechts)
 	for i in 3:
-		var wd: Dictionary = p.WEAPONS[i]
 		var r := Rect2(sz.x - 330 + i * 100, sz.y - 70, 92, 40)
-		var on: bool = i == p.weapon
-		var ok: bool = p.unlocked[i]
+		if i >= p.slots.size():
+			draw_rect(r, Color(1, 1, 1, 0.03))
+			draw_rect(r, Color(1, 1, 1, 0.08), false, 2.0)
+			draw_string(font, r.position + Vector2(6, 16), str(i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.3))
+			draw_string(font, r.position + Vector2(6, 33), "EMPTY", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 1, 1, 0.2))
+			continue
+		var wid: int = p.slots[i]
+		var wd: Dictionary = p.WEAPONS[wid]
+		var on: bool = wid == p.weapon
 		draw_rect(r, Color(wd.col, 0.25 if on else 0.06))
-		draw_rect(r, wd.col if on else Color(1, 1, 1, 0.15 if ok else 0.05), false, 2.0)
+		draw_rect(r, wd.col if on else Color(1, 1, 1, 0.15), false, 2.0)
 		draw_string(font, r.position + Vector2(6, 16), str(i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.6))
-		draw_string(font, r.position + Vector2(6, 33), wd.name.split(" ")[0] if ok else "LOCKED", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, wd.col if ok else Color(1, 1, 1, 0.25))
+		draw_string(font, r.position + Vector2(6, 33), wd.name.split(" ")[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 14, wd.col)
 	# Munition + Nachladen
 	if p.has_gun() and p.weapon >= 0:
 		var wdc: Dictionary = p.WEAPONS[p.weapon]
 		var am: int = p.ammo[p.weapon]
-		var low: bool = am <= int(wdc.mag) / 4
+		var low: bool = am <= int(wdc.mag) / 4 and int(wdc.mag) > 0
 		var acol: Color = Color("#ff4d6d") if low and int(Time.get_ticks_msec() / 250) % 2 == 0 else wdc.col
-		draw_string(font, Vector2(sz.x - 330, sz.y - 128), "%d / %d" % [am, wdc.mag], HORIZONTAL_ALIGNMENT_LEFT, -1, 30, acol)
+		draw_string(font, Vector2(sz.x - 330, sz.y - 128), ("%d / %d" % [am, wdc.mag]) if int(wdc.mag) > 0 else "\u221e", HORIZONTAL_ALIGNMENT_LEFT, -1, 30, acol)
 		if p.perfect[p.weapon]:
 			draw_string(font, Vector2(sz.x - 210, sz.y - 128), "PERFECT +DMG", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
 		if p.reload_t > 0.0:
@@ -138,7 +153,7 @@ func _draw() -> void:
 			draw_rect(Rect2(br.position.x + bw * p.SWEET_A, br.position.y, bw * (p.SWEET_B - p.SWEET_A), 8), Color(1, 1, 1, 0.35 if p.reload_tried else 0.8))
 			draw_rect(Rect2(br.position.x + bw * p.reload_progress() - 2, br.position.y - 3, 4, 14), wdc.col)
 			draw_string(font, Vector2(0, rc.y + 70), "RELOAD  [R] im weissen Feld = PERFEKT", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 13, Color(1, 1, 1, 0.7))
-		elif am <= 0:
+		elif am <= 0 and int(wdc.mag) > 0:
 			draw_string(font, Vector2(0, sz.y / 2.0 + 60), "[R] RELOAD", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 16, Color("#ff4d6d"))
 		if p.charge > 0.0:
 			var c2 := sz / 2.0
@@ -161,7 +176,7 @@ func _draw() -> void:
 		draw_rect(Rect2(rb.position, Vector2(4, rb.size.y)), col)
 		draw_string(font, rb.position + Vector2(16, 22), "((( " + who, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, col)
 		draw_multiline_string(font, rb.position + Vector2(16, 44), main.radio_line[1], HORIZONTAL_ALIGNMENT_LEFT, rb.size.x - 30, 16, -1, Color.WHITE)
-	draw_string(font, Vector2(30, 34), "Memory shards: %d/5" % main.shards, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#c77dff"))
+	draw_string(font, Vector2(30, 34), "Memory shards: %d/7" % main.shards, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#c77dff"))
 	if main.objective != "":
 		draw_string(font, Vector2(0, 34), main.objective, HORIZONTAL_ALIGNMENT_RIGHT, sz.x - 30, 16, Color(1, 1, 1, 0.85))
 	# Boss

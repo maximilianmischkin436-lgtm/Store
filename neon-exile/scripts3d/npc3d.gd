@@ -12,6 +12,7 @@ const Figure = preload("res://scripts3d/figure.gd")
 const KIND := {
 	"pool": ["swimmer", "lifeguard"], "mall": ["shopper", "mannequin"],
 	"office": ["worker", "manager"], "school": ["student", "teacher"],
+	"hospital": ["patient", "nurse"], "home": ["resident", "parent"],
 }
 
 var main
@@ -200,7 +201,10 @@ func _chase(delta: float, p, to: Vector3, d: float, spd: float) -> void:
 
 func _special(delta: float, p, to: Vector3, d: float) -> void:
 	ability_t -= delta
-	match theme:
+	# neue Orte nutzen die Mechaniken der alten: Krankenschwester = Alarm wie der Bademeister,
+	# Eltern auf den Familienfotos = bewegen sich nur, wenn man wegschaut
+	var beh: String = {"hospital": "pool", "home": "mall"}.get(theme, theme)
+	match beh:
 		"pool":
 			# Bademeister: pfeift, alle Schwimmer in der Naehe werden feindlich
 			if not awake and d < 18.0 and _sees(p):
@@ -211,7 +215,7 @@ func _special(delta: float, p, to: Vector3, d: float) -> void:
 			if ability_t <= 0.0 and _sees(p):
 				ability_t = 9.0
 				Game.sfx("enemy_attack", 2.2, 1.0)
-				main.banner("*WHISTLE*", Color("#ff4d4d"))
+				main.banner("*SHHHHH*" if theme == "hospital" else "*WHISTLE*", Color("#ff4d4d"))
 				P.sh1.rotation.x = -2.6
 				for n in get_tree().get_nodes_in_group("npcs"):
 					if n.role == "passive" and n.global_position.distance_to(global_position) < 26.0:

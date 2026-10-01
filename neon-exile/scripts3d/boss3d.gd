@@ -385,9 +385,23 @@ func _mnemos(delta: float, p, to: Vector3, d: float) -> void:
 				cd = 1.5
 
 # ---------------- THE HEADMASTER ----------------
+# Neu: Lineal-Rundumschlag (springen!), Papierflieger-Schwarm, Pop-Quiz (richtige Antwort-Flaeche finden),
+# Flurausweis (verschwindet, taucht hinter dir auf), Nachsitzen (Tafeln als Deckung), Schulglocke (Geister)
+const QUIZ := [
+	["WHEN DOES SCHOOL END?", ["4:00", "4:40", "5:00", "NEVER"], 0],
+	["WHO WAITED IN ROOM 2B?", ["NOBODY", "MIRA", "ECHO", "MOM"], 1],
+	["HOW LATE WERE YOU?", ["1 MIN", "10 MIN", "40 MIN", "NOT LATE"], 2],
+	["WHAT DID YOU PROTECT INSTEAD?", ["HER", "SERVER 7", "THE SCHOOL", "YOURSELF"], 1],
+]
+var ruler: MeshInstance3D
+var ruler_ang := 0.0
+var quiz_nodes: Array = []
+var quiz_ok := Vector3.ZERO
+
 func _headmaster(delta: float, p, to: Vector3, d: float) -> void:
 	var dir := to.normalized()
-	_face(dir, delta)
+	if mode != "hallpass":
+		_face(dir, delta)
 	var head_pos: Vector3 = global_position + Vector3(0, 4.7, 0)
 	match mode:
 		"idle":
@@ -397,7 +411,8 @@ func _headmaster(delta: float, p, to: Vector3, d: float) -> void:
 				Figure.walk(P, walk_ph, 0.0)
 			cd -= delta
 			if cd <= 0.0:
-				match _next(["detention", "chalk", "ruler", "bell", "chalk", "detention", "ruler"]):
+				var lists := [["ruler", "planes", "quiz", "chalk"], ["ruler", "detention", "planes", "hallpass", "quiz"], ["ruler", "hallpass", "detention", "planes", "bell", "quiz", "ruler"]]
+				match _next(lists[phase]):
 					"detention":
 						mode = "gaze"
 						mode_t = 4.0
@@ -409,19 +424,89 @@ func _headmaster(delta: float, p, to: Vector3, d: float) -> void:
 						mode_t = 0.0
 						tp_t = 3 + phase
 					"ruler":
-						var yaw: float = atan2(-dir.x, -dir.z)
-						main.add_hazard("line", Vector3(global_position.x, 0, global_position.z), Vector2(2.4, 16.0), 0.8, yaw, Color(0.85, 0.65, 0.3))
-						if phase >= 1:
-							main.add_hazard("line", Vector3(global_position.x, 0, global_position.z), Vector2(2.4, 16.0), 1.2, yaw + 0.6, Color(0.85, 0.65, 0.3))
-							main.add_hazard("line", Vector3(global_position.x, 0, global_position.z), Vector2(2.4, 16.0), 1.2, yaw - 0.6, Color(0.85, 0.65, 0.3))
-						P.sh1.rotation.x = -3.0
-						cd = 1.8 * _rate()
+						main.banner("STAND UP STRAIGHT", Color("#ffcc33"))
+						mode = "ruler_wind"
+						mode_t = 0.8
+						_make_ruler()
+						ruler_ang = atan2(dir.x, dir.z) + PI * 0.5
+					"planes":
+						main.banner("PASS IT TO THE FRONT", Color("#f4f1e8"))
+						for i in 5 + phase * 2:
+							var a := (i - 3) * 0.35
+							var v: Vector3 = (Vector3(dir.x, 0.35, dir.z).rotated(Vector3.UP, a)).normalized() * 7.0
+							main.spawn_proj(head_pos, v, Color(0.97, 0.97, 0.94), true)
+						cd = 2.2 * _rate()
+					"quiz":
+						_start_quiz(p)
+					"hallpass":
+						main.banner("WHERE IS YOUR HALL PASS?", Color("#ffcc33"))
+						mode = "hallpass"
+						mode_t = 1.2
+						visual.visible = false
+						main.burst(global_position + Vector3(0, 2.5, 0), Color(0.95, 0.95, 0.9), 50)
 					"bell":
 						Game.sfx("enemy_attack", 3.0, 1.0)
 						main.banner("*RIIIIING*", Color("#ffcc33"))
 						for i in 3 + phase:
 							main.spawn_npc("hostile", global_position + Vector3(randf_range(-6, 6), 0, randf_range(-6, 6)))
 						cd = 2.5
+		"ruler_wind":
+			mode_t -= delta
+			P.sh1.rotation.x = lerpf(P.sh1.rotation.x, -2.6, delta * 8.0)
+			_place_ruler(0.9)
+			if mode_t <= 0.0:
+				mode = "ruler"
+				mode_t = 2.6 - phase * 0.4
+				Game.sfx("jump", 0.4, 1.0)
+		"ruler":
+			mode_t -= delta
+			ruler_ang += delta * TAU / (2.6 - phase * 0.4)
+			_place_ruler(0.35)
+			# Treffer: Spieler am Boden und auf Hoehe des Lineals
+			var rel: Vector3 = p.global_position - global_position
+			rel.y = 0.0
+			var pa: float = atan2(rel.x, rel.z)
+			if rel.length() < 13.0 and absf(angle_difference(pa, ruler_ang)) < 0.14 and p.global_position.y < 0.7:
+				p.hurt(1)
+				p.external += Vector3(cos(ruler_ang), 0, -sin(ruler_ang)) * 10.0
+			if mode_t <= 0.0:
+				if ruler:
+					ruler.queue_free()
+					ruler = null
+				mode = "idle"
+				cd = 1.4 * _rate()
+		"quiz":
+			mode_t -= delta
+			Figure.walk(P, walk_ph, 0.0)
+			if mode_t <= 0.0:
+				var pp: Vector3 = p.global_position
+				pp.y = 0.0
+				if pp.distance_to(quiz_ok) > 3.0:
+					p.hurt(2)
+					main.shake(0.6)
+					main.banner("WRONG", Color("#ff3030"))
+				else:
+					main.banner("...CORRECT", Color("#7dffb0"))
+				for n in quiz_nodes:
+					main.burst(n.global_position + Vector3(0, 0.3, 0), Color(1, 0.3, 0.2) if n.global_position.distance_to(quiz_ok) > 0.5 else Color(0.5, 1, 0.6), 30)
+					n.queue_free()
+				quiz_nodes.clear()
+				mode = "idle"
+				cd = 1.2
+		"hallpass":
+			mode_t -= delta
+			if mode_t <= 0.0:
+				var back: Vector3 = p.global_basis.z
+				var tp: Vector3 = p.global_position + Vector3(back.x, 0, back.z).normalized() * 4.5
+				if main.level.solid(tp):
+					tp = p.global_position - dir * 5.0
+				global_position = Vector3(tp.x, 0, tp.z)
+				visual.visible = true
+				main.burst(global_position + Vector3(0, 2.5, 0), Color(0.95, 0.95, 0.9), 50)
+				main.add_hazard("circle", Vector3(p.global_position.x, 0, p.global_position.z), Vector2(2.8, 0), 0.7, 0.0, Color(1, 0.8, 0.3))
+				Game.sfx("enemy_hurt", 0.3, 1.0)
+				mode = "idle"
+				cd = 1.5 * _rate()
 		"gaze":
 			mode_t -= delta
 			detention_cd = maxf(0.0, detention_cd - delta)
@@ -461,6 +546,76 @@ func _headmaster(delta: float, p, to: Vector3, d: float) -> void:
 				if tp_t <= 0:
 					mode = "idle"
 					cd = 1.4 * _rate()
+
+
+func _make_ruler() -> void:
+	if ruler:
+		ruler.queue_free()
+	ruler = MeshInstance3D.new()
+	ruler.mesh = Figure.box(0.5, 0.12, 13.0)
+	var m := Figure.mat(Color(0.85, 0.65, 0.3), 1.0, 0.5)
+	m.emission_enabled = true
+	m.emission = Color(1, 0.6, 0.2)
+	m.emission_energy_multiplier = 0.6
+	ruler.material_override = m
+	main.add_child(ruler)
+	for k in 12:
+		var tick := MeshInstance3D.new()
+		tick.mesh = Figure.box(0.3, 0.13, 0.04)
+		tick.material_override = Figure.mat(Color(0.2, 0.15, 0.1))
+		tick.position = Vector3(-0.1, 0.0, -6.0 + k)
+		ruler.add_child(tick)
+
+func _place_ruler(h: float) -> void:
+	if not ruler:
+		return
+	var d := Vector3(sin(ruler_ang), 0, cos(ruler_ang))
+	ruler.global_position = global_position + d * 6.8 + Vector3(0, h, 0)
+	ruler.rotation = Vector3(0, ruler_ang, 0)
+
+func _start_quiz(p) -> void:
+	var q: Array = QUIZ[randi() % QUIZ.size()]
+	main.banner("POP QUIZ: " + q[0], Color("#ffcc33"))
+	mode = "quiz"
+	mode_t = 4.5 - phase * 0.5
+	var center: Vector3 = p.global_position
+	center.y = 0.0
+	var cols := [Color(1, 0.4, 0.4), Color(0.4, 0.7, 1), Color(1, 0.85, 0.3), Color(0.5, 1, 0.6)]
+	var start := randf() * TAU
+	for i in 4:
+		var a := start + i * TAU / 4.0
+		var pos: Vector3 = center + Vector3(cos(a), 0, sin(a)) * 6.0
+		for k in 6:
+			if not main.level.solid(pos):
+				break
+			pos = pos.lerp(center, 0.3)
+		var n := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 2.6
+		cm.bottom_radius = 2.6
+		cm.height = 0.05
+		n.mesh = cm
+		var mm := StandardMaterial3D.new()
+		mm.albedo_color = Color(cols[i], 0.4)
+		mm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mm.emission_enabled = true
+		mm.emission = cols[i]
+		mm.emission_energy_multiplier = 1.2
+		n.material_override = mm
+		main.add_child(n)
+		n.global_position = pos + Vector3(0, 0.04, 0)
+		var lab := Label3D.new()
+		lab.text = q[1][i]
+		lab.font_size = 96
+		lab.outline_size = 16
+		lab.modulate = cols[i]
+		lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		lab.position.y = 2.2
+		n.add_child(lab)
+		quiz_nodes.append(n)
+		if i == q[2]:
+			quiz_ok = n.global_position
+			quiz_ok.y = 0.0
 
 # ---------------- HALCYON ----------------
 # Benutzt die Angriffe der anderen: Pfeife (springen), Sprung, Ausverkauf-Kreise, Akten-Schlaege,
@@ -609,6 +764,10 @@ func hit(dmg: int, _dir: Vector3) -> void:
 		if beam:
 			beam.queue_free()
 			_lower_boards()
+		if ruler:
+			ruler.queue_free()
+		for n in quiz_nodes:
+			n.queue_free()
 		main.blackout_t = 0.0
 		main.player.invert_t = 0.0
 		main.clear_hazards()

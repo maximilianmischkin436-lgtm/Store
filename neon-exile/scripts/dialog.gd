@@ -80,7 +80,7 @@ func skip() -> void:
 
 # Vertonte Zeile abspielen (assets/voice/<dialog>_<index>.mp3), falls vorhanden
 func _play_voice() -> void:
-	var path := "res://assets/voice/%s_%d.mp3" % [dlg_id, idx]
+	var path := "res://assets/voice/%s_%d.ogg" % [dlg_id, idx]
 	if ResourceLoader.exists(path):
 		voice.stream = load(path)
 		voice.play()

@@ -120,6 +120,35 @@ static func outfit(kind: String, rng: RandomNumberGenerator) -> Dictionary:
 			o.pants = Color(0.12, 0.12, 0.15)
 			o.extras = ["collar", "tie", "badge", "briefcase"]
 			o.hair_style = 3
+		"patient":
+			# Krankenhaushemd, nackte Beine, Armband
+			o.shirt = [Color(0.72, 0.85, 0.9), Color(0.85, 0.88, 0.8)][rng.randi() % 2]
+			o.pants = o.shirt
+			o.short_legs = true
+			o.shoes = Color(0.85, 0.85, 0.85)
+			o.bare_arms = true
+			o.height = rng.randf_range(0.8, 1.0)
+			o.hair_style = rng.randi() % 3
+			o.extras = ["wristband"]
+		"nurse":
+			o.height = 1.1
+			o.shirt = Color(0.95, 0.96, 0.95)
+			o.pants = Color(0.95, 0.96, 0.95)
+			o.skirt = true
+			o.shoes = Color(0.95, 0.95, 0.95)
+			o.hair_style = 2
+			o.extras = ["nursecap", "badge"]
+		"resident":
+			o.shirt = [Color(0.55, 0.45, 0.35), Color(0.35, 0.4, 0.5), Color(0.6, 0.55, 0.5)][rng.randi() % 3]
+			o.pants = Color(0.25, 0.22, 0.2)
+			o.hair_style = rng.randi() % 4 + 1
+			o.extras = ["collar"]
+		"parent":
+			o.height = 1.1
+			o.shirt = Color(0.5, 0.42, 0.38)
+			o.pants = Color(0.2, 0.18, 0.16)
+			o.hair_style = 2
+			o.extras = ["collar", "apron"]
 	return o
 
 # Baut die Figur unter root. Gibt Gelenke + Materialien zurueck.
@@ -162,6 +191,13 @@ static func build(root: Node3D, o: Dictionary, alpha: float, glow: float, hostil
 	P["spine"] = spine
 	_mesh(spine, cap(0.19, 0.6), Vector3(0, 0.27, 0), Vector3(1.12, 1, 0.72), shirt)
 	_mesh(spine, cap(0.2, 0.42), Vector3(0, 0.45, 0), Vector3(1.25, 0.6, 0.75), shirt)
+	# Kleinigkeiten: Guertel, Knoepfe, Saum
+	if not o.skirt and o.kind != "swimmer":
+		_mesh(spine, box(0.36, 0.04, 0.24), Vector3(0, 0.02, 0), Vector3.ONE, mat(o.pants.darkened(0.45), alpha, 0.4, glow))
+		_mesh(spine, box(0.05, 0.035, 0.02), Vector3(0, 0.02, -0.125), Vector3.ONE, mat(Color(0.7, 0.65, 0.5), alpha, 0.3, glow))
+	if o.kind in ["teacher", "worker", "manager", "shopper", "student"]:
+		for b in 4:
+			_mesh(spine, sph(0.009), Vector3(0, 0.12 + b * 0.11, -0.142), Vector3(1, 1, 0.5), mat(o.shirt.darkened(0.35), alpha, 0.4, glow))
 	if o.extras.has("collar"):
 		_mesh(spine, cyl(0.075, 0.1, 0.06), Vector3(0, 0.6, 0), Vector3.ONE, mat(o.shirt.lightened(0.2), alpha, 0.7, glow))
 	if o.extras.has("tie"):
@@ -183,6 +219,8 @@ static func build(root: Node3D, o: Dictionary, alpha: float, glow: float, hostil
 		_mesh(spine, box(0.05, 0.03, 0.03), Vector3(0, 0.37, -0.16), Vector3.ONE, mat(Color(0.8, 0.8, 0.85), alpha, 0.2, glow))
 	if o.extras.has("towel"):
 		_mesh(spine, box(0.42, 0.06, 0.3), Vector3(0, 0.6, 0.02), Vector3.ONE, mat(Color(0.95, 0.85, 0.4), alpha, 0.9, glow))
+	if o.extras.has("apron"):
+		_mesh(spine, box(0.3, 0.5, 0.02), Vector3(0, 0.15, -0.14), Vector3.ONE, mat(Color(0.9, 0.85, 0.75), alpha, 0.8, glow))
 	if o.extras.has("tag"):
 		_mesh(spine, box(0.08, 0.05, 0.005), Vector3(0.12, 0.5, -0.16), Vector3.ONE, mat(Color(1, 1, 1), 1.0, 0.5, 0.0), Vector3(0, 0, 0.4))
 	# Arme mit Ellbogen und Haenden
@@ -194,6 +232,8 @@ static func build(root: Node3D, o: Dictionary, alpha: float, glow: float, hostil
 		var el := pivot(sh, Vector3(0, -0.33, 0))
 		P["el%d" % sd] = el
 		_mesh(el, cap(0.052, 0.34), Vector3(0, -0.16, 0), Vector3.ONE, skin if (o.bare_arms or o.kind == "swimmer") else shirt)
+		if not o.bare_arms and o.kind != "swimmer":
+			_mesh(el, cyl(0.058, 0.058, 0.04), Vector3(0, -0.31, 0), Vector3.ONE, shirt)
 		_mesh(el, box(0.07, 0.1, 0.035), Vector3(0, -0.36, 0), Vector3.ONE, skin)
 		for f in 3:
 			_mesh(el, cap(0.011, 0.08), Vector3((f - 1) * 0.022, -0.44, 0), Vector3.ONE, skin)
@@ -225,6 +265,9 @@ static func build(root: Node3D, o: Dictionary, alpha: float, glow: float, hostil
 			_mesh(head, sph(0.128), Vector3(0, 0.09, 0.02), Vector3(1.0, 0.55, 1.05), mat(Color(0.5, 0.48, 0.45), alpha, 0.9, glow))
 		4:
 			_mesh(head, sph(0.128), Vector3(0, 0.06, 0.0), Vector3(1.03, 0.85, 1.06), mat(Color(0.95, 0.95, 0.97), alpha, 0.3, glow))
+	if o.extras.has("nursecap"):
+		_mesh(head, box(0.16, 0.06, 0.1), Vector3(0, 0.15, 0.02), Vector3.ONE, mat(Color(1, 1, 1), alpha, 0.5, glow))
+		_mesh(head, box(0.04, 0.04, 0.005), Vector3(0, 0.155, -0.032), Vector3.ONE, mat(Color(0.85, 0.1, 0.1), alpha, 0.5, glow))
 	if o.extras.has("glasses"):
 		for sd in [-1, 1]:
 			var tm := TorusMesh.new()
@@ -238,6 +281,9 @@ static func build(root: Node3D, o: Dictionary, alpha: float, glow: float, hostil
 		for sd in [-1, 1]:
 			_mesh(head, sph(0.022), Vector3(0.045 * sd, 0.03, -0.118), Vector3(1, 1.3, 0.5), dark)
 		_mesh(head, box(0.05, 0.006, 0.01), Vector3(0, -0.06, -0.125), Vector3.ONE, dark)
+		# schwarze "Traenen" aus den Augenhoehlen
+		for sd in [-1, 1]:
+			_mesh(head, box(0.008, 0.09, 0.006), Vector3(0.045 * sd, -0.025, -0.122), Vector3.ONE, dark)
 	P["mats"] = mats
 	return P
 

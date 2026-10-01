@@ -107,10 +107,12 @@ func _process(delta: float) -> void:
 			Input.action_release("shoot")
 			if main.dialog.active and t > 0.4: snap("08_victory"); main.dialog.skip(); step = 12; t = 0
 		12:
-			if main.pickups.size() > 0 and t > 0.3:
-				print("boss drop: ", main.pickups[0].kind, " ", main.pickups[0].idx)
-				main._take(main.pickups[0])
-			if t > 0.8 and main.pickups.is_empty() and main.state == "play" and main.exit_node:
+			var drops: Array = main.pickups.filter(func(pk): return pk.cb.is_valid())
+			if drops.size() > 0 and t > 0.3:
+				print("boss drop: ", drops[0].kind, " ", drops[0].idx, " slots ", p.slots)
+				main._take(drops[0])
+				print("slots after: ", p.slots, " floor: ", main.pickups.map(func(pk): return pk.kind + str(pk.idx)))
+			if t > 0.8 and drops.is_empty() and main.state == "play" and main.exit_node:
 				print("exit open: ", main.objective)
 				main.player.global_position = main.exit_node.position + Vector3(0, 0.2, 0)
 				step = 13; t = 0
