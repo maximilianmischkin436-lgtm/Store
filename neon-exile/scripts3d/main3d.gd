@@ -76,6 +76,7 @@ func _setup_input() -> void:
 	var keys := {
 		"up": [KEY_W, KEY_UP], "down": [KEY_S, KEY_DOWN], "left": [KEY_A, KEY_LEFT], "right": [KEY_D, KEY_RIGHT],
 		"jump": [KEY_SPACE], "dash": [KEY_SHIFT], "shoot": [KEY_J], "interact": [KEY_E, KEY_ENTER],
+		"weapon1": [KEY_1], "weapon2": [KEY_2], "weapon3": [KEY_3], "ability": [KEY_Q],
 	}
 	for action in keys:
 		if not InputMap.has_action(action):
@@ -123,6 +124,25 @@ func say(id: String, done: Callable = Callable()) -> void:
 		if done.is_valid():
 			done.call())
 
+# Funk: laeuft nebenbei, das Spiel pausiert nicht
+var radio_queue: Array = []
+var radio_line: Array = []
+var radio_t := 0.0
+const Story = preload("res://scripts/story.gd")
+
+func radio(id: String) -> void:
+	for l in Story.RADIO[id]:
+		radio_queue.append(l)
+
+func _update_radio(delta: float) -> void:
+	radio_t -= delta
+	if radio_t <= 0.0:
+		if radio_queue.is_empty():
+			radio_line = []
+		else:
+			radio_line = radio_queue.pop_front()
+			radio_t = 2.0 + radio_line[1].length() * 0.045
+
 func banner(text: String, col: Color) -> void:
 	banner_text = text
 	banner_col = col
@@ -164,34 +184,67 @@ func clear_projectiles() -> void:
 		p.n.queue_free()
 	projs.clear()
 
-func player_shoot(origin: Vector3, dir: Vector3, muzzle: Vector3) -> void:
-	var q := PhysicsRayQueryParameters3D.create(origin, origin + dir * 90.0, 1 | 4)
-	var hit := get_world_3d().direct_space_state.intersect_ray(q)
-	var end := origin + dir * 90.0
-	if hit:
+func player_shoot(origin: Vector3, dir: Vector3, muzzle: Vector3, wd: Dictionary) -> void:
+	var rng: float = wd.range
+	var end := origin + dir * rng
+	var exclude: Array[RID] = []
+	var space := get_world_3d().direct_space_state
+	# Durchschlagende Waffen treffen mehrere Gegner hintereinander
+	for i in (8 if wd.pierce else 1):
+		var q := PhysicsRayQueryParameters3D.create(origin, origin + dir * rng, 1 | 4, exclude)
+		var hit := space.intersect_ray(q)
+		if not hit:
+			break
 		end = hit.position
 		var c = hit.collider
 		if c and c.has_method("hit"):
-			c.hit(1, dir)
+			c.hit(wd.dmg, dir)
 			hitmark_t = 0.15
-			burst(end, Color("#ffffff"), 6)
+			burst(end, Color.WHITE, 6)
+			exclude.append(hit.rid)
+			if not wd.pierce:
+				break
 		else:
-			burst(end, Color("#38f5c4"), 5)
-	_tracer(muzzle, end)
+			burst(end, wd.col, 5)
+			break
+	if wd.pierce:
+		end = end if end.distance_to(origin) < rng - 0.1 else origin + dir * rng
+	_tracer(muzzle, end, wd.col, 0.05 if wd.pierce else 0.012, 0.25 if wd.pierce else 0.06)
 
-func _tracer(a: Vector3, b: Vector3) -> void:
+func overload(pos: Vector3) -> void:
+	# Faehigkeit: Schockwelle um ECHO, schadet, schleudert weg, loescht Projektile
+	shake(0.5)
+	burst(pos + Vector3(0, 1, 0), Color("#c77dff"), 80)
+	for i in 3:
+		var ring := MeshInstance3D.new()
+		var tm := TorusMesh.new()
+		tm.inner_radius = 0.9
+		tm.outer_radius = 1.0
+		ring.mesh = tm
+		ring.material_override = _mat(Color("#c77dff"), 3.0)
+		ring.position = pos + Vector3(0, 0.4 + i * 0.5, 0)
+		add_child(ring)
+		var tw := create_tween()
+		tw.tween_property(ring, "scale", Vector3.ONE * 9.0, 0.35 + i * 0.08)
+		tw.tween_callback(ring.queue_free)
+	clear_projectiles()
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if is_instance_valid(e) and e.global_position.distance_to(pos) < 9.0:
+			e.hit(4, e.global_position - pos)
+
+func _tracer(a: Vector3, b: Vector3, col: Color, thick: float, life: float) -> void:
 	var mi := MeshInstance3D.new()
 	var bm := BoxMesh.new()
 	var len_ab := a.distance_to(b)
-	bm.size = Vector3(0.012, 0.012, len_ab)
+	bm.size = Vector3(thick, thick, len_ab)
 	mi.mesh = bm
-	mi.material_override = _mat(Color("#38f5c4"), 2.0)
+	mi.material_override = _mat(col, 2.0)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
 	mi.global_position = (a + b) / 2.0
 	if len_ab > 0.01:
 		mi.look_at(b, Vector3.UP if absf((b - a).normalized().y) < 0.99 else Vector3.RIGHT)
-	tracers.append({"n": mi, "life": 0.06})
+	tracers.append({"n": mi, "life": life})
 
 func burst(pos: Vector3, col: Color, n: int) -> void:
 	var p := CPUParticles3D.new()
@@ -250,7 +303,8 @@ func _process(delta: float) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	if title_t < 4.5 and not seen.has("intro"):
 		seen["intro"] = true
-		say("intro")
+		say("intro", func(): radio("controls"))
+	_update_radio(delta)
 	if state == "dead" and Input.is_action_just_pressed("interact"):
 		_respawn()
 	if state == "play":
@@ -294,14 +348,14 @@ func _check_triggers() -> void:
 	seen[id] = true
 	match id:
 		"2":
-			say("scrap")
+			radio("scrap")
 			objective = "Get through the scrapyard"
 		"3":
-			say("drones")
+			radio("drones")
 			objective = "Recover the memory shard"
 		"4":
 			checkpoint = player.global_position
-			say("gate")
+			radio("gate")
 			objective = "Defeat WARDEN-07"
 		"5":
 			if boss:
@@ -324,6 +378,9 @@ func _check_doors() -> void:
 	if not alive and level.doors_of("D").size() > 0 and player.global_position.x > 15 * T:
 		level.open_doors("D", 44 * T)
 		banner("DOOR UNLOCKED", Color("#38f5c4"))
+		if not player.unlocked[1]:
+			player.unlocked[1] = true
+			radio("scatter")
 		checkpoint = player.global_position
 
 func _check_shard() -> void:
@@ -335,6 +392,9 @@ func _check_shard() -> void:
 		checkpoint = player.global_position
 		player.hp = player.max_hp
 		say("shard", func():
+			player.unlocked[2] = true
+			player.ability_unlocked = true
+			radio("rail")
 			level.open_doors("G")
 			objective = "Reach the lift"
 			banner("GATE OPEN", Color("#ffd23d")))
@@ -362,7 +422,7 @@ func _respawn() -> void:
 		for e in get_tree().get_nodes_in_group("enemies"):
 			if e != boss:
 				e.queue_free()
-	say("death")
+	radio("death")
 
 func on_enemy_killed(_e) -> void:
 	shake(0.1)

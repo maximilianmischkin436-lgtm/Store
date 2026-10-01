@@ -103,6 +103,8 @@ func _physics_process(delta: float) -> void:
 		main.burst(global_position, COL, 60)
 		main.banner("PHASE 2" if phase == 1 else "WARDEN-07 OVERLOAD", COL)
 		main.clear_projectiles()
+		if phase == 1:
+			main.radio("halfway")
 	if global_position.distance_to(p.center()) < radius + 0.6:
 		p.hurt(1)
 	velocity = Vector3.ZERO

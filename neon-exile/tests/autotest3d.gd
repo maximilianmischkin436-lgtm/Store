@@ -38,6 +38,7 @@ func _process(delta: float) -> void:
 				tp(25, 14.5, -PI / 2); step = 3; t = 0
 		3:
 			p.inv = 99
+			if t > 1.0 and t < 1.05: snap("03a_radio")
 			p.pitch = -0.05
 			Input.action_press("shoot")
 			if t > 2.5: snap("03_scrapyard"); step = 4; t = 0
@@ -67,15 +68,24 @@ func _process(delta: float) -> void:
 				var to: Vector3 = main.boss.global_position - p.cam.global_position
 				p.yaw = atan2(-to.x, -to.z)
 				p.pitch = atan2(to.y, Vector2(to.x, to.z).length())
-			if t > 3.0: snap("06_boss"); step = 10; t = 0
+			p.select_weapon(1)
+			if Engine.get_frames_drawn() % 2 == 0: Input.action_press("shoot")
+			else: Input.action_release("shoot")
+			if t > 3.0: snap("06_boss_scatter"); step = 10; t = 0
 		10:
 			p.inv = 99
-			if main.boss: main.boss.hp = mini(main.boss.hp, 40)
+			if main.boss: main.boss.hp = mini(main.boss.hp, 50)
+			p.select_weapon(2)
+			if Engine.get_frames_drawn() % 2 == 0: Input.action_press("shoot")
+			else: Input.action_release("shoot")
+			if t > 1.0 and p.ability_cd <= 0.0:
+				p.ability_cd = 8.0; main.overload(p.global_position); print("overload ok")
 			if is_instance_valid(main.boss):
 				var to: Vector3 = main.boss.global_position - p.cam.global_position
 				p.yaw = atan2(-to.x, -to.z)
 				p.pitch = atan2(to.y, Vector2(to.x, to.z).length())
-			if t > 3.0: snap("07_boss_phase3"); main.boss.hit(999, Vector3.RIGHT); step = 11; t = 0
+			if t > 1.15 and t < 1.2: snap("07_overload")
+			if t > 3.0: print("weapon ", p.weapon, " unlocked ", p.unlocked, " radio ", main.radio_line); snap("07b_rail"); main.boss.hit(999, Vector3.RIGHT); step = 11; t = 0
 		11:
 			Input.action_release("shoot")
 			if main.dialog.active and t > 0.4: snap("08_victory"); main.dialog.skip(); step = 12; t = 0

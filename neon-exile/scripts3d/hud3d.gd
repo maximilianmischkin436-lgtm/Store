@@ -46,6 +46,32 @@ func _draw() -> void:
 	var dr := Rect2(30, sz.y - 22, 6 * 34 - 6, 5)
 	draw_rect(dr, Color(1, 1, 1, 0.1))
 	draw_rect(Rect2(dr.position, Vector2(dr.size.x * (1.0 - p.dash_cd / 0.7), dr.size.y)), Color("#c77dff"))
+	# Waffen und Faehigkeit (unten rechts)
+	for i in 3:
+		var wd: Dictionary = p.WEAPONS[i]
+		var r := Rect2(sz.x - 330 + i * 100, sz.y - 70, 92, 40)
+		var on: bool = i == p.weapon
+		var ok: bool = p.unlocked[i]
+		draw_rect(r, Color(wd.col, 0.25 if on else 0.06))
+		draw_rect(r, wd.col if on else Color(1, 1, 1, 0.15 if ok else 0.05), false, 2.0)
+		draw_string(font, r.position + Vector2(6, 16), str(i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.6))
+		draw_string(font, r.position + Vector2(6, 33), wd.name.split(" ")[0] if ok else "LOCKED", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, wd.col if ok else Color(1, 1, 1, 0.25))
+	if p.ability_unlocked:
+		var ar := Rect2(sz.x - 330, sz.y - 112, 292, 30)
+		var ready: bool = p.ability_cd <= 0.0
+		draw_rect(ar, Color(0.78, 0.49, 1, 0.08))
+		draw_rect(Rect2(ar.position, Vector2(ar.size.x * (1.0 - p.ability_cd / p.ABILITY_CD), ar.size.y)), Color(0.78, 0.49, 1, 0.35 if ready else 0.15))
+		draw_rect(ar, Color("#c77dff"), false, 2.0)
+		draw_string(font, ar.position + Vector2(8, 21), "[Q] OVERLOAD" + ("  READY" if ready else ""), HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("#c77dff"))
+	# Funk
+	if main.radio_line.size() > 0:
+		var who: String = main.radio_line[0]
+		var col: Color = main.Story.SPEAKERS.get(who, Color.WHITE)
+		var rb := Rect2(sz.x * 0.2, sz.y - 170, sz.x * 0.6, 64)
+		draw_rect(rb, Color(0, 0, 0, 0.55))
+		draw_rect(Rect2(rb.position, Vector2(4, rb.size.y)), col)
+		draw_string(font, rb.position + Vector2(16, 22), "((( " + who, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, col)
+		draw_multiline_string(font, rb.position + Vector2(16, 44), main.radio_line[1], HORIZONTAL_ALIGNMENT_LEFT, rb.size.x - 30, 16, -1, Color.WHITE)
 	draw_string(font, Vector2(30, 34), "Memory shards: %d/5" % main.shards, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#c77dff"))
 	if main.objective != "":
 		draw_string(font, Vector2(0, 34), main.objective, HORIZONTAL_ALIGNMENT_RIGHT, sz.x - 30, 16, Color(1, 1, 1, 0.85))

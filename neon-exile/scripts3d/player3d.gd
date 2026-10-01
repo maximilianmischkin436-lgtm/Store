@@ -23,7 +23,20 @@ var inv := 0.0
 var shoot_cd := 0.0
 var bob := 0.0
 var recoil := 0.0
-var gun_base := Vector3(0.24, -0.22, -0.45)
+var gun_base := Vector3(0.2, -0.17, -0.32)
+# Waffen: Name, Farbe, Feuerrate, Schaden, Kugeln pro Schuss, Streuung, Reichweite, durchschlagend, automatisch
+const WEAPONS := [
+	{"name": "PULSE RIFLE", "col": Color("#38f5c4"), "rate": 0.13, "dmg": 1, "pellets": 1, "spread": 0.008, "range": 90.0, "pierce": false, "auto": true},
+	{"name": "SCATTER GUN", "col": Color("#ff9f3d"), "rate": 0.62, "dmg": 1, "pellets": 9, "spread": 0.075, "range": 26.0, "pierce": false, "auto": false},
+	{"name": "RAIL CANNON", "col": Color("#c77dff"), "rate": 1.0, "dmg": 7, "pellets": 1, "spread": 0.0, "range": 120.0, "pierce": true, "auto": false},
+]
+var unlocked := [true, false, false]
+var weapon := 0
+var ability_unlocked := false
+var ability_cd := 0.0
+const ABILITY_CD := 8.0
+var glow_mat: StandardMaterial3D
+var swap_t := 0.0
 
 func _ready() -> void:
 	collision_layer = 2
@@ -47,12 +60,20 @@ func _ready() -> void:
 func _build_gun() -> void:
 	gun = Node3D.new()
 	gun.position = gun_base
+	gun.scale = Vector3.ONE * 0.6
 	cam.add_child(gun)
+	# schwaches Licht am Spieler, damit Waffe und nahe Waende sichtbar sind
+	var lamp := OmniLight3D.new()
+	lamp.light_color = Color("#9fe8ff")
+	lamp.light_energy = 0.8
+	lamp.omni_range = 7.0
+	cam.add_child(lamp)
 	var dark := StandardMaterial3D.new()
 	dark.albedo_color = Color(0.3, 0.3, 0.4)
 	dark.metallic = 0.8
 	dark.roughness = 0.3
 	var glow := StandardMaterial3D.new()
+	glow_mat = glow
 	glow.albedo_color = Color.BLACK
 	glow.emission_enabled = true
 	glow.emission = Color("#38f5c4")
@@ -76,6 +97,22 @@ func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		yaw -= e.relative.x * sens
 		pitch = clampf(pitch - e.relative.y * sens, -1.45, 1.45)
+	if e is InputEventMouseButton and e.pressed and e.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+		var dir := 1 if e.button_index == MOUSE_BUTTON_WHEEL_DOWN else -1
+		for i in range(1, 4):
+			var n := posmod(weapon + dir * i, 3)
+			if unlocked[n]:
+				select_weapon(n)
+				break
+
+func select_weapon(n: int) -> void:
+	if not unlocked[n] or n == weapon:
+		return
+	weapon = n
+	swap_t = 0.25
+	shoot_cd = maxf(shoot_cd, 0.2)
+	glow_mat.emission = WEAPONS[n].col
+	gun.scale = [Vector3(1, 1, 1), Vector3(1.5, 1.3, 0.75), Vector3(0.8, 0.8, 1.4)][n] * 0.6
 
 func _physics_process(delta: float) -> void:
 	inv = maxf(0.0, inv - delta)
@@ -112,14 +149,28 @@ func _physics_process(delta: float) -> void:
 	if moving:
 		bob += delta * 11.0
 	head.position.y = lerpf(head.position.y, 1.6 + (sin(bob) * 0.05 if moving else 0.0), minf(1.0, delta * 12.0))
-	gun.position = gun_base + Vector3(sin(bob * 0.5) * 0.012, abs(sin(bob * 0.5)) * -0.012, recoil * 0.07)
+	swap_t = maxf(0.0, swap_t - delta)
+	ability_cd = maxf(0.0, ability_cd - delta)
+	for i in 3:
+		if Input.is_action_just_pressed("weapon%d" % (i + 1)):
+			select_weapon(i)
+	if ability_unlocked and Input.is_action_just_pressed("ability") and ability_cd <= 0.0:
+		ability_cd = ABILITY_CD
+		main.overload(global_position)
+	gun.position = gun_base + Vector3(sin(bob * 0.5) * 0.012, abs(sin(bob * 0.5)) * -0.012 - swap_t * 0.6, recoil * 0.07)
 	gun.rotation.x = recoil * 0.12
-	if Input.is_action_pressed("shoot") and shoot_cd <= 0.0:
-		shoot_cd = 0.13
-		recoil = 1.0
-		var spread := Vector3(randf_range(-1, 1), randf_range(-1, 1), 0) * 0.008
-		var fwd := (-cam.global_basis.z + cam.global_basis * spread).normalized()
-		main.player_shoot(cam.global_position, fwd, muzzle.global_position)
+	var wd: Dictionary = WEAPONS[weapon]
+	var trigger := Input.is_action_pressed("shoot") if wd.auto else Input.is_action_just_pressed("shoot")
+	if trigger and shoot_cd <= 0.0:
+		shoot_cd = wd.rate
+		recoil = 1.0 if weapon == 0 else 2.2
+		for i in wd.pellets:
+			var spread: Vector3 = Vector3(randf_range(-1, 1), randf_range(-1, 1), 0) * float(wd.spread)
+			var fwd: Vector3 = (-cam.global_basis.z + cam.global_basis * spread).normalized()
+			main.player_shoot(cam.global_position, fwd, muzzle.global_position, wd)
+		if weapon > 0:
+			main.shake(0.12 if weapon == 1 else 0.2)
+			velocity -= -cam.global_basis.z * (3.0 if weapon == 1 else 5.0)
 
 func center() -> Vector3:
 	return global_position + Vector3(0, 0.9, 0)

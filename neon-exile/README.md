@@ -18,6 +18,8 @@ Aktueller Stand: **Kapitel 1 "The Sump"** ist komplett spielbar (Story, 2 Gegner
 | Leertaste | Springen (über die Schockwellen des Bosses!) |
 | Shift | Dash (kurz unverwundbar) |
 | E / Enter / Klick | Dialog weiter, nach dem Tod neu starten |
+| 1 / 2 / 3 oder Mausrad | Waffe wechseln (Pulse, Scatter, Rail) |
+| Q | Fähigkeit OVERLOAD (Schockwelle) |
 | Esc | Maus freigeben (Klick fängt sie wieder) |
 
 ## Aufbau
