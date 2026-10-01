@@ -42,6 +42,8 @@ func setup(m, r: String) -> void:
 	main = m
 	role = r
 	theme = m.ch.theme
+	if theme == "crown":
+		theme = ["pool", "mall", "office", "school"][randi() % 4]
 	rng.seed = randi()
 	if role == "hostile":
 		hp = 4

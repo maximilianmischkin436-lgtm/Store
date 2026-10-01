@@ -47,6 +47,11 @@ func setup(chapter: Dictionary) -> void:
 			wall_mat = _surf(1, Color(0.78, 0.72, 0.42), Color(0.68, 0.6, 0.32), Color(0.45, 0.4, 0.25), 0.4)
 			floor_mat = _surf(2, Color(0.55, 0.5, 0.3), Color(0.42, 0.38, 0.22), Color.WHITE, 1.0)
 			ceil_mat = _surf(5, Color(0.85, 0.83, 0.75), Color(0.6, 0.58, 0.5), Color.WHITE, 1.2)
+		"crown":
+			# die Krone: blasses, endloses Weiss, Kacheln wie im Schwimmbad, aber ohne Wasser
+			wall_mat = _surf(0, Color(0.93, 0.92, 0.95), Color(0.82, 0.8, 0.86), Color(0.75, 0.7, 0.85), 0.9)
+			floor_mat = _surf(3, Color(0.9, 0.89, 0.92), Color(0.7, 0.68, 0.75), Color.WHITE, 0.8)
+			ceil_mat = _surf(5, Color(0.97, 0.96, 0.98), Color(0.85, 0.84, 0.88), Color.WHITE, 1.2)
 		"school":
 			wall_mat = _surf(4, Color(0.9, 0.85, 0.72), Color(0.35, 0.55, 0.5), Color(0.2, 0.3, 0.3), 1.0)
 			floor_mat = _surf(3, Color(0.8, 0.78, 0.7), Color(0.5, 0.35, 0.3), Color.WHITE, 0.6)
@@ -256,9 +261,17 @@ func _decorate() -> void:
 		"mall": _deco_mall()
 		"office": _deco_office()
 		"school": _deco_school()
+		"crown": pass
 		_: _deco_pool()
 	_place_props()
-	_extra_deco()
+	if theme == "crown":
+		# Bruchstuecke aller vorherigen Orte, durcheinander
+		for th in ["pool", "mall", "office", "school"]:
+			theme = th
+			_extra_deco()
+		theme = "crown"
+	else:
+		_extra_deco()
 	_memory_text(Color(0.15, 0.3, 0.45) if theme == "pool" else (Color(1, 0.8, 0.95) if theme == "mall" else Color(0.25, 0.2, 0.1)))
 
 func _deco_pool() -> void:
@@ -611,6 +624,7 @@ const PROPS := {
 	"mall": [["GlamVelvetSofa", 5, 0.9]],
 	"office": [["SheenChair", 9, 1.0]],
 	"school": [["SheenChair", 3, 1.0], ["ToyCar", 3, 0.35]],
+	"crown": [["SheenChair", 3, 1.0], ["ToyCar", 2, 0.35], ["GlamVelvetSofa", 2, 0.9]],
 }
 
 func _aabb_world(n: Node) -> AABB:

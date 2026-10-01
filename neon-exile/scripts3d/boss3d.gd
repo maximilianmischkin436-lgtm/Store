@@ -3,6 +3,7 @@ extends CharacterBody3D
 #  lifeguard  THE LIFEGUARD (Pool): Pfeifen-Schockwellen (springen!), Sprung auf dich, Sog, ruft Ertrunkene
 #  mannequin  LOST & FOUND (Mall): bewegt sich nur, wenn du wegschaust, Einkaufswagen, Muenzregen, Kaeufer
 #  mnemos     MNEMOS (Archiv): Stromausfall + Teleport, Papiersturm, Schubladen-Schlaege, vertauscht deine Steuerung
+#  halcyon    HALCYON (Krone, Finale): Mutter-Gestalt mit Krone, nutzt die Angriffe aller vier Bosse
 #  headmaster THE HEADMASTER (Schule): Nachsitz-Blick (Deckung suchen!), Kreide, Lineal-Schlag, Schulglocke
 
 const Figure = preload("res://scripts3d/figure.gd")
@@ -67,10 +68,14 @@ func _ready() -> void:
 func _build_giant() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5
-	var o := Figure.outfit({"lifeguard": "lifeguard", "mannequin": "mannequin", "headmaster": "teacher"}[kind], rng)
+	var o := Figure.outfit({"lifeguard": "lifeguard", "mannequin": "mannequin", "headmaster": "teacher", "halcyon": "shopper"}[kind], rng)
 	o.height = 2.6
 	if kind == "lifeguard":
 		o.width = 0.85
+	if kind == "halcyon":
+		o.height = 3.2
+		o.shirt = Color(0.96, 0.95, 0.98)
+		o.pants = Color(0.92, 0.9, 0.95)
 	if kind == "headmaster":
 		o.height = 2.9
 		o.shirt = Color(0.18, 0.16, 0.15)
@@ -80,7 +85,32 @@ func _build_giant() -> void:
 	# alle zu lange Arme
 	for sd in [-1, 1]:
 		P["el%d" % sd].scale = Vector3(1, 1.6, 1)
-	if kind == "headmaster":
+	if kind == "halcyon":
+		# Krone aus leuchtenden Erinnerungs-Splittern + langer Schleier
+		var crown_m := Figure.mat(Color(1, 0.95, 0.8), 1.0, 0.2)
+		crown_m.emission_enabled = true
+		crown_m.emission = Color(1, 0.9, 0.7)
+		crown_m.emission_energy_multiplier = 2.5
+		for i in 9:
+			var a := i * TAU / 9.0
+			var sp := MeshInstance3D.new()
+			sp.mesh = Figure.box(0.05, 0.28 + (i % 2) * 0.14, 0.05)
+			sp.material_override = crown_m
+			sp.position = Vector3(cos(a) * 0.15, 0.3, sin(a) * 0.15)
+			sp.rotation = Vector3(sin(a) * 0.3, 0, -cos(a) * 0.3)
+			P.head.add_child(sp)
+		var veil := MeshInstance3D.new()
+		veil.mesh = Figure.box(0.5, 1.4, 0.02)
+		var vm := Figure.mat(Color(1, 1, 1), 0.35)
+		veil.material_override = vm
+		veil.position = Vector3(0, -0.5, 0.18)
+		P.head.add_child(veil)
+		var halo := OmniLight3D.new()
+		halo.light_color = Color(1, 0.92, 0.8)
+		halo.light_energy = 1.5
+		halo.omni_range = 8.0
+		P.head.add_child(halo)
+	if kind == "headmaster" or kind == "halcyon":
 		beam = MeshInstance3D.new()
 		var bm := BoxMesh.new()
 		bm.size = Vector3(0.06, 0.06, 1.0)
@@ -178,6 +208,7 @@ func _physics_process(delta: float) -> void:
 		"mannequin": _mannequin(delta, p, to, d)
 		"mnemos": _mnemos(delta, p, to, d)
 		"headmaster": _headmaster(delta, p, to, d)
+		"halcyon": _halcyon(delta, p, to, d)
 	if kind != "mnemos":
 		velocity.y = 0.0 if mode != "jump" else velocity.y
 	move_and_slide()
@@ -366,11 +397,12 @@ func _headmaster(delta: float, p, to: Vector3, d: float) -> void:
 				Figure.walk(P, walk_ph, 0.0)
 			cd -= delta
 			if cd <= 0.0:
-				match _next(["detention", "chalk", "ruler", "detention", "bell"]):
+				match _next(["detention", "chalk", "ruler", "bell", "chalk", "detention", "ruler"]):
 					"detention":
 						mode = "gaze"
-						mode_t = 3.5
+						mode_t = 4.0
 						gaze = 0.0
+						_raise_boards(p, dir)
 						main.banner("LOOK AT ME WHEN I'M TALKING TO YOU", Color("#ff3030"))
 					"chalk":
 						mode = "chalk"
@@ -392,23 +424,32 @@ func _headmaster(delta: float, p, to: Vector3, d: float) -> void:
 						cd = 2.5
 		"gaze":
 			mode_t -= delta
+			detention_cd = maxf(0.0, detention_cd - delta)
 			Figure.walk(P, walk_ph, 0.0)
 			var q := PhysicsRayQueryParameters3D.create(head_pos, p.cam.global_position, 1)
 			var sees: bool = get_world_3d().direct_space_state.intersect_ray(q).is_empty()
-			gaze = minf(1.2, gaze + delta) if sees else maxf(0.0, gaze - delta * 1.5)
+			# Wegschauen (Blick senken) laedt den Blick nur langsam auf, Deckung stoppt ihn ganz
+			var look: Vector3 = -p.cam.global_basis.z
+			var facing: bool = look.dot((head_pos - p.cam.global_position).normalized()) > 0.3
+			var rate: float = 1.0 if facing else 0.3
+			if detention_cd > 0.0:
+				sees = false
+			gaze = minf(GAZE_MAX, gaze + delta * rate) if sees else maxf(0.0, gaze - delta * 2.5)
 			beam.global_position = (head_pos + p.cam.global_position) / 2.0
 			beam.scale.z = head_pos.distance_to(p.cam.global_position)
 			beam.look_at(p.cam.global_position, Vector3.UP)
-			beam.material_override.albedo_color.a = (gaze / 1.2) * 0.8 if sees else 0.1
-			if gaze >= 1.2:
+			beam.material_override.albedo_color.a = (gaze / GAZE_MAX) * 0.8 if sees else 0.05
+			if gaze >= GAZE_MAX:
 				gaze = 0.0
-				p.freeze(1.3)
+				detention_cd = 2.5   # danach kurz Ruhe, kein Dauer-Festhalten
+				p.freeze(0.7)
 				p.hurt(1)
 				main.banner("DETENTION", Color("#ff3030"))
 			if mode_t <= 0.0:
 				beam.material_override.albedo_color.a = 0.0
 				mode = "idle"
-				cd = 1.2
+				cd = 1.6
+				_lower_boards()
 		"chalk":
 			mode_t -= delta
 			if mode_t <= 0.0:
@@ -420,6 +461,133 @@ func _headmaster(delta: float, p, to: Vector3, d: float) -> void:
 				if tp_t <= 0:
 					mode = "idle"
 					cd = 1.4 * _rate()
+
+# ---------------- HALCYON ----------------
+# Benutzt die Angriffe der anderen: Pfeife (springen), Sprung, Ausverkauf-Kreise, Akten-Schlaege,
+# Vergessen (Steuerung vertauscht), Nachsitz-Blick (Tafeln), Kreide, und ruft Geister aller Orte.
+func _halcyon(delta: float, p, to: Vector3, d: float) -> void:
+	var dir := to.normalized()
+	if mode in ["gaze", "chalk"]:
+		_headmaster(delta, p, to, d)
+		return
+	if mode in ["crouch", "jump", "undertow"]:
+		_lifeguard(delta, p, to, d)
+		return
+	_face(dir, delta)
+	if d > 7.0:
+		_walk(delta, dir, 2.2 + phase * 0.8)
+	else:
+		Figure.walk(P, walk_ph, 0.0)
+	# schwebt leicht, Schleier weht
+	visual.position.y = 0.25 + sin(t * 1.5) * 0.15
+	cd -= delta
+	if cd > 0.0:
+		return
+	var lists := [
+		["whistle", "sale", "chalk", "dive", "whistle", "ghosts"],
+		["slam", "detention", "whistle", "forget", "sale", "dive", "ghosts"],
+		["whistle", "slam", "detention", "undertow", "chalk", "forget", "sale", "ghosts"],
+	]
+	match _next(lists[phase]):
+		"whistle":
+			Game.sfx("enemy_attack", 2.0, 1.0)
+			P.sh1.rotation.x = -2.8
+			_ring(16 + phase * 6, 8.0, 0.5)
+			if phase >= 1:
+				get_tree().create_timer(0.7).timeout.connect(func(): if active: _ring(14, 6.5, 0.5))
+			cd = 2.0 * _rate()
+		"dive":
+			mode = "crouch"
+			mode_t = 0.6
+		"undertow":
+			mode = "undertow"
+			mode_t = 2.5
+			main.banner("DON'T GO", Color("#4db8ff"))
+		"sale":
+			main.banner("EVERYTHING YOU LOST", Color("#ffd27a"))
+			for i in 5 + phase * 2:
+				var off := Vector3(randf_range(-6, 6), 0, randf_range(-6, 6)) if i > 0 else Vector3.ZERO
+				main.add_hazard("circle", p.global_position + off, Vector2(2.2, 0), 1.2 + i * 0.1, 0.0, Color(1, 0.8, 0.2))
+			cd = 2.4 * _rate()
+		"slam":
+			for s in ([-0.5, 0.0, 0.5] if phase < 2 else [-0.9, -0.45, 0.0, 0.45, 0.9]):
+				var yaw: float = atan2(-dir.x, -dir.z) + s
+				main.add_hazard("line", Vector3(global_position.x, 0, global_position.z), Vector2(3.0, 34.0), 1.0, yaw, Color(0.9, 0.85, 0.6))
+			cd = 2.0 * _rate()
+		"forget":
+			p.invert_t = 3.0
+			main.banner("FORGET, SWEETHEART", Color("#ffffff"))
+			main.glitch_t = 1.0
+			cd = 1.8
+		"detention":
+			mode = "gaze"
+			mode_t = 3.5
+			gaze = 0.0
+			_raise_boards(p, dir)
+			main.banner("LOOK AT ME", Color("#ff3030"))
+		"chalk":
+			mode = "chalk"
+			mode_t = 0.0
+			tp_t = 3 + phase
+		"ghosts":
+			main.banner("EVERYONE IS HERE, ECHO", Color("#9fd8ff"))
+			for i in 2 + phase:
+				main.spawn_npc("hostile", global_position + Vector3(randf_range(-6, 6), 0, randf_range(-6, 6)))
+			cd = 2.5
+
+# Nachsitzen: Tafeln fahren aus dem Boden hoch, hinter denen man sich verstecken kann
+const GAZE_MAX := 1.8
+var detention_cd := 0.0
+var boards: Array = []
+
+func _raise_boards(p, dir: Vector3) -> void:
+	_lower_boards()
+	var side := dir.cross(Vector3.UP).normalized()
+	var base: Vector3 = p.global_position - dir * 2.5
+	for o in [-4.0, 0.0, 4.0]:
+		var pos: Vector3 = base + side * o + Vector3(randf_range(-0.6, 0.6), 0, randf_range(-0.6, 0.6))
+		if main.level.solid(pos):
+			continue
+		var b := StaticBody3D.new()
+		b.collision_layer = 1
+		var cs := CollisionShape3D.new()
+		var sh := BoxShape3D.new()
+		sh.size = Vector3(2.6, 3.2, 0.25)
+		cs.shape = sh
+		cs.position.y = 1.6
+		b.add_child(cs)
+		var board := MeshInstance3D.new()
+		board.mesh = Figure.box(2.6, 1.9, 0.12)
+		board.material_override = Figure.mat(Color(0.1, 0.22, 0.16), 1.0, 0.8)
+		board.position.y = 2.1
+		b.add_child(board)
+		var frame := MeshInstance3D.new()
+		frame.mesh = Figure.box(2.75, 3.2, 0.08)
+		frame.material_override = Figure.mat(Color(0.45, 0.3, 0.18), 1.0, 0.6)
+		frame.position = Vector3(0, 1.6, 0.06)
+		b.add_child(frame)
+		var lab := Label3D.new()
+		lab.text = ["I WILL NOT BE LATE", "STAY AFTER CLASS", "PAY ATTENTION"][randi() % 3]
+		lab.modulate = Color(0.95, 0.95, 0.9, 0.8)
+		lab.font_size = 40
+		lab.position = Vector3(0, 2.3, -0.07)
+		lab.rotation.y = PI
+		b.add_child(lab)
+		main.add_child(b)
+		b.global_position = pos - Vector3(0, 3.3, 0)
+		b.look_at(b.global_position + dir, Vector3.UP)
+		var tw := b.create_tween()
+		tw.tween_property(b, "global_position:y", 0.0, 0.45).set_trans(Tween.TRANS_BACK)
+		boards.append(b)
+	Game.sfx("land", 0.4, 0.9)
+
+func _lower_boards() -> void:
+	for b in boards:
+		if is_instance_valid(b):
+			var tw: Tween = b.create_tween()
+			tw.tween_property(b, "global_position:y", -3.4, 0.5)
+			tw.tween_callback(b.queue_free)
+	boards.clear()
 
 # Ring aus Kugeln knapp ueber dem Boden (man muss springen)
 func _ring(n: int, sp: float, y: float) -> void:
@@ -440,6 +608,7 @@ func hit(dmg: int, _dir: Vector3) -> void:
 	if hp <= 0:
 		if beam:
 			beam.queue_free()
+			_lower_boards()
 		main.blackout_t = 0.0
 		main.player.invert_t = 0.0
 		main.clear_hazards()

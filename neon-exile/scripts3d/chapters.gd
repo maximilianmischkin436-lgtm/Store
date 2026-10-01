@@ -46,4 +46,15 @@ const CHAPTERS := [
 		"transition": ["The stairs only go up now.", "For the first time, you want to remember.", "Toward the Crown. Toward her."],
 		"memories": ["it's always sunset here", "she waited by the window", "who is picking you up today?", "you were supposed to pick her up", "DON'T FORGET", "she drew you in art class", "everyone went home. she didn't", "you were late"],
 	},
+	{
+		"name": "THE CROWN", "map": "res://data/chapter5.txt", "theme": "crown", "music": "school", "wall_h": 7.0,
+		"objectives": ["Climb into the Crown", "Walk through what's left", "Find the last fragment", "Reach the throne room", "Face HALCYON"],
+		"env": {"sky_top": Color(0.85, 0.85, 0.92), "sky_hor": Color(1.0, 0.97, 0.94), "fog": Color(0.78, 0.76, 0.84), "fog_d": 0.014, "amb": 0.3, "exp": 0.55, "sun": Color(1.0, 0.97, 0.92), "sun_e": 0.5, "sun_rot": Vector3(-1.3, 0.4, 0), "sat": 0.85},
+		"lights": ["#dff6ff", "#ff8fd0", "#fff1b0", "#ffb070"], "light_e": 0.9,
+		"enemy": Color("#f0f0f4"), "drone": Color("#e0e0ea"), "proj": Color("#1a1a2e"),
+		"boss": {"name": "HALCYON", "kind": "halcyon", "proj": Color("#1a1a2e"), "hp": 320, "phase1": "STAY WITH ME", "phase2": "I CAN'T LOSE YOU TWICE"},
+		"next": "",
+		"transition": [],
+		"memories": ["4:40 PM", "you were late", "she kept the light on", "every room is the same day", "HALCYON = MOM", "it's supposed to hurt", "come home", "nobody is left to forget", "wake up, Echo"],
+	},
 ]

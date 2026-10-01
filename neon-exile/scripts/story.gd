@@ -97,6 +97,29 @@ const DIALOG := {
 		["MIRA", "HALCYON is at the top. It's Mom, Echo. It's what's left of her. She made you forget because she couldn't."],
 		["MIRA", "Come up. Let's end this together."],
 	],
+	# ---- Kapitel 5: die Krone, das Ende ----
+	"c5_intro": [
+		["MIRA", "This is the Crown. Everything she couldn't let go of is stored up here."],
+		["ECHO", "The pool. The market. The office. The school. It's all here at once."],
+		["MIRA", "She built the whole city out of the last day. Over and over."],
+	],
+	"c5_shard": [
+		["SYSTEM", "Fragment 5/5. Memory restored: UNIT ECHO."],
+		["ECHO", "I wasn't a machine. I was her son. HALCYON uploaded me after the sirens, so she wouldn't be alone."],
+		["MIRA", "And when you couldn't stop crying, she let you erase the city. Then she erased you."],
+		["ECHO", "She woke me up again. Why?"],
+		["MIRA", "Because she's tired, Echo. She wants someone to decide for her."],
+	],
+	"c5_boss": [
+		["HALCYON", "My boy. You came home late again."],
+		["HALCYON", "Stay. Forget. It doesn't hurt if you forget."],
+		["ECHO", "It's supposed to hurt, Mom."],
+	],
+	"c5_victory": [
+		["HALCYON", "...You're so much older than I remember."],
+		["HALCYON", "Three doors. I can't choose. I never could."],
+		["MIRA", "Whatever you choose, Echo. I'm not afraid anymore."],
+	],
 }
 
 const DIALOG2 := {}
@@ -104,7 +127,7 @@ const DIALOG2 := {}
 const RADIO := {
 	"controls": [["???", "Walk. WASD."]],
 	"pickup_hint": [["???", "There's something on the floor in front of you. Pick it up. E."]],
-	"got_pulse": [["???", "You'll need it. Hold LEFT CLICK. SPACE to jump, twice in the air. SHIFT to dash. CTRL to slide."]],
+	"got_pulse": [["???", "You'll need it. Hold LEFT CLICK. SPACE to jump, twice in the air. SHIFT to dash. CTRL to slide. R to reload."]],
 	"scrap": [["???", "They're not real. Most of them won't even see you. The ones that tilt their heads... those see you."]],
 	"scatter": [["SYSTEM", "SCATTER GUN acquired. Press 2."]],
 	"drop": [["???", "It left something behind. Take it."]],
@@ -128,4 +151,10 @@ const RADIO := {
 	"c4_drones": [["???", "Teachers. If one stares at you for too long... get out of its sight."]],
 	"c4_gate": [["???", "The gym. He's waiting. Hide behind the pillars when he looks at you."]],
 	"c4_exit": [["MIRA", "The stairs go up now. I'll be with you."]],
+	"c5_controls": [["MIRA", "Careful. Up here, every room remembers something different."]],
+	"c5_scrap": [["MIRA", "All of them. Everyone from that day. They're still waiting."]],
+	"c5_drones": [["MIRA", "The ones from every place at once. Don't let them corner you."]],
+	"c5_gate": [["MIRA", "She's behind that gate. She knows every trick the others had."]],
+	"c5_halfway": [["MIRA", "She's slipping. Keep going."]],
+	"c5_exit": [["MIRA", "Choose, Echo. Walk through one of them."]],
 }

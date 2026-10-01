@@ -21,7 +21,7 @@ func _ready() -> void:
 	_button(main_box, "QUIT", func(): get_tree().quit())
 	chap_box = _box()
 	chap_box.visible = false
-	var names := ["1  THE DRAIN", "2  THE NEON MARKET", "3  THE ARCHIVE", "4  AFTER SCHOOL"]
+	var names := ["1  THE DRAIN", "2  THE NEON MARKET", "3  THE ARCHIVE", "4  AFTER SCHOOL", "5  THE CROWN"]
 	for i in names.size():
 		var n := i + 1
 		if n <= Game.max_chapter or DEV_ALL_CHAPTERS:

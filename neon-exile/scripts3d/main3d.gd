@@ -741,8 +741,8 @@ func _process(delta: float) -> void:
 		elif state == "paused":
 			state = "play"
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	if state == "end" and Input.is_action_just_pressed("interact") and chapter < Chapters.CHAPTERS.size():
-		Game.chapter = chapter + 1
+	if state == "end" and Input.is_action_just_pressed("interact"):
+		Game.chapter = mini(chapter + 1, Chapters.CHAPTERS.size())
 		Game.progress = 0
 		Game.continue_game = false
 		Game.write_save()
@@ -1011,14 +1011,23 @@ var exit_node: Node3D
 var trans_t := 0.0
 var trans_lines: Array = []
 
-func _open_exit() -> void:
-	objective = "Go through the door"
-	var c: Vector2i = level.cell_of(boss_spawn)
-	var pos: Vector3 = level.cell_center(Vector2i(mini(c.x + 6, level.w - 3), c.y))
-	exit_node = Node3D.new()
-	exit_node.position = pos
-	add_child(exit_node)
-	var white := _mat(Color(1, 0.97, 0.9), 4.0)
+# Die drei Enden (nur im letzten Kapitel): eine Tuer pro Ende
+const ENDINGS := {
+	"wake": {"title": "ENDING I: WAKE UP", "col": Color(1, 0.97, 0.9), "label": "WAKE UP",
+		"lines": ["You let the Crown go dark.", "One by one, the rooms switch off. The pool. The market. The school.", "Somewhere far below, a real sun comes up.", "You open your eyes. It hurts. It's supposed to."]},
+	"forget": {"title": "ENDING II: FORGET", "col": Color(0.6, 0.85, 1.0), "label": "FORGET",
+		"lines": ["You choose not to remember.", "HALCYON smiles and turns the lights back on.", "The water is very still.", "You wake up on cold tiles. You don't know why you're here."]},
+	"stay": {"title": "ENDING III: STAY", "col": Color(1, 0.75, 0.55), "label": "STAY",
+		"lines": ["You sit down next to her.", "Mira takes your hand. Nobody lets go this time.", "Outside the window it is always 4:40.", "For once, nobody is late."]},
+}
+var ending_doors: Array = []
+var ending := ""
+
+func _exit_door(pos: Vector3, col: Color, label: String) -> Node3D:
+	var door := Node3D.new()
+	door.position = pos
+	add_child(door)
+	var white := _mat(col, 4.0)
 	for part in [[Vector3(-0.9, 1.4, 0), Vector3(0.15, 2.8, 0.15)], [Vector3(0.9, 1.4, 0), Vector3(0.15, 2.8, 0.15)], [Vector3(0, 2.8, 0), Vector3(1.95, 0.15, 0.15)]]:
 		var mi := MeshInstance3D.new()
 		var bm := BoxMesh.new()
@@ -1026,27 +1035,66 @@ func _open_exit() -> void:
 		mi.mesh = bm
 		mi.material_override = white
 		mi.position = part[0]
-		exit_node.add_child(mi)
+		door.add_child(mi)
 	var glow := MeshInstance3D.new()
 	var qm := QuadMesh.new()
 	qm.size = Vector2(1.7, 2.7)
 	glow.mesh = qm
-	var gm := _mat(Color(1, 0.95, 0.85), 2.0)
+	var gm := _mat(col.lerp(Color.WHITE, 0.3), 2.0)
 	gm.cull_mode = BaseMaterial3D.CULL_DISABLED
 	glow.material_override = gm
 	glow.position.y = 1.4
 	glow.rotation.y = PI / 2.0
-	exit_node.add_child(glow)
-	exit_node.rotation.y = PI / 2.0
+	door.add_child(glow)
+	door.rotation.y = PI / 2.0
 	var l := OmniLight3D.new()
-	l.light_color = Color(1, 0.95, 0.85)
+	l.light_color = col
 	l.light_energy = 3.0
 	l.omni_range = 10.0
 	l.position.y = 1.5
-	exit_node.add_child(l)
+	door.add_child(l)
+	if label != "":
+		var lab := Label3D.new()
+		lab.text = label
+		lab.font_size = 64
+		lab.modulate = col
+		lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		lab.position.y = 3.5
+		door.add_child(lab)
+	return door
+
+func _open_exit() -> void:
+	var c: Vector2i = level.cell_of(boss_spawn)
+	if chapter >= Chapters.CHAPTERS.size():
+		objective = "Choose"
+		var ids := ["wake", "forget", "stay"]
+		for i in 3:
+			var cell := Vector2i(mini(c.x + 6, level.w - 3), c.y + (i - 1) * 6)
+			var e: Dictionary = ENDINGS[ids[i]]
+			var dn := _exit_door(level.cell_center(cell), e.col, e.label)
+			ending_doors.append({"node": dn, "id": ids[i]})
+		exit_node = ending_doors[0].node
+		radio(sid("exit"))
+		return
+	objective = "Go through the door"
+	exit_node = _exit_door(level.cell_center(Vector2i(mini(c.x + 6, level.w - 3), c.y)), Color(1, 0.97, 0.9), "")
 	radio(sid("exit"))
 
 func _update_exit(_delta: float) -> void:
+	if not ending_doors.is_empty():
+		for ed in ending_doors:
+			if player.global_position.distance_to(ed.node.position) < 1.6:
+				ending = ed.id
+				for x in ending_doors:
+					x.node.queue_free()
+				ending_doors.clear()
+				exit_node = null
+				state = "transition"
+				trans_t = 0.0
+				trans_lines = ENDINGS[ending].lines
+				Game.sfx("land", 0.3, 1.0)
+				return
+		return
 	if exit_node and player.global_position.distance_to(exit_node.position) < 1.6:
 		exit_node.queue_free()
 		exit_node = null

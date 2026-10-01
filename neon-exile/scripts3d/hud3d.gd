@@ -78,8 +78,8 @@ func _draw() -> void:
 	# VHS-Anzeige wie auf alter Kassette
 	if Game.retro and main.state != "end":
 		var blink := int(Time.get_ticks_msec() / 600) % 2 == 0
-		draw_string(font, Vector2(sz.x - 250, sz.y - 165), ("PLAY  " if blink else "      ") + "\u25B6", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(1, 1, 1, 0.75))
-		draw_string(font, Vector2(sz.x - 250, sz.y - 140), "OCT 01 1998  4:%02d PM" % (int(main.play_time / 60.0) % 60), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.6))
+		draw_string(font, Vector2(sz.x - 250, sz.y - 215), ("PLAY  " if blink else "      ") + "\u25B6", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(1, 1, 1, 0.75))
+		draw_string(font, Vector2(sz.x - 250, sz.y - 190), "OCT 01 1998  4:%02d PM" % (int(main.play_time / 60.0) % 60), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.6))
 	# Schaden: roter Rand
 	if main.hurt_t > 0.0:
 		var a: float = main.hurt_t * 0.8
@@ -131,13 +131,13 @@ func _draw() -> void:
 		if p.perfect[p.weapon]:
 			draw_string(font, Vector2(sz.x - 210, sz.y - 128), "PERFECT +DMG", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
 		if p.reload_t > 0.0:
-			var c := sz / 2.0
+			var rc := sz / 2.0
 			var bw := 160.0
-			var br := Rect2(c.x - bw / 2, c.y + 40, bw, 8)
+			var br := Rect2(rc.x - bw / 2, rc.y + 40, bw, 8)
 			draw_rect(br, Color(0, 0, 0, 0.5))
 			draw_rect(Rect2(br.position.x + bw * p.SWEET_A, br.position.y, bw * (p.SWEET_B - p.SWEET_A), 8), Color(1, 1, 1, 0.35 if p.reload_tried else 0.8))
 			draw_rect(Rect2(br.position.x + bw * p.reload_progress() - 2, br.position.y - 3, 4, 14), wdc.col)
-			draw_string(font, Vector2(0, c.y + 70), "RELOAD  [R] im weissen Feld = PERFEKT", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 13, Color(1, 1, 1, 0.7))
+			draw_string(font, Vector2(0, rc.y + 70), "RELOAD  [R] im weissen Feld = PERFEKT", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 13, Color(1, 1, 1, 0.7))
 		elif am <= 0:
 			draw_string(font, Vector2(0, sz.y / 2.0 + 60), "[R] RELOAD", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 16, Color("#ff4d6d"))
 		if p.charge > 0.0:
@@ -189,10 +189,14 @@ func _draw() -> void:
 		draw_string(font, Vector2(0, sz.y * 0.42), "PAUSED", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 56, Color.WHITE)
 		draw_string(font, Vector2(0, sz.y * 0.42 + 50), "ESC  resume      M  main menu (progress is saved)", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 18, Color(1, 1, 1, 0.7))
 	if main.state == "end":
-		draw_string(font, Vector2(0, sz.y * 0.4 + 130), "Press M for main menu", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 16, Color(1, 1, 1, 0.5))
+		draw_string(font, Vector2(0, sz.y * 0.4 + 130), "Press M for main menu" + ("   -   E: replay the finale" if main.ending != "" else ""), HORIZONTAL_ALIGNMENT_CENTER, sz.x, 16, Color(1, 1, 1, 0.5))
 		draw_rect(Rect2(Vector2.ZERO, sz), Color(0, 0, 0, 0.8))
-		draw_string(font, Vector2(0, sz.y * 0.4), "END OF PART ONE", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 48, Color("#ffd23d"))
-		draw_string(font, Vector2(0, sz.y * 0.4 + 50), "To be continued in " + main.ch.next, HORIZONTAL_ALIGNMENT_CENTER, sz.x, 20, Color.WHITE)
+		if main.ending != "":
+			draw_string(font, Vector2(0, sz.y * 0.4), main.ENDINGS[main.ending].title, HORIZONTAL_ALIGNMENT_CENTER, sz.x, 48, main.ENDINGS[main.ending].col)
+			draw_string(font, Vector2(0, sz.y * 0.4 + 50), "NEON EXILE  -  THE END   (3 endings: try the other doors)", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 20, Color.WHITE)
+		else:
+			draw_string(font, Vector2(0, sz.y * 0.4), "END OF PART ONE", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 48, Color("#ffd23d"))
+			draw_string(font, Vector2(0, sz.y * 0.4 + 50), "To be continued in " + main.ch.next, HORIZONTAL_ALIGNMENT_CENTER, sz.x, 20, Color.WHITE)
 		draw_string(font, Vector2(0, sz.y * 0.4 + 90), "Time: %ds   Deaths: %d" % [int(main.play_time), main.deaths], HORIZONTAL_ALIGNMENT_CENTER, sz.x, 18, Color(1, 1, 1, 0.6))
 	if main.state == "play" and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		draw_string(font, Vector2(0, sz.y * 0.62), "Click to control the camera", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 18, Color(1, 1, 1, 0.7))
