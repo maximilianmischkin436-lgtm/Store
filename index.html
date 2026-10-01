@@ -37,6 +37,43 @@ function view() {
 let best = 0;
 try { best = +localStorage.getItem("neondodge_best") || 0; } catch (e) {}
 
+// --- Savegame (localStorage) ---
+let save = { orbs: 0, bosses: 0, skin: "classic", unlocked: {} };
+try { Object.assign(save, JSON.parse(localStorage.getItem("neondodge_save") || "{}")); } catch (e) {}
+save.unlocked = save.unlocked || {};
+save.unlocked.classic = true;
+function persist() { try { localStorage.setItem("neondodge_save", JSON.stringify(save)); } catch (e) {} }
+
+// --- Skins: jeder Skin wird durch eine Challenge freigeschaltet ---
+const SKINS = [
+  { id: "classic", name: "Classic", color: "#ffffff", shape: "circle", goal: "Unlocked from the start", test: () => true },
+  { id: "ember", name: "Ember", color: "#ff9f3d", shape: "circle", goal: "Collect 100 orbs in total",
+    test: () => save.orbs >= 100, prog: () => Math.min(save.orbs, 100) + "/100" },
+  { id: "mint", name: "Mint", color: "#38f5c4", shape: "diamond", goal: "Reach wave 3 in one run",
+    test: () => wave >= 3 },
+  { id: "violet", name: "Violet", color: "#b45cff", shape: "square", goal: "Get 8 close calls in one run",
+    test: () => nearMiss >= 8 },
+  { id: "sun", name: "Sun", color: "#ffd23d", shape: "star", goal: "Defeat a boss",
+    test: () => save.bosses >= 1 },
+  { id: "ghost", name: "Ghost", color: "#bbbbff", shape: "ring", goal: "Reach a x10 combo",
+    test: () => maxCombo >= 10 },
+  { id: "rainbow", name: "Rainbow", color: "#ffffff", shape: "circle", rainbow: true, goal: "Score 3000 in one run",
+    test: () => score >= 3000 },
+  { id: "frost", name: "Frost", color: "#7ad7ff", shape: "hex", goal: "Defeat 3 bosses in total",
+    test: () => save.bosses >= 3, prog: () => Math.min(save.bosses, 3) + "/3" },
+];
+function currentSkin() { return SKINS.find(k => k.id === save.skin && save.unlocked[k.id]) || SKINS[0]; }
+let newUnlocks = [], banner = null;
+function checkUnlocks() {
+  for (const sk of SKINS) {
+    if (!save.unlocked[sk.id] && sk.test()) {
+      save.unlocked[sk.id] = true; persist(); newUnlocks.push(sk.name);
+      banner = { text: "Skin unlocked: " + sk.name, color: "#ffd23d", t: 3 };
+      beep(1000, 0.3, "sine", 0.08);
+    }
+  }
+}
+
 // --- Audio (kleine Beeps, kein Asset noetig) ---
 let actx = null;
 let muted = false;
@@ -58,8 +95,9 @@ function beep(freq, dur, type = "square", vol = 0.05) {
 const stars = Array.from({ length: 50 }, () => ({ x: Math.random() * W, y: Math.random() * H, z: 0.3 + Math.random() }));
 
 // --- Zustand ---
-let state = "menu";                     // menu | play | over
-let nearMiss = 0, missText = 0, orbsCollected = 0;
+let state = "menu";                     // menu | skins | play | over
+let nearMiss = 0, missText = 0, orbsCollected = 0, maxCombo = 1;
+let boss = null, bossBanner = 0, beamT = 0;
 let paused = false, wave = 1, waveBanner = 0, musicT = 0, musicStep = 0;
 let player, enemies, orbs, powers, particles, score, combo, comboTimer, time, spawnT, orbT, powerT, shieldT, slowT, shake;
 const target = { x: W / 2, y: H * 0.75 };
@@ -70,7 +108,7 @@ function reset() {
   target.x = player.x; target.y = player.y;
   enemies = []; orbs = []; powers = []; particles = [];
   score = 0; combo = 1; comboTimer = 0; time = 0; spawnT = 0; orbT = 0; shake = 0;
-  powerT = 10; shieldT = 0; slowT = 0; nearMiss = 0; missText = 0; orbsCollected = 0; wave = 1; waveBanner = 0; paused = false;
+  powerT = 10; shieldT = 0; slowT = 0; nearMiss = 0; missText = 0; orbsCollected = 0; maxCombo = 1; boss = null; bossBanner = 0; beamT = 0; wave = 1; waveBanner = 0; paused = false;
 }
 reset();
 
@@ -107,8 +145,44 @@ function spawnPower() {
                 kind: Math.random() < 0.5 ? "shield" : "slow" });
 }
 
+const BOSS_COLORS = ["#ff2d55", "#b45cff", "#ff9f3d"];
+function startBoss() {
+  const n = wave / 5 - 1;                        // 0 beim ersten Boss
+  enemies = [];
+  boss = { x: W / 2, y: -60, r: 44, n, hp: 16 + 6 * n, maxhp: 16 + 6 * n, t: 0, fireT: 1.8, pat: 0, hitCd: 0, flash: 0 };
+  bossBanner = 3;
+  beep(80, 0.6, "sawtooth", 0.09);
+}
+
+function bullet(x, y, a, sp) {
+  enemies.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: 6, type: "bullet" });
+}
+function bossFire() {
+  const b = boss, sp = 150 + b.n * 12, aim = Math.atan2(player.y - b.y, player.x - b.x);
+  const p = b.pat++ % 3;
+  if (p === 0) { for (const d of [-0.28, 0, 0.28]) bullet(b.x, b.y, aim + d, sp + 20); }       // gezielter Dreifachschuss
+  else if (p === 1) { const k = 10 + b.n * 2, o = Math.random() * 6; for (let i = 0; i < k; i++) bullet(b.x, b.y, o + i / k * Math.PI * 2, sp - 20); } // Ring
+  else { for (let i = 0; i < 7; i++) bullet(b.x, b.y, Math.PI / 2 + (i - 3) * 0.32, sp); }      // Faecher nach unten
+  beep(200, 0.08, "square", 0.04);
+}
+function damageBoss(d) {
+  if (!boss) return;
+  boss.hp -= d; boss.flash = 0.15; shake = Math.max(shake, 0.08);
+  burst(boss.x + (Math.random() - 0.5) * 40, boss.y + (Math.random() - 0.5) * 40, "#ffd23d", 10);
+  beep(260, 0.08, "sawtooth", 0.06);
+  if (boss.hp <= 0) {
+    const bonus = 500 + boss.n * 250;
+    score += bonus; save.bosses++; persist();
+    burst(boss.x, boss.y, BOSS_COLORS[boss.n % 3], 70); shake = 0.5;
+    banner = { text: "BOSS DEFEATED!  +" + bonus, color: "#ffd23d", t: 3 };
+    enemies = []; shieldT = Math.max(shieldT, 3); boss = null;
+    beep(500, 0.5, "triangle", 0.09);
+  }
+}
+
 function startGame() {
   reset();
+  newUnlocks = []; banner = null;
   state = "play";
   beep(520, 0.12, "triangle");
 }
@@ -118,6 +192,7 @@ function gameOver() {
   shake = 0.4;
   burst(player.x, player.y, "#ff3d6e", 40);
   beep(120, 0.5, "sawtooth", 0.08);
+  checkUnlocks();
   if (score > best) {
     best = Math.floor(score);
     try { localStorage.setItem("neondodge_best", best); } catch (e) {}
@@ -133,15 +208,29 @@ function setTarget(clientX, clientY) {
   target.y = Math.max(0, Math.min(H, (clientY * dpr - v.oy) / v.s));
 }
 canvas.addEventListener("pointermove", e => { if (state === "play") setTarget(e.clientX, e.clientY); });
-function inMuteBtn(clientX, clientY) {
+function toLogical(e) {
   const v = view(), dpr = window.devicePixelRatio || 1;
-  const x = (clientX * dpr - v.ox) / v.s, y = (clientY * dpr - v.oy) / v.s;
-  return x > W - 56 && x < W && y > 36 && y < 80;
+  return { x: (e.clientX * dpr - v.ox) / v.s, y: (e.clientY * dpr - v.oy) / v.s };
+}
+const inRect = (p, x1, y1, x2, y2) => p.x > x1 && p.x < x2 && p.y > y1 && p.y < y2;
+const inMuteBtn = p => inRect(p, W - 56, 36, W, 80);
+const inSkinsBtn = p => inRect(p, 170, 575, 310, 620);
+function skinsClick(p) {
+  if (inRect(p, 170, 640, 310, 684)) { state = "menu"; return; }
+  const i = Math.floor((p.y - 100) / 60);
+  if (i >= 0 && i < SKINS.length && (p.y - 100) % 60 < 52 && p.x > 30 && p.x < W - 30) {
+    const sk = SKINS[i];
+    if (save.unlocked[sk.id]) { save.skin = sk.id; persist(); beep(700, 0.08, "triangle"); }
+    else beep(150, 0.1, "square");
+  }
 }
 canvas.addEventListener("pointerdown", e => {
   touchOffset = e.pointerType === "touch" ? 50 : 0;   // finger should not hide the player
-  if (inMuteBtn(e.clientX, e.clientY)) { setMuted(!muted); return; }
+  const p = toLogical(e);
+  if ((state === "play" || state === "menu") && inMuteBtn(p)) { setMuted(!muted); return; }
   if (paused) { paused = false; return; }
+  if (state === "skins") { skinsClick(p); return; }
+  if ((state === "menu" || state === "over") && inSkinsBtn(p)) { enemies = []; orbs = []; powers = []; particles = []; boss = null; state = "skins"; return; }
   if (state === "menu") { startGame(); setTarget(e.clientX, e.clientY); }
   else if (state === "over" && overT > 0.6) { startGame(); setTarget(e.clientX, e.clientY); }
   else if (state === "play") setTarget(e.clientX, e.clientY);
@@ -151,7 +240,8 @@ addEventListener("blur", () => { if (state === "play") paused = true; });
 document.addEventListener("visibilitychange", () => { if (document.hidden && state === "play") paused = true; });
 addEventListener("keydown", e => {
   keys[e.key.toLowerCase()] = true;
-  if (e.key === "p" || e.key === "P" || e.key === "Escape") togglePause();
+  if (e.key === "Escape" && state === "skins") state = "menu";
+  else if (e.key === "p" || e.key === "P" || e.key === "Escape") togglePause();
   if (e.key === "m" || e.key === "M") setMuted(!muted);
   if ((e.key === " " || e.key === "Enter") && state === "menu") startGame();
   else if ((e.key === " " || e.key === "Enter") && state === "over" && overT > 0.6) startGame();
@@ -181,13 +271,16 @@ function update(dt) {
 
   if (state !== "play") return;
 
-  time += dt;
+  if (!boss) time += dt;                       // waehrend des Bosses steigt die Schwierigkeit nicht
   score += dt * 5 * combo;
   music(dt);
   waveBanner = Math.max(0, waveBanner - dt);
   missText = Math.max(0, missText - dt);
+  bossBanner = Math.max(0, bossBanner - dt);
+  beamT = Math.max(0, beamT - dt);
+  if (banner) { banner.t -= dt; if (banner.t <= 0) banner = null; }
   const w = 1 + Math.floor(time / 20);
-  if (w > wave) { wave = w; waveBanner = 2; score += 100; beep(700, 0.3, "sine", 0.07); }
+  if (w > wave) { wave = w; waveBanner = 2; score += 100; beep(700, 0.3, "sine", 0.07); if (wave % 5 === 0 && !boss) startBoss(); }
 
   // Tastatursteuerung bewegt das Ziel
   const k = 340 * dt;
@@ -205,15 +298,28 @@ function update(dt) {
 
   // Spawns werden mit der Zeit haeufiger
   spawnT -= dt;
-  if (spawnT <= 0) { spawnEnemy(); spawnT = Math.max(0.18, 0.75 - time * 0.012); }
+  if (spawnT <= 0 && !boss) { spawnEnemy(); spawnT = Math.max(0.18, 0.75 - time * 0.012); }
   orbT -= dt;
-  if (orbT <= 0) { spawnOrb(); orbT = 1.1; }
+  if (orbT <= 0) { spawnOrb(); orbT = boss ? 0.9 : 1.1; }
 
   powerT -= dt;
   if (powerT <= 0) { spawnPower(); powerT = 11 + Math.random() * 5; }
   shieldT = Math.max(0, shieldT - dt);
   slowT = Math.max(0, slowT - dt);
   const edt = slowT > 0 ? dt * 0.4 : dt;       // Zeitlupe wirkt nur auf Gegner
+
+  if (boss) {
+    boss.t += edt;
+    boss.y += (190 - boss.y) * Math.min(1, 2 * edt);
+    boss.x = W / 2 + Math.sin(boss.t * 0.7) * 150;
+    boss.hitCd = Math.max(0, boss.hitCd - dt); boss.flash = Math.max(0, boss.flash - dt);
+    boss.fireT -= edt;
+    if (boss.fireT <= 0 && boss.y > 150) { bossFire(); boss.fireT = Math.max(0.55, 1.4 - boss.n * 0.12); }
+    if (Math.hypot(boss.x - player.x, boss.y - player.y) < boss.r + player.r - 2) {
+      if (shieldT > 0) { if (boss.hitCd <= 0) { boss.hitCd = 1; damageBoss(2); } }
+      else { gameOver(); return; }
+    }
+  }
 
   for (const e of enemies) {
     if (e.type === "seeker") {
@@ -228,12 +334,12 @@ function update(dt) {
         e.dead = true; score += 25 * combo; burst(e.x, e.y, "#4da3ff", 18); shake = 0.12; beep(300, 0.12, "sawtooth");
       } else { gameOver(); return; }
     }
-    else if (!e.missed && e.type !== "seeker" && Math.hypot(e.x - player.x, e.y - player.y) < e.r + player.r + 22) {
+    else if (!e.missed && e.type !== "seeker" && e.type !== "bullet" && Math.hypot(e.x - player.x, e.y - player.y) < e.r + player.r + 22) {
       e.missed = true; nearMiss++; missText = 0.8; score += 15 * combo; beep(900, 0.05, "square", 0.03);
     }
     if (e.type === "seeker" && e.age > 9) e.dead = true;   // Seeker loesen sich auf
   }
-  enemies = enemies.filter(e => !e.dead && e.x > -60 && e.x < W + 60 && e.y < H + 60);
+  enemies = enemies.filter(e => !e.dead && e.x > -60 && e.x < W + 60 && e.y < H + 60 && e.y > -90);
 
   for (const pw of powers) {
     pw.life -= dt;
@@ -251,7 +357,9 @@ function update(dt) {
     if (Math.hypot(o.x - player.x, o.y - player.y) < o.r + player.r + 4) {
       o.life = 0;
       score += 50 * combo;
-      combo = Math.min(combo + 1, 10); orbsCollected++;
+      combo = Math.min(combo + 1, 10); maxCombo = Math.max(maxCombo, combo); orbsCollected++;
+      save.orbs++; persist();
+      if (boss) { damageBoss(2); beamT = 0.12; }
       comboTimer = 3;
       burst(o.x, o.y, "#38f5c4", 12);
       beep(600 + combo * 60, 0.1, "triangle");
@@ -260,9 +368,32 @@ function update(dt) {
   orbs = orbs.filter(o => o.life > 0);
 
   if (comboTimer > 0) { comboTimer -= dt; if (comboTimer <= 0) combo = 1; }
+  checkUnlocks();
 }
 
 // --- Zeichnen ---
+function drawSkin(sk, x, y, r) {
+  const c = sk.rainbow ? "hsl(" + (performance.now() / 8 % 360) + ",90%,65%)" : sk.color;
+  glow(c, 22); ctx.fillStyle = c; ctx.strokeStyle = c; ctx.lineWidth = 3;
+  ctx.beginPath();
+  const poly = (n, rot, ro, ri) => {
+    for (let i = 0; i < n * (ri ? 2 : 1); i++) {
+      const rr = ri && i % 2 ? ri : ro, a = rot + i * Math.PI / (ri ? n : n / 2);
+      ctx[i ? "lineTo" : "moveTo"](x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+    }
+    ctx.closePath();
+  };
+  switch (sk.shape) {
+    case "ring": ctx.arc(x, y, r - 1.5, 0, Math.PI * 2); ctx.stroke(); break;
+    case "square": ctx.rect(x - r * 0.85, y - r * 0.85, r * 1.7, r * 1.7); ctx.fill(); break;
+    case "diamond": poly(4, 0, r * 1.15); ctx.fill(); break;
+    case "star": poly(5, -Math.PI / 2, r * 1.3, r * 0.55); ctx.fill(); break;
+    case "hex": poly(6, 0, r * 1.1); ctx.fill(); break;
+    default: ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.shadowBlur = 0;
+}
+
 function glow(color, blur) { ctx.shadowColor = color; ctx.shadowBlur = blur; }
 function circle(x, y, r, color, blur = 14) {
   glow(color, blur); ctx.fillStyle = color;
@@ -307,13 +438,23 @@ function draw() {
   }
   ctx.globalAlpha = 1;
   for (const e of enemies) {
-    const c = e.type === "seeker" ? "#ff9f3d" : e.type === "tank" ? "#b45cff" : "#ff3d6e";
+    const c = e.type === "seeker" ? "#ff9f3d" : e.type === "tank" ? "#b45cff" : e.type === "bullet" ? "#ff7a9a" : "#ff3d6e";
     circle(e.x, e.y, e.r, c, 16);
+  }
+  if (boss) {
+    const bc = boss.flash > 0 ? "#ffffff" : BOSS_COLORS[boss.n % 3];
+    circle(boss.x, boss.y, boss.r + Math.sin(boss.t * 4) * 2, bc, 30);
+    circle(boss.x - 15, boss.y - 6, 7, "#0a0a14", 0); circle(boss.x + 15, boss.y - 6, 7, "#0a0a14", 0);
+    ctx.fillStyle = "#0a0a14"; ctx.fillRect(boss.x - 16, boss.y + 14, 32, 5);
+    if (beamT > 0) {
+      ctx.strokeStyle = "rgba(255,210,61," + beamT * 6 + ")"; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(player.x, player.y); ctx.lineTo(boss.x, boss.y); ctx.stroke();
+    }
   }
   for (const p of particles) { ctx.globalAlpha = Math.max(0, p.life / 0.6); circle(p.x, p.y, 3, p.color, 8); }
   ctx.globalAlpha = 1;
   if (state !== "over") {
-    circle(player.x, player.y, player.r, "#ffffff", 22);
+    drawSkin(currentSkin(), player.x, player.y, player.r);
     if (shieldT > 0) {
       glow("#4da3ff", 16); ctx.strokeStyle = "#4da3ff"; ctx.lineWidth = 3;
       ctx.globalAlpha = shieldT < 1.5 && Math.floor(shieldT * 8) % 2 ? 0.3 : 1;
@@ -332,7 +473,13 @@ function draw() {
     if (missText > 0) { ctx.globalAlpha = missText; text("CLOSE CALL +" + 15 * combo, W / 2, 150, 16, "#ffd23d"); ctx.globalAlpha = 1; }
     text("Best " + best, W - 14, 28, 16, "#8888aa", "right");
     text("Wave " + wave, W / 2, 110, 14, "#8888aa");
-    if (waveBanner > 0) { ctx.globalAlpha = Math.min(1, waveBanner); text("WAVE " + wave + "!  +100", W / 2, 200, 30, "#ffd23d"); ctx.globalAlpha = 1; }
+    if (waveBanner > 0) { ctx.globalAlpha = Math.min(1, waveBanner); text("WAVE " + wave + "!  +100", W / 2, 290, 30, "#ffd23d"); ctx.globalAlpha = 1; }
+    if (bossBanner > 0) { ctx.globalAlpha = Math.min(1, bossBanner); text("BOSS FIGHT!", W / 2, 330, 36, "#ff2d55"); text("Collect orbs to hit the boss", W / 2, 358, 16, "#ffd23d"); ctx.globalAlpha = 1; }
+    if (banner) { ctx.globalAlpha = Math.min(1, banner.t); text(banner.text, W / 2, 400, 22, banner.color); ctx.globalAlpha = 1; }
+    if (boss) {
+      ctx.fillStyle = "rgba(255,255,255,0.12)"; ctx.fillRect(W / 2 - 120, 126, 240, 8);
+      ctx.fillStyle = BOSS_COLORS[boss.n % 3]; ctx.fillRect(W / 2 - 120, 126, 240 * Math.max(0, boss.hp) / boss.maxhp, 8);
+    }
     if (shieldT > 0) { ctx.fillStyle = "#4da3ff"; ctx.fillRect(14, 20, 80 * shieldT / 5, 6); text("Shield", 14, 44, 12, "#4da3ff", "left"); }
     if (slowT > 0) { ctx.fillStyle = "#ffd23d"; ctx.fillRect(14, 58, 80 * slowT / 5, 6); text("Slow-mo", 14, 82, 12, "#ffd23d", "left"); }
   } else if (state === "menu") {
@@ -343,6 +490,9 @@ function draw() {
     text("Tap / click to start", W / 2, 450, 22);
     text("Mouse, touch or arrows/WASD  (P = Pause)", W / 2, 472, 15, "#8888aa");
     if (best) text("Best " + best, W / 2, 540, 22, "#8888aa");
+    skinsButton();
+  } else if (state === "skins") {
+    drawSkinsScreen();
   } else {
     text("GAME OVER", W / 2, 260, 48, "#ff3d6e");
     text("Score " + Math.floor(score), W / 2, 330, 32);
@@ -350,11 +500,35 @@ function draw() {
     text("Time " + Math.floor(time) + "s   Wave " + wave, W / 2, 410, 16, "#8888aa");
     text("Orbs " + orbsCollected + "   Close calls " + nearMiss, W / 2, 434, 16, "#8888aa");
     if (overT > 0.6) text("Tap to try again", W / 2, 490, 20);
+    if (newUnlocks.length) text("Unlocked: " + newUnlocks.join(", "), W / 2, 540, 18, "#ffd23d");
+    skinsButton();
   }
 }
 
+function skinsButton() {
+  ctx.strokeStyle = "#8888aa"; ctx.lineWidth = 2; ctx.strokeRect(170, 575, 140, 45);
+  text("SKINS", W / 2, 606, 20, "#ffffff");
+}
+function drawSkinsScreen() {
+  text("SKINS", W / 2, 66, 36);
+  const done = SKINS.filter(k => save.unlocked[k.id]).length;
+  text(done + "/" + SKINS.length + " unlocked", W / 2, 90, 14, "#8888aa");
+  SKINS.forEach((sk, i) => {
+    const y = 100 + i * 60, open = !!save.unlocked[sk.id], on = save.skin === sk.id && open;
+    ctx.fillStyle = on ? "rgba(56,245,196,0.12)" : "rgba(255,255,255,0.05)"; ctx.fillRect(30, y, W - 60, 52);
+    ctx.strokeStyle = on ? "#38f5c4" : "rgba(255,255,255,0.1)"; ctx.lineWidth = 2; ctx.strokeRect(30, y, W - 60, 52);
+    ctx.globalAlpha = open ? 1 : 0.25; drawSkin(sk, 66, y + 26, 13); ctx.globalAlpha = 1;
+    text(sk.name, 100, y + 23, 18, open ? "#ffffff" : "#8888aa", "left");
+    text(sk.goal, 100, y + 42, 12, open ? "#8888aa" : "#ffd23d", "left");
+    const right = on ? "EQUIPPED" : open ? "TAP TO USE" : (sk.prog ? sk.prog() : "LOCKED");
+    text(right, W - 44, y + 31, 12, on ? "#38f5c4" : "#8888aa", "right");
+  });
+  ctx.strokeStyle = "#8888aa"; ctx.lineWidth = 2; ctx.strokeRect(170, 640, 140, 44);
+  text("BACK", W / 2, 670, 20);
+}
+
 function drawOverlay() {
-  if (state !== "over") text(muted ? "Sound off (M)" : "Sound on (M)", W - 14, 62, 13, "#8888aa", "right");
+  if (state === "play" || state === "menu") text(muted ? "Sound off (M)" : "Sound on (M)", W - 14, 62, 13, "#8888aa", "right");
   if (paused) {
     ctx.fillStyle = "rgba(10,10,20,0.75)"; ctx.fillRect(0, 0, W, H);
     text("PAUSE", W / 2, 330, 48);
