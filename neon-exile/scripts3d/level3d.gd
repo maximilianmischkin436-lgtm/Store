@@ -606,10 +606,10 @@ func dream_update(delta: float, player_pos: Vector3, t: float) -> void:
 
 # ---------- echte 3D-Modelle (Khronos glTF Sample Assets) ----------
 const PROPS := {
-	"pool": [["ToyCar", 3, 0.35], ["BoomBox", 1, 0.45]],
-	"mall": [["GlamVelvetSofa", 5, 0.9], ["BoomBox", 2, 0.45]],
-	"office": [["SheenChair", 9, 1.0], ["BoomBox", 1, 0.45]],
-	"school": [["SheenChair", 3, 1.0], ["ToyCar", 3, 0.35], ["BoomBox", 2, 0.45]],
+	"pool": [["ToyCar", 3, 0.35]],
+	"mall": [["GlamVelvetSofa", 5, 0.9]],
+	"office": [["SheenChair", 9, 1.0]],
+	"school": [["SheenChair", 3, 1.0], ["ToyCar", 3, 0.35]],
 }
 
 func _aabb_world(n: Node) -> AABB:

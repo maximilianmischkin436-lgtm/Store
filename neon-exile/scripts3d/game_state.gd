@@ -59,7 +59,7 @@ func play_music(track: String) -> void:
 	if track == current_track:
 		return
 	current_track = track
-	music.stream = load("res://assets/music/%s.wav" % track)
+	music.stream = load("res://assets/music/%s.ogg" % track)
 	music.play()
 
 func sfx(name: String, pitch: float = 1.0, vol: float = 1.0) -> void:

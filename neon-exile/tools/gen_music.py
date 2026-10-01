@@ -211,4 +211,7 @@ mall("assets/music/mall.wav", 40)
 office("assets/music/office.wav", 30)
 school("assets/music/school.wav", 36)
 ambient("assets/music/dream.wav", 48, [[57, 60, 64, 71], [53, 57, 60, 67], [48, 55, 59, 64], [55, 59, 62, 66]])
+import subprocess, glob, os
+for f in glob.glob("assets/music/*.wav"):
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", f, "-c:a", "libvorbis", "-q:a", "3", f[:-4] + ".ogg"]); os.remove(f)
 print("ok")
