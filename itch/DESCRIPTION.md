@@ -6,7 +6,7 @@
 **Viewport size:** 480 x 720 (portrait). Enable "Mobile friendly" and "Fullscreen button".
 **Genre:** Action, **Tags:** arcade, neon, dodge, endless, highscore, mobile, casual, singleplayer
 **Pricing:** "$0 or donate" or a fixed price
-**Cover image:** itch/cover.png (630x500), **Screenshots:** itch/screenshot1.png
+**Cover image:** itch/cover.png (630x500), **Screenshots:** itch/shots/*.png (upload 5)
 
 ## Description
 Neon Dodge is a fast arcade game for quick sessions.
