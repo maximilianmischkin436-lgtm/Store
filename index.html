@@ -659,6 +659,132 @@ function update(dt) {
 
 // --- Zeichnen ---
 const POWER = { shield: { c: "#4da3ff", l: "S" }, slow: { c: "#ffd23d", l: "Z" }, bomb: { c: "#ff4df0", l: "B" } };
+// --- Boss-Aussehen: jeder der 10 Bosse hat eine eigene Form ---
+function shape(pts, color, blur) {
+  glow(color, blur); ctx.fillStyle = color; ctx.beginPath();
+  pts.forEach((p, i) => ctx[i ? "lineTo" : "moveTo"](p[0], p[1]));
+  ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
+}
+function ngon(x, y, n, r, rot, inner) {           // Vieleck oder Stern (mit inner-Radius)
+  const pts = [], m = inner ? n * 2 : n;
+  for (let i = 0; i < m; i++) {
+    const rr = inner && i % 2 ? inner : r, a = rot + i * Math.PI * 2 / m;
+    pts.push([x + Math.cos(a) * rr, y + Math.sin(a) * rr]);
+  }
+  return pts;
+}
+function eyes(x, y, k, gap, size, angry) {
+  for (const sx of [-1, 1]) {
+    circle(x + sx * gap * k, y, size * k, "#0a0a14", 0);
+    circle(x + sx * gap * k + 2 * k, y - 2 * k, size * 0.35 * k, "#ffffff", 0);
+    if (angry) {
+      ctx.strokeStyle = "#0a0a14"; ctx.lineWidth = 4 * k; ctx.beginPath();
+      ctx.moveTo(x + sx * (gap + size + 3) * k, y - (size + 7) * k); ctx.lineTo(x + sx * (gap - size) * k, y - (size + 1) * k); ctx.stroke();
+    }
+  }
+}
+function drawBoss(b, c, k) {
+  const x = b.x, y = b.y, r = b.r, t = b.t, ph = b.phase, dark = "#0a0a14";
+  const aim = Math.atan2(player.y - y, player.x - x);
+  switch (b.n) {
+    case 0: {                                       // Pulse: Herzschlag-Ringe
+      for (let i = 0; i < 3; i++) {
+        const q = (t * 0.8 + i / 3) % 1;
+        ctx.strokeStyle = c; ctx.globalAlpha = 1 - q; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(x, y, r + q * 40, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      circle(x, y, r * (1 + Math.max(0, Math.sin(t * 6)) * 0.08), c, 30);
+      eyes(x, y - 6 * k, k, 15, 7, ph >= 2);
+      ctx.fillStyle = dark; ctx.fillRect(x - 16 * k, y + 14 * k, 32 * k, 5);
+      break;
+    }
+    case 1: {                                       // Spinner: rotierender Shuriken
+      shape(ngon(x, y, 4, r * 1.25, t * (3 + ph), r * 0.45), c, 30);
+      circle(x, y, r * 0.42, dark, 0);
+      circle(x + Math.cos(aim) * 6, y + Math.sin(aim) * 6, r * 0.18, c, 10);
+      break;
+    }
+    case 2: {                                       // Sweeper: breiter Gleiter mit Visier
+      const w = r * 1.6, h = r * 0.7;
+      shape([[x - w, y], [x - w * 0.6, y - h], [x + w * 0.6, y - h], [x + w, y], [x + w * 0.6, y + h], [x - w * 0.6, y + h]], c, 30);
+      ctx.fillStyle = dark; ctx.fillRect(x - w * 0.7, y - 7, w * 1.4, 14);
+      const sx = x + Math.sin(t * 3) * w * 0.55;
+      circle(sx, y, 6, "#ff2d55", 16);
+      break;
+    }
+    case 3: {                                       // Hunter: Dreieck, das auf dich zielt
+      shape(ngon(x, y, 3, r * 1.25, aim), c, 30);
+      ctx.save(); ctx.translate(x, y); ctx.rotate(aim);
+      ctx.fillStyle = dark; ctx.beginPath(); ctx.ellipse(r * 0.15, 0, r * 0.35, r * 0.12, 0, 0, Math.PI * 2); ctx.fill();
+      circle(r * 0.25, 0, 5, "#ffffff", 8);
+      ctx.restore();
+      break;
+    }
+    case 4: {                                       // Prism: Kristall aus zwei Sechsecken
+      shape(ngon(x, y, 6, r * 1.15, t * 0.6), c, 30);
+      shape(ngon(x, y, 6, r * 0.75, -t * 0.9), "#ffffff", 0);
+      shape(ngon(x, y, 3, r * 0.5, t * 1.5), c, 10);
+      break;
+    }
+    case 5: {                                       // Rain: Gewitterwolke
+      for (const [dx, dy, rr] of [[-30, 8, 0.6], [30, 8, 0.6], [-14, -12, 0.7], [16, -14, 0.65], [0, 10, 0.75]])
+        circle(x + dx * k, y + dy * k, r * rr, c, 26);
+      for (let i = -2; i <= 2; i++) {                 // Tropfen
+        const dy = ((t * 60 + i * 23) % 40);
+        circle(x + i * 16 * k, y + r * 0.8 + dy, 3, c, 6);
+      }
+      eyes(x, y + 2 * k, k, 13, 6, ph >= 1);
+      break;
+    }
+    case 6: {                                       // Vortex: rotierende Spiralarme
+      ctx.strokeStyle = c; ctx.lineWidth = 7; glow(c, 20);
+      for (let a = 0; a < 3; a++) {
+        ctx.beginPath();
+        for (let q = 0; q <= 1; q += 0.05) {
+          const ang = t * (2 + ph) + a * 2.094 + q * 3.5, rr = r * 0.3 + q * r * 1.05;
+          ctx[q ? "lineTo" : "moveTo"](x + Math.cos(ang) * rr, y + Math.sin(ang) * rr);
+        }
+        ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+      circle(x, y, r * 0.42, dark, 0);
+      circle(x, y, r * 0.2, c, 20);
+      break;
+    }
+    case 7: {                                       // Dasher: Pfeil, der in Dash-Richtung zeigt
+      const dir = b.mode === "dash" ? Math.atan2(b.vy, b.vx) : aim;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(dir);
+      shape([[r * 1.4, 0], [-r * 0.7, -r * 0.9], [-r * 0.3, 0], [-r * 0.7, r * 0.9]], c, 30);
+      ctx.restore();
+      if (b.mode === "dash") for (let i = 1; i < 4; i++) { ctx.globalAlpha = 0.25 / i; circle(x - b.vx * 0.03 * i, y - b.vy * 0.03 * i, r * 0.8, c, 0); }
+      ctx.globalAlpha = 1;
+      eyes(x, y - 4, k, 10, 5, true);
+      break;
+    }
+    case 8: {                                       // Hydra: Koerper mit drei Koepfen
+      const heads = [-0.9, 0, 0.9].map((o, i) => [x + Math.sin(o) * r * 1.25, y + 6 - Math.cos(o) * r * 0.9 + Math.sin(t * 3 + i) * 6]);
+      ctx.strokeStyle = c; ctx.lineWidth = 10;
+      for (const [hx, hy] of heads) { ctx.beginPath(); ctx.moveTo(x, y + 10); ctx.lineTo(hx, hy); ctx.stroke(); }
+      circle(x, y + 14, r * 0.7, c, 26);
+      heads.forEach(([hx, hy]) => { circle(hx, hy, r * 0.38, c, 18); eyes(hx, hy - 2, k * 0.55, 9, 5, true); });
+      break;
+    }
+    default: {                                      // OVERLORD: Krone, Stachelring, drei Augen
+      shape(ngon(x, y, 12, r * 1.35, -t * 0.5, r * 1.05), c === "#ffffff" ? "#ff4d6d" : c, 20);
+      circle(x, y, r, c, 40 + ph * 10);
+      const cr = [[-0.6, 0.85], [-0.3, 1.05], [0, 1.2], [0.3, 1.05], [0.6, 0.85]].flatMap(([o, h], i) => {
+        const bx = x + Math.sin(o) * r, by = y - Math.cos(o) * r * 0.8;
+        return [[bx - 9, by + 4], [x + Math.sin(o) * r * h, y - r * h], [bx + 9, by + 4]];
+      });
+      for (let i = 0; i < cr.length; i += 3) shape(cr.slice(i, i + 3), "#ffd23d", 14);
+      eyes(x, y - 4, k, 20, 7, true);
+      circle(x, y - 26 * k, 7 * k, "#ff2d55", 14);            // drittes Auge
+      ctx.fillStyle = dark; ctx.fillRect(x - 22 * k, y + 18 * k, 44 * k, 6);
+    }
+  }
+}
+
 function drawSkin(sk, x, y, r) {
   const c = sk.rainbow ? "hsl(" + (performance.now() / 8 % 360) + ",90%,65%)" : sk.color;
   glow(c, 22); ctx.fillStyle = c; ctx.strokeStyle = c; ctx.lineWidth = 3;
@@ -729,17 +855,11 @@ function draw() {
   }
   if (boss) {
     const bc = boss.flash > 0 ? "#ffffff" : boss.def.color, k = boss.r / 44;
-    for (let i = 0; i < 3; i++) {                                    // Satelliten
-      const a = boss.t * 1.8 + i * 2.094;
-      circle(boss.x + Math.cos(a) * (boss.r + 20), boss.y + Math.sin(a) * (boss.r + 20), 5 + boss.phase, boss.def.color, 14);
-    }
     if (boss.pending > 0) {                                          // Warnring vor dem Angriff
       ctx.strokeStyle = "rgba(255,255,255," + (1 - boss.pending / 0.4) + ")"; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(boss.x, boss.y, boss.r + 8 + boss.pending * 70, 0, Math.PI * 2); ctx.stroke();
     }
-    circle(boss.x, boss.y, boss.r + Math.sin(boss.t * 4) * 2, bc, 30 + boss.phase * 10);
-    circle(boss.x - 15 * k, boss.y - 6 * k, 7 * k, "#0a0a14", 0); circle(boss.x + 15 * k, boss.y - 6 * k, 7 * k, "#0a0a14", 0);
-    ctx.fillStyle = "#0a0a14"; ctx.fillRect(boss.x - 16 * k, boss.y + 14 * k, 32 * k, 5);
+    drawBoss(boss, bc, k);
     if (beamT > 0) {
       ctx.strokeStyle = "rgba(255,210,61," + beamT * 6 + ")"; ctx.lineWidth = 4;
       ctx.beginPath(); ctx.moveTo(player.x, player.y); ctx.lineTo(boss.x, boss.y); ctx.stroke();
