@@ -62,7 +62,7 @@ func _process(delta: float) -> void:
 			Input.action_release("shoot")
 			for e in get_tree().get_nodes_in_group("enemies"):
 				if e != main.boss and e.global_position.x < main.door_cols[1] * T: e.hit(99, Vector3.RIGHT)
-			if t > 0.5:
+			if t > 1.5:
 				print("doors D remaining: ", main.level.doors_of("D").size())
 				tp(main.door_cols[1] + 4, 14.5, -PI / 2); step = 5; t = 0
 		5:

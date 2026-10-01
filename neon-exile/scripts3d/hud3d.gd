@@ -142,6 +142,16 @@ func _draw() -> void:
 		draw_rect(nr, Color(0, 0, 0, 0.4))
 		draw_rect(Rect2(nr.position, Vector2(nr.size.x * clampf(main.noise, 0.0, 1.0), 8)), Color(0.4, 1, 0.8) if main.noise < 0.7 else Color(1, 0.3, 0.3))
 		draw_string(font, Vector2(0, 66), "NOISE", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 12, Color(1, 1, 1, 0.6))
+	# Ult-Leiste (ueber den Waffen)
+	if p.has_gun() and p.weapon >= 0:
+		var ur := Rect2(sz.x - 330, sz.y - 82, 292, 7)
+		var uc: Color = p.WEAPONS[p.weapon].col
+		draw_rect(ur, Color(0, 0, 0, 0.4))
+		draw_rect(Rect2(ur.position, Vector2(ur.size.x * p.ult / 100.0, ur.size.y)), uc if p.ult < 100.0 else Color.WHITE.lerp(uc, 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.01)))
+		if p.ult >= 100.0:
+			draw_string(font, Vector2(0, sz.y - 24), "[F]  ULT READY:  " + p.ULT_NAMES[p.weapon], HORIZONTAL_ALIGNMENT_CENTER, sz.x, 18, Color.WHITE.lerp(uc, 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.01)))
+		elif p.ult_kind >= 0:
+			draw_string(font, Vector2(0, sz.y - 24), p.ULT_NAMES[p.ult_kind] + "  %.1fs" % p.ult_t, HORIZONTAL_ALIGNMENT_CENTER, sz.x, 18, uc)
 	# Munition + Nachladen
 	if p.has_gun() and p.weapon >= 0:
 		var wdc: Dictionary = p.WEAPONS[p.weapon]
@@ -165,7 +175,7 @@ func _draw() -> void:
 			var c2 := sz / 2.0
 			draw_arc(c2, 26, -PI / 2, -PI / 2 + TAU * p.charge, 40, wdc.col if p.charge < 1.0 else Color.WHITE, 3.0)
 	if p.ability_unlocked:
-		var ar := Rect2(sz.x - 330, sz.y - 112, 292, 30)
+		var ar := Rect2(sz.x - 330, sz.y - 116, 292, 30)
 		var ready: bool = p.ability_cd <= 0.0
 		draw_rect(ar, Color(0.78, 0.49, 1, 0.08))
 		draw_rect(Rect2(ar.position, Vector2(ar.size.x * (1.0 - p.ability_cd / p.ABILITY_CD), ar.size.y)), Color(0.78, 0.49, 1, 0.35 if ready else 0.15))

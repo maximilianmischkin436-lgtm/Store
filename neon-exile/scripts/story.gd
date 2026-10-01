@@ -175,7 +175,7 @@ const DIALOG2 := {}
 const RADIO := {
 	"controls": [["???", "Walk. WASD."]],
 	"pickup_hint": [["???", "There's something on the floor in front of you. Pick it up. E."]],
-	"got_pulse": [["???", "You'll need it. Hold LEFT CLICK. SPACE to jump, twice in the air. SHIFT to dash. CTRL to slide. R to reload."]],
+	"got_pulse": [["???", "You'll need it. Hold LEFT CLICK. SPACE to jump, twice in the air. SHIFT to dash. CTRL to slide. R to reload. F for your weapon's ult when the bar is full."]],
 	"scrap": [["???", "They're not real. Most of them won't even see you. The ones that tilt their heads... those see you."]],
 	"scatter": [["SYSTEM", "SCATTER GUN acquired. Press 2."]],
 	"drop": [["???", "It left something behind. Take it."]],

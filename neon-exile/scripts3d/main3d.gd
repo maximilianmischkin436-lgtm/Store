@@ -638,6 +638,56 @@ func _update_event(delta: float) -> void:
 	if event_t <= 0.0:
 		_finish_event()
 
+# ---------- Kampfwellen in Raum 2 ----------
+var waves_left := 2
+
+func _spawn_wave(n: int) -> void:
+	var T: float = level.T
+	banner("WAVE %d / 3" % n, Color("#ff4d6d"))
+	Game.sfx("enemy_attack", 0.6, 1.0)
+	shake(0.3)
+	var cells: Array = []
+	for c in level._floor_cells():
+		if c.x > door_cols[0] + 2 and c.x < door_cols[1] - 1 and level.grid[c.y][c.x] == ".":
+			var p: Vector3 = level.cell_center(c)
+			if p.distance_to(player.global_position) > 9.0:
+				cells.append(c)
+	cells.shuffle()
+	var count: int = 3 + n + mini(chapter, 6)
+	for i in mini(count, cells.size()):
+		var e = spawn_npc("hostile", level.cell_center(cells[i]))
+		e.awake = true
+		burst(level.cell_center(cells[i]) + Vector3(0, 1, 0), ch.enemy, 16)
+	if n == 3 and cells.size() > count:
+		spawn_npc("special", level.cell_center(cells[count]))
+
+func enemy_in_cone(from: Vector3, dir: Vector3, min_dot: float, rng: float):
+	var best = null
+	var bd := rng
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(e):
+			continue
+		var to: Vector3 = e.global_position - from
+		var d := to.length()
+		if d < bd and to.normalized().dot(dir) > min_dot:
+			bd = d
+			best = e
+	return best
+
+func overload_ring(pos: Vector3, col: Color) -> void:
+	for i in 3:
+		var ring := MeshInstance3D.new()
+		var tm := TorusMesh.new()
+		tm.inner_radius = 0.9
+		tm.outer_radius = 1.0
+		ring.mesh = tm
+		ring.material_override = _mat(col, 3.0)
+		ring.position = pos + Vector3(0, 0.4 + i * 0.5, 0)
+		add_child(ring)
+		var tw := create_tween()
+		tw.tween_property(ring, "scale", Vector3.ONE * 16.0, 0.45 + i * 0.1)
+		tw.tween_callback(ring.queue_free)
+
 func _carry_weapons(next_ch: int) -> void:
 	Game.carry_slots = player.slots.duplicate()
 	Game.carry_ability = player.ability_unlocked
@@ -771,6 +821,7 @@ func _apply_progress(stage: int) -> void:
 	title_t = 0.0
 	shards = _shard_no() - 1
 	if stage >= 1:
+		waves_left = 0
 		seen["2"] = true
 		level.open_doors("D")
 		if not player.has_gun():
@@ -806,7 +857,7 @@ func _setup_input() -> void:
 	var keys := {
 		"up": [KEY_W, KEY_UP], "down": [KEY_S, KEY_DOWN], "left": [KEY_A, KEY_LEFT], "right": [KEY_D, KEY_RIGHT],
 		"jump": [KEY_SPACE], "dash": [KEY_SHIFT], "shoot": [KEY_J], "interact": [KEY_E, KEY_ENTER],
-		"menu": [KEY_M], "slide": [KEY_CTRL, KEY_C], "weapon1": [KEY_1], "weapon2": [KEY_2], "weapon3": [KEY_3], "ability": [KEY_Q], "reload": [KEY_R],
+		"menu": [KEY_M], "slide": [KEY_CTRL, KEY_C], "weapon1": [KEY_1], "weapon2": [KEY_2], "weapon3": [KEY_3], "ability": [KEY_Q], "reload": [KEY_R], "ult": [KEY_F],
 	}
 	for action in keys:
 		if not InputMap.has_action(action):
@@ -1220,6 +1271,8 @@ var crit_t := 0.0
 
 func hit_feedback(pos: Vector3, dmg: int, crit: bool) -> void:
 	hitmark_t = 0.15
+	if player.ult_kind < 0:
+		player.ult = minf(100.0, player.ult + dmg * 1.2)
 	if crit:
 		crit_t = 0.2
 		Game.sfx("swap", 2.6, 0.55)
@@ -1620,6 +1673,11 @@ func _check_doors() -> void:
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if e != boss and e.global_position.x < door_cols[1] * T and e.global_position.x > door_cols[0] * T:
 			alive = true
+	if not alive and player.global_position.x > door_cols[0] * T and waves_left > 0:
+		# naechste Welle statt sofort offener Tuer
+		waves_left -= 1
+		_spawn_wave(3 - waves_left)
+		return
 	if not alive and player.global_position.x > door_cols[0] * T:
 		level.open_doors("D", (door_cols[1] + 1) * T)
 		banner("DOOR UNLOCKED", Color("#38f5c4"))
@@ -1671,6 +1729,8 @@ func _respawn() -> void:
 	radio("death")
 
 func on_enemy_killed(e) -> void:
+	if player.ult_kind < 0:
+		player.ult = minf(100.0, player.ult + 7.0)
 	shake(0.18)
 	# Superhot-Gefuehl: kurzer Zeitlupen-Moment, Kill-Marker, heller "Ping"
 	slowmo(0.12, 0.2)

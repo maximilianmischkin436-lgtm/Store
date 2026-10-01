@@ -62,7 +62,12 @@ const MAX_SLOTS := 3
 var slots: Array = []        # Waffen-IDs, die man gerade traegt (max 3)
 var unlocked: Array = []     # unlocked[id] = gerade im Inventar
 var weapon := 0
-var aim := 0.0               # 0..1 Zielen mit rechter Maustaste
+var aim := 0.0
+# Ult: laedt sich durch Treffer und Kills, [F] loest die Ult der aktuellen Waffe aus
+var ult := 0.0
+var ult_t := 0.0          # Dauer laufender Ults (PULSE / HUMMINGBIRD)
+var ult_kind := -1
+const ULT_NAMES := ["OVERDRIVE", "DRAGON BREATH", "JUDGEMENT", "SWARM", "DEADEYE", "CLUSTER", "SLEEP", "TSUNAMI", "THOUSAND CUTS", "SHADOW STEP"]               # 0..1 Zielen mit rechter Maustaste
 var sway := Vector2.ZERO     # Waffe zieht der Mausbewegung nach
 var ability_unlocked := false
 var ability_cd := 0.0
@@ -417,6 +422,13 @@ func _physics_process(delta: float) -> void:
 	if flash_t > 0.0:
 		flash_mesh.rotation.z = randf() * TAU
 		flash_mesh.scale = Vector3.ONE * randf_range(0.8, 1.4)
+	if ult_t > 0.0:
+		ult_t -= delta
+		if ult_t <= 0.0:
+			ult_kind = -1
+	if Input.is_action_just_pressed("ult") and ult >= 100.0 and has_gun() and weapon >= 0:
+		ult = 0.0
+		_do_ult(weapon)
 	if ability_unlocked and Input.is_action_just_pressed("ability") and ability_cd <= 0.0:
 		ability_cd = ABILITY_CD
 		main.overload(global_position)
@@ -534,6 +546,103 @@ func _melee_special(w: int) -> void:
 		get_tree().create_timer(0.9).timeout.connect(func(): if weapon == 9: models[9].visible = true)
 		Game.sfx("jump", 3.0, 0.5)
 
+func _do_ult(w: int) -> void:
+	var col: Color = WEAPONS[w].col
+	main.banner(ULT_NAMES[w], col)
+	main.shake(0.5)
+	Game.sfx("rail", 0.4, 1.0)
+	main.burst(global_position + Vector3(0, 1, 0), col, 60)
+	var fwd: Vector3 = -cam.global_basis.z
+	match w:
+		0, 3:
+			ult_kind = w
+			ult_t = 6.0
+			ammo[w] = WEAPONS[w].mag
+		1:
+			# DRAGON BREATH: drei Feuerwellen nach vorn
+			for k in 3:
+				main.get_tree().create_timer(k * 0.25).timeout.connect(func():
+					for j in 5:
+						var dirj: Vector3 = fwd.rotated(Vector3.UP, (j - 2) * 0.22)
+						main.explode(global_position + Vector3(0, 0.8, 0) + dirj * (4.0 + k * 3.5), 2.8, 4, Color("#ff6a2e")))
+		2:
+			# JUDGEMENT: ein Strahl, der durch alles geht
+			var a: Vector3 = cam.global_position
+			for e in main.get_tree().get_nodes_in_group("enemies"):
+				if not is_instance_valid(e):
+					continue
+				var to: Vector3 = e.global_position + Vector3(0, 1.2, 0) - a
+				var along := to.dot(fwd)
+				if along > 0.0 and (to - fwd * along).length() < 2.2:
+					e.hit(40, fwd)
+					main.hit_feedback(e.global_position + Vector3(0, 1.5, 0), 40, true)
+			main._tracer(muzzle.global_position, a + fwd * 150.0, Color("#c77dff"), 0.35, 0.6)
+			velocity -= fwd * 14.0
+		4:
+			# DEADEYE: Zeitlupe, dann trifft jeder Gegner in Sicht kritisch
+			main.slowmo(1.2, 0.25)
+			main.get_tree().create_timer(1.0, true, false, true).timeout.connect(func():
+				for e in main.get_tree().get_nodes_in_group("enemies"):
+					if is_instance_valid(e) and e.global_position.distance_to(global_position) < 40.0:
+						var to: Vector3 = (e.global_position - global_position).normalized()
+						if to.dot(fwd) > 0.3:
+							main._tracer(muzzle.global_position, e.global_position + Vector3(0, 1.5, 0), Color("#ffe066"), 0.03, 0.2)
+							e.hit(18, to)
+							main.hit_feedback(e.global_position + Vector3(0, 1.6, 0), 18, true)
+				Game.sfx("rail", 1.2, 1.0))
+		5:
+			# CLUSTER: 8 Bomben ringsum
+			for j in 8:
+				var dj: Vector3 = Vector3(cos(j * TAU / 8.0), 0, sin(j * TAU / 8.0))
+				main.spawn_bomb(global_position + Vector3(0, 1.5, 0), dj * 10.0 + Vector3(0, 7.0, 0), WEAPONS[5].duplicate())
+		6:
+			# SLEEP: alle in der Naehe schlafen ein
+			for e in main.get_tree().get_nodes_in_group("enemies"):
+				if is_instance_valid(e) and e.global_position.distance_to(global_position) < 20.0 and e.get("stun_t") != null:
+					e.stun_t = 5.0
+					e.hit(3, Vector3.UP)
+			main.burst(global_position + Vector3(0, 1, 0), Color("#9fd8ff"), 120)
+		7:
+			# TSUNAMI: Welle, die alles wegschleudert
+			for e in main.get_tree().get_nodes_in_group("enemies"):
+				if is_instance_valid(e) and e.global_position.distance_to(global_position) < 16.0:
+					var away: Vector3 = (e.global_position - global_position).normalized()
+					e.hit(10, away)
+					if e.get("knock") != null:
+						e.knock = away * 30.0
+			main.overload_ring(global_position, Color("#4db8ff"))
+		8:
+			# THOUSAND CUTS: springt zu bis zu 6 Gegnern und schneidet
+			inv = maxf(inv, 2.5)
+			var targets: Array = []
+			for e in main.get_tree().get_nodes_in_group("enemies"):
+				if is_instance_valid(e) and e.global_position.distance_to(global_position) < 25.0:
+					targets.append(e)
+			targets.sort_custom(func(x, y): return x.global_position.distance_to(global_position) < y.global_position.distance_to(global_position))
+			main.slowmo(1.5, 0.35)
+			var k := 0
+			for e in targets.slice(0, 6):
+				main.get_tree().create_timer(k * 0.12, true, false, true).timeout.connect(func():
+					if is_instance_valid(e):
+						var from: Vector3 = global_position + Vector3(0, 1, 0)
+						global_position = e.global_position - (e.global_position - global_position).normalized() * 1.2
+						main._tracer(from, global_position + Vector3(0, 1, 0), Color("#ff4d6d"), 0.05, 0.3)
+						e.hit(20, Vector3.UP)
+						main.hit_feedback(e.global_position + Vector3(0, 1.5, 0), 20, true))
+				k += 1
+		9:
+			# SHADOW STEP: hinter den naechsten Gegner, sofortiger Kill (dreimal)
+			for k in 3:
+				main.get_tree().create_timer(k * 0.35).timeout.connect(func():
+					var best = main.enemy_in_cone(global_position, fwd, -1.0, 30.0)
+					if best:
+						var back: Vector3 = best.global_basis.z if best.get("visual") == null else best.visual.global_basis.z
+						global_position = best.global_position + back.normalized() * 1.2
+						yaw = atan2(best.global_position.x - global_position.x, best.global_position.z - global_position.z) + PI
+						best.hit(30, Vector3.UP)
+						main.hit_feedback(best.global_position + Vector3(0, 1.5, 0), 30, true)
+						Game.sfx("jump", 3.0, 0.8))
+
 func _update_reload(delta: float, wd: Dictionary) -> void:
 	if int(wd.mag) == 0:
 		return
@@ -581,6 +690,8 @@ func _fire(wd: Dictionary) -> void:
 	var shot := wd.duplicate()
 	var bonus := 1 if perfect[w] else 0
 	var last: bool = ammo[w] == 1
+	if ult_kind == w and w in [0, 3]:
+		ammo[w] += 1   # Ult: unendlich Munition
 	ammo[w] -= 1
 	shoot_cd = wd.rate
 	shot.spread = float(wd.spread) * lerpf(1.0, 0.3, aim)
@@ -602,6 +713,9 @@ func _fire(wd: Dictionary) -> void:
 		3:
 			shot.dmg = 1 + bonus
 			shot.spread = float(wd.spread) * lerpf(1.0, 0.15, aim)
+			if ult_kind == 3:
+				shot.spread = 0.0
+				shot.dmg = 2
 		4:
 			shot.dmg = wd.dmg + bonus * 2
 			shot.crit_always = last
@@ -629,9 +743,19 @@ func _fire(wd: Dictionary) -> void:
 			var end: Vector3 = main.player_shoot(cam.global_position, fwd0, muzzle.global_position, shot)
 			main.chain_from(end, shot, 3)
 		_:
+			if ult_kind == 0 and w == 0:
+				shoot_cd = 0.045
+				shot.pierce = true
+				shot.dmg = 2
+				shot.col = Color("#eaffff")
 			for i in shot.pellets:
 				var spread: Vector3 = Vector3(randf_range(-1, 1), randf_range(-1, 1), 0) * float(shot.spread)
 				var fwd: Vector3 = (fwd0 + cam.global_basis * spread).normalized()
+				if ult_kind == 3 and w == 3:
+					# SWARM: Kugeln suchen sich den naechsten Gegner im Blickfeld
+					var tgt = main.enemy_in_cone(cam.global_position, fwd0, 0.8, 40.0)
+					if tgt:
+						fwd = (tgt.global_position + Vector3(0, 1.2, 0) - cam.global_position).normalized()
 				var end: Vector3 = main.player_shoot(cam.global_position, fwd, muzzle.global_position, shot)
 				if w == 1 and last and i == 0:
 					main.explode(end, 3.0, 3, shot.col)

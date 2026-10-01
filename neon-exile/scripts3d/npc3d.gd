@@ -134,6 +134,13 @@ func _physics_process(delta: float) -> void:
 		visual.visible = true
 	if not main.can_control():
 		return
+	if stun_t > 0.0:
+		# eingeschlafen: schwebt leicht, bewegt sich nicht
+		stun_t -= delta
+		visual.rotation.z = sin(t * 2.0) * 0.1
+		velocity = Vector3.ZERO
+		move_and_slide()
+		return
 	var p = main.player
 	var to: Vector3 = p.global_position - global_position
 	to.y = 0.0
@@ -382,7 +389,11 @@ func turn_hostile() -> void:
 	for m in mats:
 		m.albedo_color = Color(m.albedo_color.darkened(0.3), 0.55)
 
+var stun_t := 0.0
+
 func hit(dmg: int, dir: Vector3) -> void:
+	if hp <= 0:
+		return
 	hp -= dmg
 	flash = 0.08
 	knock = Vector3(dir.x, 0, dir.z).normalized() * 5.0

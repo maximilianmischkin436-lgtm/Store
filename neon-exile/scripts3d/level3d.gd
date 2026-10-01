@@ -189,6 +189,15 @@ func _build() -> void:
 	var fl := _box(Vector3(w * T / 2.0, -0.25, h * T / 2.0), Vector3(w * T, 0.5, h * T), floor_mat, true)
 	fl.name = "Floor"
 	_build_water_and_ceiling()
+	# unsichtbarer Deckel ueber allem: man kann nicht ueber Waende springen
+	var lid := StaticBody3D.new()
+	var lcs := CollisionShape3D.new()
+	var lb := BoxShape3D.new()
+	lb.size = Vector3(w * T, 1.0, h * T)
+	lcs.shape = lb
+	lid.add_child(lcs)
+	lid.position = Vector3(w * T / 2.0, WALL_H + 0.5, h * T / 2.0)
+	add_child(lid)
 	# Waende: nur Randkacheln, zu horizontalen Streifen zusammengefasst
 	for y in h:
 		var x := 0
@@ -427,7 +436,7 @@ func _plain(col: Color, rough: float = 0.6, metal: float = 0.0) -> StandardMater
 
 func _build_ceiling() -> void:
 	# Geschlossene Decke in Streifen
-	_box(Vector3(w * T / 2.0, WALL_H + 0.25, h * T / 2.0), Vector3(w * T, 0.5, h * T), ceil_mat, false)
+	_box(Vector3(w * T / 2.0, WALL_H + 0.25, h * T / 2.0), Vector3(w * T, 0.5, h * T), ceil_mat, true)
 	# Deckenleuchten im Raster
 	var lamp_col := Color("#fff6d8") if theme != "mall" else Color("#ffe6f2")
 	var lm := _emit(lamp_col, 2.5)
