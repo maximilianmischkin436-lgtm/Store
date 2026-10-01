@@ -7,6 +7,11 @@ const Enemy = preload("res://scripts3d/enemy3d.gd")
 const Boss = preload("res://scripts3d/boss3d.gd")
 const Hud = preload("res://scripts3d/hud3d.gd")
 const Dialog = preload("res://scripts/dialog.gd")
+const Chapters = preload("res://scripts3d/chapters.gd")
+var ch: Dictionary
+var chapter := 1
+var door_cols: Array = []     # x-Spalten der beiden Tueren D
+var gate_col := 0
 
 var level
 var player
@@ -34,11 +39,21 @@ var mats := {}
 var proj_mesh := SphereMesh.new()
 
 func _ready() -> void:
+	chapter = clampi(Game.chapter, 1, Chapters.CHAPTERS.size())
+	ch = Chapters.CHAPTERS[chapter - 1]
 	_setup_input()
 	_setup_world()
 	level = Level.new()
+	level.setup(ch)
 	add_child(level)
-	level.load_map("res://data/chapter1.txt")
+	level.load_map(ch.map)
+	var xs := {}
+	for c in level.doors_of("D"):
+		xs[c.x] = true
+	door_cols = xs.keys()
+	door_cols.sort()
+	for c in level.doors_of("G"):
+		gate_col = c.x
 	proj_mesh.radius = 0.2
 	proj_mesh.height = 0.4
 	for s in level.spawns:
@@ -54,6 +69,7 @@ func _ready() -> void:
 			"B":
 				boss = Boss.new()
 				boss.main = self
+				boss.cfg = ch.boss
 				boss.position = s.pos
 				add_child(boss)
 	player = Player.new()
@@ -69,14 +85,27 @@ func _ready() -> void:
 	ui.add_child(hud)
 	dialog = Dialog.new()
 	ui.add_child(dialog)
-	objective = "Find a way out of the Drain"
-	state = "wake"
-	wake_t = 0.0
+	objective = ch.objectives[0]
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	Game.play_music("pool")
-	if Game.continue_game:
+	Game.play_music(ch.music)
+	if chapter == 1:
+		state = "wake"
+		wake_t = 0.0
+	else:
+		state = "play"
+		title_t = 6.0
+		player.unlocked = [true, true, true]
+		player.ability_unlocked = true
+	if Game.continue_game and Game.progress > 0:
 		state = "play"
 		_apply_progress(Game.progress)
+
+# Story-ID fuer das aktuelle Kapitel (Kapitel 2+ haben eigene Texte mit Praefix)
+func sid(id: String) -> String:
+	var pre := "c%d_%s" % [chapter, id]
+	if chapter > 1 and (Story.DIALOG.has(pre) or Story.RADIO.has(pre)):
+		return pre
+	return id
 
 # Spielstand fortsetzen: Bereiche, die schon geschafft sind, ueberspringen
 func _apply_progress(stage: int) -> void:
@@ -84,29 +113,30 @@ func _apply_progress(stage: int) -> void:
 	seen["intro"] = true
 	seen["intro_done"] = true
 	title_t = 0.0
+	shards = chapter - 1
 	if stage >= 1:
 		seen["2"] = true
 		level.open_doors("D")
 		player.unlocked[1] = true
 		for e in get_tree().get_nodes_in_group("enemies"):
-			if e != boss and e.position.x < 43 * T:
+			if e != boss and e.position.x < door_cols[1] * T:
 				e.queue_free()
-		checkpoint = Vector3(44.5 * T, 0, 14.5 * T)
-		objective = "Recover the memory shard"
+		checkpoint = Vector3((door_cols[1] + 1.5) * T, 0, 14.5 * T)
+		objective = ch.objectives[2]
 	if stage >= 2:
 		seen["3"] = true
 		for e in get_tree().get_nodes_in_group("enemies"):
-			if e != boss and e.position.x < 64 * T:
+			if e != boss and e.position.x < gate_col * T:
 				e.queue_free()
 		if shard_node:
 			shard_node.queue_free()
 			shard_node = null
-		shards = 1
+		shards = chapter
 		player.unlocked[2] = true
 		player.ability_unlocked = true
 		level.open_doors("G")
-		checkpoint = Vector3(66.5 * T, 0, 14.5 * T)
-		objective = "Reach the lift"
+		checkpoint = Vector3((gate_col + 2.5) * T, 0, 14.5 * T)
+		objective = ch.objectives[3]
 	player.position = checkpoint + Vector3(0, 0.2, 0)
 	radio("death")
 
@@ -166,36 +196,37 @@ var dream_time := 0.0
 func _setup_world() -> void:
 	# Poolrooms: heller, leicht bewoelkter Nachmittagshimmel, weisser Dunst
 	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Color(0.55, 0.72, 0.9)
-	sky_mat.sky_horizon_color = Color(0.9, 0.92, 0.95)
-	sky_mat.ground_horizon_color = Color(0.85, 0.9, 0.93)
-	sky_mat.ground_bottom_color = Color(0.6, 0.7, 0.75)
+	var ev: Dictionary = ch.env
+	sky_mat.sky_top_color = ev.sky_top
+	sky_mat.sky_horizon_color = ev.sky_hor
+	sky_mat.ground_horizon_color = ev.sky_hor
+	sky_mat.ground_bottom_color = ev.sky_top
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
 	var env := Environment.new()
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.3
+	env.ambient_light_energy = ev.amb
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.tonemap_exposure = 0.75
+	env.tonemap_exposure = ev.exp
 	env.glow_enabled = true
 	env.glow_intensity = 0.6
 	env.glow_bloom = 0.2
 	env.glow_hdr_threshold = 1.0
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.85, 0.92, 0.95)
-	env.fog_density = 0.007
+	env.fog_light_color = ev.fog
+	env.fog_density = ev.fog_d
 	env.fog_sky_affect = 0.3
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.1
+	env.adjustment_saturation = ev.sat
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 	var sun := DirectionalLight3D.new()
-	sun.light_color = Color(1.0, 0.96, 0.88)
-	sun.light_energy = 0.45
-	sun.rotation = Vector3(-1.2, 0.5, 0)
+	sun.light_color = ev.sun
+	sun.light_energy = ev.sun_e
+	sun.rotation = ev.sun_rot
 	sun.shadow_enabled = true
 	add_child(sun)
 	# niedrige Aufloesung fuer den Retro-Look (UI bleibt scharf)
@@ -436,6 +467,13 @@ func _process(delta: float) -> void:
 		elif state == "paused":
 			state = "play"
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if state == "end" and Input.is_action_just_pressed("interact") and chapter < Chapters.CHAPTERS.size():
+		Game.chapter = chapter + 1
+		Game.progress = 0
+		Game.continue_game = false
+		Game.write_save()
+		get_tree().reload_current_scene()
+		return
 	if (state == "paused" or state == "end") and Input.is_action_just_pressed("menu"):
 		Game.write_save()
 		get_tree().change_scene_to_file("res://menu.tscn")
@@ -446,7 +484,7 @@ func _process(delta: float) -> void:
 		_update_wake(delta)
 	if state == "play" and title_t > 0.0 and title_t < 4.5 and not seen.has("intro"):
 		seen["intro"] = true
-		say("intro", func(): radio("controls"))
+		say(sid("intro"), func(): radio(sid("controls")))
 	_update_radio(delta)
 	dream_time += delta
 	level.dream_update(delta, player.global_position, dream_time)
@@ -498,59 +536,63 @@ func _check_triggers() -> void:
 	seen[id] = true
 	match id:
 		"2":
-			radio("scrap")
-			objective = "Get through the scrapyard"
+			radio(sid("scrap"))
+			objective = ch.objectives[1]
 		"3":
-			radio("drones")
-			objective = "Recover the memory shard"
+			radio(sid("drones"))
+			objective = ch.objectives[2]
 		"4":
 			checkpoint = player.global_position
-			radio("gate")
-			objective = "Defeat WARDEN-07"
+			radio(sid("gate"))
+			objective = ch.objectives[4]
 		"5":
 			if boss:
-				say("boss", func():
+				say(sid("boss"), func():
 					Game.play_music("boss")
 					boss.active = true
-					banner("WARDEN-07", Color("#ff2d55"))
+					banner(ch.boss.name, Color("#ff4d6d"))
 					shake(0.5))
 
 func _check_doors() -> void:
 	var T: float = level.T
+	if door_cols.size() < 2:
+		return
 	if not seen.has("intro_done") and seen.has("intro"):
 		seen["intro_done"] = true
-		level.open_doors("D", 16 * T)
+		level.open_doors("D", (door_cols[0] + 1) * T)
 	if level.doors_of("D").is_empty():
 		return
 	var alive := false
 	for e in get_tree().get_nodes_in_group("enemies"):
-		if e != boss and e.global_position.x < 43 * T and e.global_position.x > 15 * T:
+		if e != boss and e.global_position.x < door_cols[1] * T and e.global_position.x > door_cols[0] * T:
 			alive = true
-	if not alive and level.doors_of("D").size() > 0 and player.global_position.x > 15 * T:
-		level.open_doors("D", 44 * T)
+	if not alive and player.global_position.x > door_cols[0] * T:
+		level.open_doors("D", (door_cols[1] + 1) * T)
 		banner("DOOR UNLOCKED", Color("#38f5c4"))
 		Game.reach_stage(1)
+		checkpoint = player.global_position
 		if not player.unlocked[1]:
 			player.unlocked[1] = true
 			radio("scatter")
-		checkpoint = player.global_position
 
 func _check_shard() -> void:
 	if shard_node and player.global_position.distance_to(Vector3(shard_node.position.x, 0, shard_node.position.z)) < 1.6:
 		burst(shard_node.position, Color("#c77dff"), 50)
 		shard_node.queue_free()
 		shard_node = null
-		shards += 1
+		shards = chapter
 		checkpoint = player.global_position
 		player.hp = player.max_hp
 		glitch_t = 1.2
 		Game.reach_stage(2)
-		say("shard", func():
+		var first_time: bool = not player.unlocked[2]
+		say(sid("shard"), func():
 			player.unlocked[2] = true
 			player.ability_unlocked = true
-			radio("rail")
+			if first_time:
+				radio("rail")
 			level.open_doors("G")
-			objective = "Reach the lift"
+			objective = ch.objectives[3]
 			banner("GATE OPEN", Color("#ffd23d")))
 
 func on_player_hurt() -> void:
@@ -572,7 +614,7 @@ func _respawn() -> void:
 	if boss and is_instance_valid(boss) and boss.active:
 		boss.hp = mini(boss.max_hp, boss.hp + 35)
 		boss.mode = "idle"
-		boss.position = Vector3(86 * level.T + 1.5, 2.8, 14 * level.T + 1.5)
+		boss.position = boss.spawn_pos
 		for e in get_tree().get_nodes_in_group("enemies"):
 			if e != boss:
 				e.queue_free()
@@ -590,12 +632,12 @@ func on_boss_killed(b) -> void:
 	clear_projectiles()
 	for e in get_tree().get_nodes_in_group("enemies"):
 		e.queue_free()
-	Game.play_music("pool")
+	Game.play_music(ch.music)
 	Game.sfx("enemy_die", 0.5, 1.0)
 	if Game.best_time <= 0.0 or play_time < Game.best_time:
 		Game.best_time = play_time
 	Game.reach_stage(3)
 	Game.write_save()
-	say("victory", func():
+	say(sid("victory"), func():
 		state = "end"
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE)

@@ -5,17 +5,28 @@ var main
 var step := 0
 var t := 0.0
 var out_dir := "user://shots3d"
+var pre := ""
+
+func trig(id: String) -> Vector2i:
+	for k in main.level.triggers:
+		if main.level.triggers[k] == id:
+			return k
+	return Vector2i.ZERO
 const T := 3.0
 
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(out_dir)
+	var args := OS.get_cmdline_user_args()
+	Game.chapter = int(args[0]) if args.size() > 0 else 1
+	Game.continue_game = false
+	pre = "c%d_" % Game.chapter
 	main = load("res://game3d.tscn").instantiate()
 	add_child(main)
 	print("AUTOTEST3D start")
 
 func snap(name: String) -> void:
 	await RenderingServer.frame_post_draw
-	get_viewport().get_texture().get_image().save_png(out_dir + "/" + name + ".png")
+	get_viewport().get_texture().get_image().save_png(out_dir + "/" + pre + name + ".png")
 	print("shot ", name)
 
 func tp(x: float, z: float, yaw: float) -> void:
@@ -35,7 +46,7 @@ func _process(delta: float) -> void:
 		2:
 			if t > 0.5:
 				print("doors D after intro: ", main.level.doors_of("D").size())
-				tp(25, 14.5, -PI / 2); step = 3; t = 0
+				tp(main.door_cols[0] + 10, 14.5, -PI / 2); step = 3; t = 0
 		3:
 			p.inv = 99
 			if t > 1.0 and t < 1.05: snap("03a_radio")
@@ -45,20 +56,24 @@ func _process(delta: float) -> void:
 		4:
 			Input.action_release("shoot")
 			for e in get_tree().get_nodes_in_group("enemies"):
-				if e != main.boss and e.global_position.x < 43 * T: e.hit(99, Vector3.RIGHT)
+				if e != main.boss and e.global_position.x < main.door_cols[1] * T: e.hit(99, Vector3.RIGHT)
 			if t > 0.5:
 				print("doors D remaining: ", main.level.doors_of("D").size())
-				tp(47, 14.5, -PI / 2); step = 5; t = 0
+				tp(main.door_cols[1] + 4, 14.5, -PI / 2); step = 5; t = 0
 		5:
 			p.inv = 99
 			p.pitch = 0.1
-			if t > 3.0: snap("04_drones"); tp(54, 15, -PI / 2); step = 6; t = 0
+			if t > 3.0:
+				snap("04_drones")
+				var sp: Vector3 = main.shard_node.position
+				p.global_position = Vector3(sp.x, 0.2, sp.z); step = 6; t = 0
 		6:
 			if main.dialog.active and t > 0.3: snap("05_shard"); main.dialog.skip(); step = 7; t = 0
 		7:
 			if t > 0.3:
 				print("gate remaining: ", main.level.doors_of("G").size(), " shards ", main.shards)
-				tp(74, 14.5, -PI / 2); step = 8; t = 0
+				var c := trig("5")
+				tp(c.x, c.y, -PI / 2); step = 8; t = 0
 		8:
 			if main.boss and main.boss.active and t > 0.5:
 				Input.action_press("shoot"); step = 9; t = 0

@@ -145,5 +145,70 @@ def pool(path, secs):
         w.writeframes(b"".join(struct.pack("<h", int(x / peak * 0.8 * 32767)) for x in out))
 
 pool("assets/music/pool.wav", 40)
+
+def mall(path, secs):
+    # Kaufhausmusik: weiche E-Piano-Akkorde, Bass, verlangsamt und mit Hall (wie aus einem leeren Lautsprecher)
+    total = int(SR * secs); out = [0.0] * total
+    chords = [[62, 65, 69, 72], [60, 64, 67, 71], [57, 60, 64, 67], [55, 59, 62, 65]]
+    beat = 60 / 72
+    for b in range(int(secs / beat)):
+        chd = chords[(b // 4) % 4]; t0 = int(SR * b * beat)
+        if b % 2 == 0:
+            for n in chd:
+                f = note(n)
+                for i in range(int(SR * beat * 2)):
+                    if t0 + i >= total: break
+                    e = math.exp(-i / (SR * 0.9))
+                    out[t0 + i] += 0.05 * e * (math.sin(2 * math.pi * f * i / SR) + 0.25 * math.sin(4 * math.pi * f * i / SR))
+        f = note(chd[0] - 24 + (7 if b % 4 == 2 else 0))
+        for i in range(int(SR * beat)):
+            if t0 + i >= total: break
+            out[t0 + i] += 0.1 * math.exp(-i / (SR * 0.3)) * math.sin(2 * math.pi * f * i / SR)
+    for d, g in [(0.09, 0.4), (0.21, 0.3), (0.37, 0.22), (0.61, 0.15)]:
+        ds = int(SR * d)
+        for i in range(total - 1, ds, -1): out[i] += out[i - ds] * g
+    write(path, out)
+
+def office(path, secs):
+    # Backrooms: Summen der Neonroehren (60 Hz + Obertoene), leises Rauschen, gelegentliches Knacken
+    total = int(SR * secs); out = [0.0] * total; rnd = random.Random(9)
+    for i in range(total):
+        t = i / SR
+        out[i] = 0.08 * math.sin(2 * math.pi * 60 * t) + 0.05 * math.sin(2 * math.pi * 120 * t) + 0.03 * math.sin(2 * math.pi * 180.3 * t)
+        out[i] *= 0.85 + 0.15 * math.sin(t * 0.7)
+        out[i] += 0.015 * (rnd.random() * 2 - 1)
+    for k in range(int(secs / 4)):
+        tb = rnd.randint(0, total - SR)
+        for i in range(int(SR * 0.05)):
+            out[tb + i] += 0.2 * math.exp(-i / (SR * 0.006)) * (rnd.random() * 2 - 1)
+    write(path, out)
+
+def school(path, secs):
+    # Sonnenuntergang: Spieluhr-Melodie, warme Flaeche, ferne Windchimes
+    total = int(SR * secs); out = [0.0] * total; rnd = random.Random(4)
+    mel = [76, 74, 72, 74, 76, 76, 76, 0, 74, 74, 74, 0, 76, 79, 79, 0]
+    for k, n in enumerate(mel * 3):
+        if n == 0: continue
+        tb = int(SR * (2 + k * 0.6)); f = note(n)
+        for i in range(int(SR * 2)):
+            if tb + i >= total: break
+            out[tb + i] += 0.06 * math.exp(-i / (SR * 0.5)) * (math.sin(2 * math.pi * f * i / SR) + 0.4 * math.sin(2 * math.pi * f * 4 * i / SR))
+    for i in range(total):
+        t = i / SR
+        out[i] += 0.02 * (math.sin(2 * math.pi * note(52) * t) + math.sin(2 * math.pi * note(59) * t)) * (0.5 + 0.5 * math.sin(t * 0.4))
+    for d, g in [(0.15, 0.4), (0.33, 0.28), (0.55, 0.18)]:
+        ds = int(SR * d)
+        for i in range(total - 1, ds, -1): out[i] += out[i - ds] * g
+    write(path, out)
+
+def write(path, out):
+    peak = max(abs(x) for x in out) or 1
+    with wave.open(path, "w") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR)
+        w.writeframes(b"".join(struct.pack("<h", int(x / peak * 0.8 * 32767)) for x in out))
+
+mall("assets/music/mall.wav", 40)
+office("assets/music/office.wav", 30)
+school("assets/music/school.wav", 36)
 ambient("assets/music/dream.wav", 48, [[57, 60, 64, 71], [53, 57, 60, 67], [48, 55, 59, 64], [55, 59, 62, 66]])
 print("ok")

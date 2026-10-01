@@ -2,7 +2,7 @@
 
 Ein **First-Person** Action-RPG im Neon-Sci-Fi-Stil, gebaut mit **Godot 4.3**.
 (Die alte 2D-Version liegt noch als `main.tscn` im Projekt.)
-Aktueller Stand: **Kapitel 1 "The Sump"** ist komplett spielbar (Story, 2 Gegnertypen, Speicherfragment, Boss WARDEN-07).
+Aktueller Stand: **Kapitel 1–4** sind spielbar (Poolrooms, 90er-Mall, Backrooms, Schule bei Sonnenuntergang), je mit Boss und Story. Im Hauptmenü unter **CHAPTERS** kann man jedes Kapitel direkt starten.
 
 ## Spielen / Testen
 1. Godot 4.3 (Standard-Version, nicht .NET) kostenlos laden: https://godotengine.org/download
@@ -42,3 +42,14 @@ Aktueller Stand: **Kapitel 1 "The Sump"** ist komplett spielbar (Story, 2 Gegner
 ## Credits
 - 3D-Modelle (Waffen, Drohne) und Soundeffekte: **Kenney – Starter Kit FPS** (MIT-Lizenz, siehe `assets/kenney/LICENSE-Kenney-Starter-Kit-FPS.md`).
 - Musik: selbst erzeugt mit `tools/gen_music.py`.
+
+## Kapitel
+| # | Ort | Boss |
+|---|---|---|
+| 1 | The Drain – Poolrooms | WARDEN-07 |
+| 2 | The Neon Market – leere 90er-Mall bei Nacht | MAMMON |
+| 3 | The Archive – Backrooms | MNEMOS |
+| 4 | After School – Schule bei Sonnenuntergang | THE HEADMASTER |
+
+Karten für Kapitel 2–4 erzeugt `tools/gen_maps.py`, die Musik `tools/gen_music.py`.
+Automatischer Test eines Kapitels: `godot --path . res://tests/autotest3d.tscn -- 3`

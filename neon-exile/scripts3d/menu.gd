@@ -4,6 +4,8 @@ extends Control
 var t := 0.0
 var main_box: VBoxContainer
 var settings_box: VBoxContainer
+var chap_box: VBoxContainer
+const DEV_ALL_CHAPTERS := true   # waehrend der Entwicklung: alle Kapitel waehlbar
 var font := ThemeDB.fallback_font
 
 func _ready() -> void:
@@ -11,11 +13,20 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	Game.play_music("pool")
 	main_box = _box()
-	if Game.progress > 0 and Game.progress < 3:
-		_button(main_box, "CONTINUE", func(): _start(true))
+	if (Game.progress > 0 and Game.progress < 3) or Game.chapter > 1:
+		_button(main_box, "CONTINUE  (CH. %d)" % Game.chapter, func(): _start(true))
 	_button(main_box, "NEW GAME", func(): _start(false))
+	_button(main_box, "CHAPTERS", func(): main_box.visible = false; chap_box.visible = true)
 	_button(main_box, "SETTINGS", func(): main_box.visible = false; settings_box.visible = true)
 	_button(main_box, "QUIT", func(): get_tree().quit())
+	chap_box = _box()
+	chap_box.visible = false
+	var names := ["1  THE DRAIN", "2  THE NEON MARKET", "3  THE ARCHIVE", "4  AFTER SCHOOL"]
+	for i in names.size():
+		var n := i + 1
+		if n <= Game.max_chapter or DEV_ALL_CHAPTERS:
+			_button(chap_box, names[i], func(): Game.chapter = n; Game.progress = 0; Game.continue_game = false; Game.write_save(); get_tree().change_scene_to_file("res://game3d.tscn"))
+	_button(chap_box, "BACK", func(): chap_box.visible = false; main_box.visible = true)
 	settings_box = _box()
 	settings_box.visible = false
 	_slider(settings_box, "Mouse sensitivity", 0.2, 3.0, Game.sensitivity, func(v): Game.sensitivity = v)
@@ -82,6 +93,7 @@ func _start(cont: bool) -> void:
 	Game.continue_game = cont
 	if not cont:
 		Game.progress = 0
+		Game.chapter = 1
 		Game.write_save()
 	get_tree().change_scene_to_file("res://game3d.tscn")
 

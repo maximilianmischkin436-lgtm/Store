@@ -19,6 +19,7 @@ var legs: Array = []
 func setup(m, k: String) -> void:
 	main = m
 	kind = k
+	col = m.ch.enemy
 	if kind == "boss_minion":
 		kind = "crawler"
 		hp = 2
@@ -26,7 +27,7 @@ func setup(m, k: String) -> void:
 	if kind == "drone":
 		hp = 4
 		radius = 0.8
-		col = Color("#bcd3dc")
+		col = m.ch.drone
 		fire_t = randf_range(0.8, 1.8)
 		strafe = 1.0 if randf() < 0.5 else -1.0
 
@@ -139,7 +140,7 @@ func _physics_process(delta: float) -> void:
 			var aim: Vector3 = (p.center() - from).normalized()
 			Game.sfx("enemy_shot", 1.2, 0.35)
 			for s in [-0.08, 0.0, 0.08]:
-				main.spawn_proj(from, aim.rotated(Vector3.UP, s) * 15.0, Color("#0e2a44"))
+				main.spawn_proj(from, aim.rotated(Vector3.UP, s) * 15.0, main.ch.proj)
 		if randf() < delta * 0.4:
 			strafe = -strafe
 	knock = knock.lerp(Vector3.ZERO, minf(1.0, delta * 8.0))

@@ -30,8 +30,8 @@ func _draw() -> void:
 	# VHS-Anzeige wie auf alter Kassette
 	if Game.retro and main.state != "end":
 		var blink := int(Time.get_ticks_msec() / 600) % 2 == 0
-		draw_string(font, Vector2(sz.x - 210, sz.y - 120), ("PLAY  " if blink else "      ") + "\u25B6", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(1, 1, 1, 0.75))
-		draw_string(font, Vector2(sz.x - 210, sz.y - 94), "OCT 01 1998  4:%02d PM" % (int(main.play_time / 60.0) % 60), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.6))
+		draw_string(font, Vector2(sz.x - 250, sz.y - 165), ("PLAY  " if blink else "      ") + "\u25B6", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(1, 1, 1, 0.75))
+		draw_string(font, Vector2(sz.x - 250, sz.y - 140), "OCT 01 1998  4:%02d PM" % (int(main.play_time / 60.0) % 60), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.6))
 	# Schaden: roter Rand
 	if main.hurt_t > 0.0:
 		var a: float = main.hurt_t * 0.8
@@ -97,7 +97,7 @@ func _draw() -> void:
 	if boss and is_instance_valid(boss) and boss.active:
 		var bw := sz.x * 0.5
 		var x := (sz.x - bw) / 2.0
-		draw_string(font, Vector2(0, 38), "WARDEN-07", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 20, Color("#ff2d55"))
+		draw_string(font, Vector2(0, 38), main.ch.boss.name, HORIZONTAL_ALIGNMENT_CENTER, sz.x, 20, Color("#ff2d55"))
 		draw_rect(Rect2(x, 48, bw, 12), Color(1, 1, 1, 0.12))
 		draw_rect(Rect2(x, 48, bw * maxf(0, boss.hp) / boss.max_hp, 12), Color("#ff2d55"))
 		for f in [0.34, 0.67]:
@@ -106,8 +106,8 @@ func _draw() -> void:
 		draw_string(font, Vector2(0, sz.y * 0.3), main.banner_text, HORIZONTAL_ALIGNMENT_CENTER, sz.x, 46, Color(main.banner_col, minf(1.0, main.banner_t)))
 	if main.title_t > 0.0:
 		var a2: float = clampf(minf(main.title_t, 6.0 - main.title_t), 0.0, 1.0)
-		draw_string(font, Vector2(0, sz.y * 0.4), "CHAPTER 1", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 22, Color(1, 0.82, 0.24, a2))
-		draw_string(font, Vector2(0, sz.y * 0.4 + 58), "THE DRAIN", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 60, Color(1, 1, 1, a2))
+		draw_string(font, Vector2(0, sz.y * 0.4), "CHAPTER %d" % main.chapter, HORIZONTAL_ALIGNMENT_CENTER, sz.x, 22, Color(1, 0.82, 0.24, a2))
+		draw_string(font, Vector2(0, sz.y * 0.4 + 58), main.ch.name, HORIZONTAL_ALIGNMENT_CENTER, sz.x, 60, Color(1, 1, 1, a2))
 	if main.state == "dead":
 		draw_rect(Rect2(Vector2.ZERO, sz), Color(0.1, 0, 0.02, 0.6))
 		draw_string(font, Vector2(0, sz.y * 0.45), "SYSTEM FAILURE", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 56, Color("#ff2d55"))
@@ -119,8 +119,8 @@ func _draw() -> void:
 	if main.state == "end":
 		draw_string(font, Vector2(0, sz.y * 0.4 + 130), "Press M for main menu", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 16, Color(1, 1, 1, 0.5))
 		draw_rect(Rect2(Vector2.ZERO, sz), Color(0, 0, 0, 0.8))
-		draw_string(font, Vector2(0, sz.y * 0.4), "CHAPTER 1 COMPLETE", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 48, Color("#ffd23d"))
-		draw_string(font, Vector2(0, sz.y * 0.4 + 50), "To be continued in Chapter 2: The Neon Market", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 20, Color.WHITE)
+		draw_string(font, Vector2(0, sz.y * 0.4), "CHAPTER %d COMPLETE" % main.chapter, HORIZONTAL_ALIGNMENT_CENTER, sz.x, 48, Color("#ffd23d"))
+		draw_string(font, Vector2(0, sz.y * 0.4 + 50), ("Press E for " + main.ch.next) if main.chapter < 4 else ("To be continued in " + main.ch.next), HORIZONTAL_ALIGNMENT_CENTER, sz.x, 20, Color.WHITE)
 		draw_string(font, Vector2(0, sz.y * 0.4 + 90), "Time: %ds   Deaths: %d" % [int(main.play_time), main.deaths], HORIZONTAL_ALIGNMENT_CENTER, sz.x, 18, Color(1, 1, 1, 0.6))
 	if main.state == "play" and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		draw_string(font, Vector2(0, sz.y * 0.62), "Click to control the camera", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 18, Color(1, 1, 1, 0.7))

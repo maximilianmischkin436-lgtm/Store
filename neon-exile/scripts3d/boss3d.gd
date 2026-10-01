@@ -2,6 +2,8 @@ extends CharacterBody3D
 # WARDEN-07 in 3D. Tiefe Schockwellen-Ringe muss man ueberspringen.
 
 var main
+var cfg: Dictionary = {}
+var spawn_pos := Vector3.ZERO
 var max_hp := 160
 var hp := 160
 var radius := 2.2
@@ -17,14 +19,20 @@ var volley_n := 0
 var spin := 0.0
 var spin_acc := 0.0
 var pat := 0
-const COL := Color("#0e2a44")       # dunkles Tiefwasser-Blau (Kugeln)
-const BODY := Color("#dfe9ec")
+var COL := Color("#0e2a44")       # Farbe der Kugeln (pro Kapitel)
+var BODY := Color("#dfe9ec")
 var mat := StandardMaterial3D.new()
 var plates: Node3D
 var eye: Node3D
 var visual: Node3D
 
 func _ready() -> void:
+	if not cfg.is_empty():
+		COL = cfg.proj
+		BODY = cfg.body
+		max_hp = cfg.hp
+		hp = cfg.hp
+	spawn_pos = position + Vector3(0, 2.8, 0)
 	add_to_group("enemies")
 	add_to_group("boss")
 	collision_layer = 4
@@ -68,7 +76,7 @@ func _ready() -> void:
 	var em := StandardMaterial3D.new()
 	em.albedo_color = Color(0.05, 0.08, 0.12)
 	em.emission_enabled = true
-	em.emission = Color("#38c9ff")
+	em.emission = cfg.get("eye", Color("#38c9ff"))
 	em.emission_energy_multiplier = 1.2
 	eye.material_override = em
 	eye.position = Vector3(0, 0, -2.2)
@@ -105,7 +113,7 @@ func _physics_process(delta: float) -> void:
 		cd = 1.5
 		main.shake(0.6)
 		main.burst(global_position, BODY, 60)
-		main.banner("PHASE 2" if phase == 1 else "WARDEN-07 OVERLOAD", Color("#ff4d6d"))
+		main.banner("PHASE 2" if phase == 1 else "%s OVERLOAD" % cfg.get("name", "WARDEN-07"), Color("#ff4d6d"))
 		main.clear_projectiles()
 		if phase == 1:
 			main.radio("halfway")
@@ -153,7 +161,7 @@ func _physics_process(delta: float) -> void:
 				spin_acc = 0.0
 				for k in 4:
 					var a := spin + k * TAU / 4.0
-					main.spawn_proj(global_position + Vector3(0, -1.6, 0), Vector3(cos(a), 0, sin(a)) * 10.0, Color("#123a5a"))
+					main.spawn_proj(global_position + Vector3(0, -1.6, 0), Vector3(cos(a), 0, sin(a)) * 10.0, COL.lightened(0.2))
 			if mode_t <= 0.0:
 				mode = "idle"
 				cd = 1.2
