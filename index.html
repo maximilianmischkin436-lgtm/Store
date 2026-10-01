@@ -38,29 +38,88 @@ let best = 0;
 try { best = +localStorage.getItem("neondodge_best") || 0; } catch (e) {}
 
 // --- Savegame (localStorage) ---
-let save = { orbs: 0, bosses: 0, skin: "classic", unlocked: {} };
+let save = { orbs: 0, bosses: 0, skin: "classic", unlocked: {}, games: 0, bestWave: 0, rp: 0, sp: 0, skills: {}, won: false };
 try { Object.assign(save, JSON.parse(localStorage.getItem("neondodge_save") || "{}")); } catch (e) {}
 save.unlocked = save.unlocked || {};
+save.skills = save.skills || {};
 save.unlocked.classic = true;
 function persist() { try { localStorage.setItem("neondodge_save", JSON.stringify(save)); } catch (e) {} }
+
+// --- Skill Tree: permanente Upgrades, bezahlt mit Skillpunkten (SP) ---
+const BRANCH = { def: "#4da3ff", flow: "#38f5c4", off: "#ff9f3d" };
+const SKILLS = [
+  { id: "slim",    name: "Slim Hitbox",   branch: "def",  max: 3, cost: 3,  desc: "Smaller hitbox" },
+  { id: "shield",  name: "Long Shield",   branch: "def",  max: 3, cost: 4,  desc: "+0.7s shield time", req: ["slim", 1] },
+  { id: "wind",    name: "Second Wind",   branch: "def",  max: 1, cost: 15, desc: "Revive once per run", req: ["shield", 2] },
+  { id: "keeper",  name: "Combo Keeper",  branch: "flow", max: 3, cost: 3,  desc: "+0.5s combo time" },
+  { id: "magnet",  name: "Orb Magnet",    branch: "flow", max: 3, cost: 4,  desc: "Bigger orb pickup range", req: ["keeper", 1] },
+  { id: "greed",   name: "Greed",         branch: "flow", max: 3, cost: 5,  desc: "+15% orb score", req: ["magnet", 2] },
+  { id: "slow",    name: "Long Slow-mo",  branch: "off",  max: 3, cost: 3,  desc: "+0.7s slow-mo time" },
+  { id: "breaker", name: "Boss Breaker",  branch: "off",  max: 2, cost: 8,  desc: "+1 boss damage per orb", req: ["slow", 1] },
+  { id: "luck",    name: "Lucky Drops",   branch: "off",  max: 3, cost: 5,  desc: "Power-ups come 12% sooner", req: ["breaker", 1] },
+];
+const lvl = id => save.skills[id] || 0;
+const skillCost = k => k.cost * (lvl(k.id) + 1);
+function skillState(k) {                          // "max" | "needs" | "poor" | "ok"
+  if (lvl(k.id) >= k.max) return "max";
+  if (k.req && lvl(k.req[0]) < k.req[1]) return "needs";
+  return save.sp >= skillCost(k) ? "ok" : "poor";
+}
+const shieldDur = () => 5 + 0.7 * lvl("shield");
+const slowDur = () => 5 + 0.7 * lvl("slow");
+const comboDur = () => 3.5 + 0.5 * lvl("keeper");
+
+// --- Ranked: jeder Durchgang zaehlt, Rating (RP) steigt oder faellt je nach erreichter Welle ---
+const RANKS = [
+  { n: "Bronze", c: "#c8814a", exp: 3 }, { n: "Silver", c: "#c0c8d8", exp: 7 }, { n: "Gold", c: "#ffd23d", exp: 12 },
+  { n: "Platinum", c: "#4de3c8", exp: 18 }, { n: "Diamond", c: "#6fb7ff", exp: 25 }, { n: "Master", c: "#b45cff", exp: 35 },
+  { n: "Legend", c: "#ff4d6d", exp: 50 },
+];
+const rankIdx = rp => Math.min(6, Math.floor(rp / 100));
+function rankLabel(rp) {
+  const i = rankIdx(rp);
+  if (i === 6) return "Legend";
+  const t = rp % 100;
+  return RANKS[i].n + " " + (t < 34 ? "III" : t < 67 ? "II" : "I");
+}
+let lastRun = { d: 0, sp: 0, up: false, down: false }, runDone = false, runBosses = 0, revived = false;
+function finishRun() {
+  if (runDone) return;
+  runDone = true;
+  const before = rankIdx(save.rp);
+  const d = Math.max(-30, Math.min(70, Math.round((wave - RANKS[before].exp) * 7) + 20 * runBosses));
+  save.rp = Math.max(0, save.rp + d);
+  const sp = wave + 3 * runBosses;
+  save.sp += sp; save.games++; save.bestWave = Math.max(save.bestWave, wave);
+  lastRun = { d, sp, up: rankIdx(save.rp) > before, down: rankIdx(save.rp) < before };
+  persist();
+}
 
 // --- Skins: jeder Skin wird durch eine Challenge freigeschaltet ---
 const SKINS = [
   { id: "classic", name: "Classic", color: "#ffffff", shape: "circle", goal: "Unlocked from the start", test: () => true },
-  { id: "ember", name: "Ember", color: "#ff9f3d", shape: "circle", goal: "Collect 100 orbs in total",
-    test: () => save.orbs >= 100, prog: () => Math.min(save.orbs, 100) + "/100" },
+  { id: "ember", name: "Ember", color: "#ff9f3d", shape: "circle", goal: "Collect 300 orbs in total",
+    test: () => save.orbs >= 300, prog: () => Math.min(save.orbs, 300) + "/300" },
   { id: "mint", name: "Mint", color: "#38f5c4", shape: "diamond", goal: "Reach wave 3 in one run",
     test: () => wave >= 3 },
-  { id: "violet", name: "Violet", color: "#b45cff", shape: "square", goal: "Get 8 close calls in one run",
-    test: () => nearMiss >= 8 },
+  { id: "violet", name: "Violet", color: "#b45cff", shape: "square", goal: "Get 15 close calls in one run",
+    test: () => nearMiss >= 15 },
   { id: "sun", name: "Sun", color: "#ffd23d", shape: "star", goal: "Defeat a boss",
     test: () => save.bosses >= 1 },
   { id: "ghost", name: "Ghost", color: "#bbbbff", shape: "ring", goal: "Reach a x10 combo",
     test: () => maxCombo >= 10 },
-  { id: "rainbow", name: "Rainbow", color: "#ffffff", shape: "circle", rainbow: true, goal: "Score 3000 in one run",
-    test: () => score >= 3000 },
-  { id: "frost", name: "Frost", color: "#7ad7ff", shape: "hex", goal: "Defeat 3 bosses in total",
-    test: () => save.bosses >= 3, prog: () => Math.min(save.bosses, 3) + "/3" },
+  { id: "rainbow", name: "Rainbow", color: "#ffffff", shape: "circle", rainbow: true, goal: "Score 5000 in one run",
+    test: () => score >= 5000 },
+  { id: "frost", name: "Frost", color: "#7ad7ff", shape: "hex", goal: "Defeat 5 bosses in total",
+    test: () => save.bosses >= 5, prog: () => Math.min(save.bosses, 5) + "/5" },
+  { id: "obsidian", name: "Obsidian", color: "#8a8ab0", shape: "hex", goal: "Play 50 runs",
+    test: () => save.games >= 50, prog: () => Math.min(save.games, 50) + "/50" },
+  { id: "diamond", name: "Diamond", color: "#6fb7ff", shape: "diamond", goal: "Reach Diamond rank",
+    test: () => rankIdx(save.rp) >= 4, prog: () => save.rp + "/400 RP" },
+  { id: "crimson", name: "Crimson", color: "#ff2d55", shape: "star", goal: "Collect 2000 orbs in total",
+    test: () => save.orbs >= 2000, prog: () => Math.min(save.orbs, 2000) + "/2000" },
+  { id: "champion", name: "Champion", color: "#ffffff", shape: "star", rainbow: true, goal: "Defeat the final boss (wave 100)",
+    test: () => !!save.won },
 ];
 function currentSkin() { return SKINS.find(k => k.id === save.skin && save.unlocked[k.id]) || SKINS[0]; }
 let newUnlocks = [], banner = null;
@@ -95,7 +154,7 @@ function beep(freq, dur, type = "square", vol = 0.05) {
 const stars = Array.from({ length: 50 }, () => ({ x: Math.random() * W, y: Math.random() * H, z: 0.3 + Math.random() }));
 
 // --- Zustand ---
-let state = "menu";                     // menu | skins | play | over
+let state = "menu";                     // menu | skins | tree | play | over | win
 let nearMiss = 0, missText = 0, orbsCollected = 0, maxCombo = 1;
 let boss = null, bossBanner = 0, beamT = 0;
 let paused = false, wave = 1, waveBanner = 0, musicT = 0, musicStep = 0;
@@ -104,11 +163,12 @@ const target = { x: W / 2, y: H * 0.75 };
 const keys = {};
 
 function reset() {
-  player = { x: W / 2, y: H * 0.75, r: 12 };
+  player = { x: W / 2, y: H * 0.75, r: 12 - 0.9 * lvl("slim") };
   target.x = player.x; target.y = player.y;
   enemies = []; orbs = []; powers = []; particles = [];
-  score = 0; combo = 1; comboTimer = 0; time = 0; spawnT = 0; orbT = 0; shake = 0;
-  powerT = 10; shieldT = 0; slowT = 0; nearMiss = 0; missText = 0; orbsCollected = 0; maxCombo = 1; boss = null; bossBanner = 0; beamT = 0; wave = 1; waveBanner = 0; paused = false;
+  score = 0; combo = 1; comboTimer = 0; time = 0; spawnT = 1.5; orbT = 0; shake = 0;
+  runDone = false; runBosses = 0; revived = false;
+  powerT = 8; shieldT = 0; slowT = 0; nearMiss = 0; missText = 0; orbsCollected = 0; maxCombo = 1; boss = null; bossBanner = 0; beamT = 0; wave = 1; waveBanner = 0; paused = false;
 }
 reset();
 
@@ -120,24 +180,24 @@ function burst(x, y, color, n = 14) {
 }
 
 function spawnEnemy() {
-  const speed = 90 + Math.min(time * 4, 220) + Math.random() * 40;
+  const speed = 62 + Math.min(wave * 3.2, 190) + Math.random() * 30;   // steigt langsam mit der Welle
   const side = Math.floor(Math.random() * 3);   // oben, links, rechts
   let x, y, vx = 0, vy = 0;
-  if (side === 0) { x = Math.random() * W; y = -20; vy = speed; vx = (Math.random() - 0.5) * 60; }
+  if (side === 0) { x = Math.random() * W; y = -20; vy = speed; vx = (Math.random() - 0.5) * 50; }
   else if (side === 1) { x = -20; y = Math.random() * H * 0.6; vx = speed; vy = speed * 0.3; }
   else { x = W + 20; y = Math.random() * H * 0.6; vx = -speed; vy = speed * 0.3; }
-  let r = 10 + Math.random() * 12, type = "normal", hp = 1;
+  let r = 9 + Math.random() * (7 + Math.min(wave, 20) * 0.3), type = "normal";
   const roll = Math.random();
-  if (time > 25 && roll < 0.18) {               // Seeker: verfolgt den Spieler
+  if (wave >= 6 && roll < 0.12) {               // Seeker: verfolgt den Spieler
     type = "seeker"; r = 9; vx = 0; vy = 0;
-  } else if (time > 12 && roll < 0.33) {        // Tank: gross und langsam
-    type = "tank"; r = 26; vx *= 0.5; vy = Math.abs(vy) * 0.5 + 40;
+  } else if (wave >= 3 && roll < 0.27) {        // Tank: gross und langsam
+    type = "tank"; r = 24; vx *= 0.5; vy = Math.abs(vy) * 0.5 + 35;
   }
   enemies.push({ x, y, vx, vy, r, type });
 }
 
 function spawnOrb() {
-  orbs.push({ x: 30 + Math.random() * (W - 60), y: 60 + Math.random() * (H - 140), r: 9, life: 4 });
+  orbs.push({ x: 30 + Math.random() * (W - 60), y: 160 + Math.random() * (H - 240), r: 9, life: 5 });
 }
 
 function spawnPower() {
@@ -145,12 +205,27 @@ function spawnPower() {
                 kind: Math.random() < 0.5 ? "shield" : "slow" });
 }
 
-const BOSS_COLORS = ["#ff2d55", "#b45cff", "#ff9f3d"];
+// 10 verschiedene Bosse: Welle 10, 20, ... 100 (Welle 100 = Endboss)
+const BOSSES = [
+  { name: "Pulse",    color: "#ff2d55", hp: 14, rate: 1.7, spd: 0.6, patterns: ["aim", "fan"] },
+  { name: "Spinner",  color: "#b45cff", hp: 18, rate: 2.2, spd: 0.7, patterns: ["spiral", "aim"] },
+  { name: "Sweeper",  color: "#ff9f3d", hp: 22, rate: 2.0, spd: 1.0, patterns: ["columns", "fan"] },
+  { name: "Hunter",   color: "#ff4df0", hp: 26, rate: 1.9, spd: 0.7, patterns: ["summon", "aim", "ring"] },
+  { name: "Prism",    color: "#4da3ff", hp: 30, rate: 1.5, spd: 0.8, patterns: ["ring", "aim", "fan"] },
+  { name: "Rain",     color: "#38c9ff", hp: 34, rate: 2.2, spd: 0.7, patterns: ["rain", "aim", "columns"] },
+  { name: "Vortex",   color: "#9dff4d", hp: 38, rate: 2.0, spd: 0.9, patterns: ["spiral2", "ring"] },
+  { name: "Dasher",   color: "#ffd23d", hp: 42, rate: 1.8, spd: 0.8, patterns: ["dash", "fan", "aim"] },
+  { name: "Hydra",    color: "#ff5f3d", hp: 48, rate: 1.6, spd: 0.9, patterns: ["summon", "fan", "ring", "aim", "dash"] },
+  { name: "OVERLORD", color: "#ffffff", hp: 90, rate: 1.4, spd: 0.9, r: 60,
+    patterns: ["aim", "spiral2", "columns", "ring", "dash", "rain", "summon", "fan"] },
+];
+
 function startBoss() {
-  const n = wave / 5 - 1;                        // 0 beim ersten Boss
+  const n = Math.min(9, wave / 10 - 1), def = BOSSES[n];     // 0 beim ersten Boss
   enemies = [];
-  boss = { x: W / 2, y: -60, r: 44, n, hp: 16 + 6 * n, maxhp: 16 + 6 * n, t: 0, fireT: 1.8, pat: 0, hitCd: 0, flash: 0 };
-  bossBanner = 3;
+  boss = { x: W / 2, y: -80, r: def.r || 44, n, def, hp: def.hp, maxhp: def.hp, t: 0, fireT: 2, pat: 0,
+           hitCd: 0, flash: 0, mode: "idle", modeT: 0, vx: 0, vy: 0, spiral: 0, spT: 0, ang: 0, dbl: false, rain: 0, rainT: 0 };
+  bossBanner = 3.5;
   beep(80, 0.6, "sawtooth", 0.09);
 }
 
@@ -158,12 +233,60 @@ function bullet(x, y, a, sp) {
   enemies.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: 6, type: "bullet" });
 }
 function bossFire() {
-  const b = boss, sp = 150 + b.n * 12, aim = Math.atan2(player.y - b.y, player.x - b.x);
-  const p = b.pat++ % 3;
-  if (p === 0) { for (const d of [-0.28, 0, 0.28]) bullet(b.x, b.y, aim + d, sp + 20); }       // gezielter Dreifachschuss
-  else if (p === 1) { const k = 10 + b.n * 2, o = Math.random() * 6; for (let i = 0; i < k; i++) bullet(b.x, b.y, o + i / k * Math.PI * 2, sp - 20); } // Ring
-  else { for (let i = 0; i < 7; i++) bullet(b.x, b.y, Math.PI / 2 + (i - 3) * 0.32, sp); }      // Faecher nach unten
+  const b = boss, n = b.n, sp = 125 + n * 8, aim = Math.atan2(player.y - b.y, player.x - b.x);
+  const name = b.def.patterns[b.pat++ % b.def.patterns.length];
+  let cd = b.def.rate;
+  switch (name) {
+    case "aim": for (const d of (n > 3 ? [-0.4, -0.2, 0, 0.2, 0.4] : [-0.28, 0, 0.28])) bullet(b.x, b.y, aim + d, sp + 20); break;
+    case "fan": { const k = 5 + Math.floor(n / 3); for (let i = 0; i < k; i++) bullet(b.x, b.y, Math.PI / 2 + (i - (k - 1) / 2) * 0.32, sp); break; }
+    case "ring": { const k = 8 + n, o = Math.random() * 6; for (let i = 0; i < k; i++) bullet(b.x, b.y, o + i / k * Math.PI * 2, sp - 15); break; }
+    case "spiral": b.spiral = 1.8; b.dbl = false; b.ang = Math.random() * 6; cd += 1.6; break;
+    case "spiral2": b.spiral = 2; b.dbl = true; b.ang = Math.random() * 6; cd += 1.8; break;
+    case "columns": {                                  // Wand mit Luecke
+      const gx = 80 + Math.random() * (W - 160);
+      for (let x = 10; x < W; x += 40) if (Math.abs(x - gx) > 70) bullet(x, -10, Math.PI / 2, sp * 0.8);
+      break;
+    }
+    case "rain": b.rain = 3; cd += 2; break;
+    case "summon": for (let i = 0; i < (n >= 8 ? 3 : 2); i++) enemies.push({ x: b.x + (i - 1) * 30, y: b.y, vx: 0, vy: 40, r: 9, type: "seeker", age: 3 }); break;
+    case "dash": b.mode = "tele"; b.modeT = 0.9; cd += 2.4; break;
+  }
+  b.fireT = Math.max(0.6, cd * (0.7 + 0.3 * b.hp / b.maxhp));       // schneller bei wenig Leben
   beep(200, 0.08, "square", 0.04);
+}
+function updateBoss(edt, dt) {
+  const b = boss, homeX = W / 2 + Math.sin(b.t * b.def.spd) * (W / 2 - 90), homeY = 190;
+  b.t += edt;
+  b.hitCd = Math.max(0, b.hitCd - dt); b.flash = Math.max(0, b.flash - dt);
+  if (b.mode === "idle") {
+    b.x = homeX; b.y += (homeY - b.y) * Math.min(1, 2 * edt);
+    b.fireT -= edt;
+    if (b.fireT <= 0 && b.y > 150) bossFire();
+  } else if (b.mode === "tele") {                       // Dash ankuendigen (blinkt)
+    b.modeT -= edt; b.flash = 0.06;
+    if (b.modeT <= 0) {
+      const a = Math.atan2(player.y - b.y, player.x - b.x);
+      b.vx = Math.cos(a) * 560; b.vy = Math.sin(a) * 560; b.mode = "dash"; b.modeT = 0.55;
+    }
+  } else if (b.mode === "dash") {
+    b.x += b.vx * edt; b.y += b.vy * edt; b.modeT -= edt;
+    if (b.modeT <= 0 || b.y > H - 30 || b.x < 30 || b.x > W - 30) b.mode = "back";
+  } else {
+    b.x += (homeX - b.x) * Math.min(1, 3 * edt); b.y += (homeY - b.y) * Math.min(1, 3 * edt);
+    if (Math.hypot(homeX - b.x, homeY - b.y) < 12) b.mode = "idle";
+  }
+  if (b.spiral > 0) {                                   // Spirale
+    b.spiral -= edt; b.spT -= edt;
+    if (b.spT <= 0) {
+      const sp = 125 + b.n * 8;
+      bullet(b.x, b.y, b.ang, sp); if (b.dbl) bullet(b.x, b.y, b.ang + Math.PI, sp);
+      b.ang += 0.5; b.spT = 0.1;
+    }
+  }
+  if (b.rain > 0) {                                     // Regen von oben
+    b.rain -= edt; b.rainT -= edt;
+    if (b.rainT <= 0) { bullet(20 + Math.random() * (W - 40), -10, Math.PI / 2, 150 + b.n * 8); b.rainT = 0.11; }
+  }
 }
 function damageBoss(d) {
   if (!boss) return;
@@ -171,12 +294,15 @@ function damageBoss(d) {
   burst(boss.x + (Math.random() - 0.5) * 40, boss.y + (Math.random() - 0.5) * 40, "#ffd23d", 10);
   beep(260, 0.08, "sawtooth", 0.06);
   if (boss.hp <= 0) {
-    const bonus = 500 + boss.n * 250;
-    score += bonus; save.bosses++; persist();
-    burst(boss.x, boss.y, BOSS_COLORS[boss.n % 3], 70); shake = 0.5;
-    banner = { text: "BOSS DEFEATED!  +" + bonus, color: "#ffd23d", t: 3 };
+    const bonus = 500 + boss.n * 400, final = boss.n === 9;
+    runBosses++;
+    score += bonus; save.bosses++;
+    burst(boss.x, boss.y, boss.def.color, 70); shake = 0.5;
+    banner = { text: boss.def.name + " defeated!  +" + bonus, color: "#ffd23d", t: 3 };
     enemies = []; shieldT = Math.max(shieldT, 3); boss = null;
     beep(500, 0.5, "triangle", 0.09);
+    if (final) { save.won = true; finishRun(); checkUnlocks(); persist(); if (score > best) { best = Math.floor(score); try { localStorage.setItem("neondodge_best", best); } catch (e) {} } state = "win"; overT = 0; return; }
+    persist();
   }
 }
 
@@ -188,10 +314,17 @@ function startGame() {
 }
 
 function gameOver() {
+  if (lvl("wind") > 0 && !revived) {               // Second Wind: einmal pro Run wiederbeleben
+    revived = true; shieldT = 3; enemies = [];
+    burst(player.x, player.y, "#4da3ff", 40); shake = 0.3; beep(700, 0.4, "sine", 0.09);
+    banner = { text: "Second Wind!", color: "#4da3ff", t: 2 };
+    return;
+  }
   state = "over";
   shake = 0.4;
   burst(player.x, player.y, "#ff3d6e", 40);
   beep(120, 0.5, "sawtooth", 0.08);
+  finishRun();
   checkUnlocks();
   if (score > best) {
     best = Math.floor(score);
@@ -214,23 +347,39 @@ function toLogical(e) {
 }
 const inRect = (p, x1, y1, x2, y2) => p.x > x1 && p.x < x2 && p.y > y1 && p.y < y2;
 const inMuteBtn = p => inRect(p, W - 56, 36, W, 80);
-const inSkinsBtn = p => inRect(p, 170, 575, 310, 620);
+const inSkinsBtn = p => inRect(p, 90, 575, 230, 620);
+const inSkillsBtn = p => inRect(p, 250, 575, 390, 620);
+const inBackBtn = p => inRect(p, 170, 664, 310, 708);
+const ROW_TOP = 92, ROW_PITCH = 46, ROW_H = 40;
 function skinsClick(p) {
-  if (inRect(p, 170, 640, 310, 684)) { state = "menu"; return; }
-  const i = Math.floor((p.y - 100) / 60);
-  if (i >= 0 && i < SKINS.length && (p.y - 100) % 60 < 52 && p.x > 30 && p.x < W - 30) {
+  if (inBackBtn(p)) { state = "menu"; return; }
+  const i = Math.floor((p.y - ROW_TOP) / ROW_PITCH);
+  if (i >= 0 && i < SKINS.length && (p.y - ROW_TOP) % ROW_PITCH < ROW_H && p.x > 30 && p.x < W - 30) {
     const sk = SKINS[i];
     if (save.unlocked[sk.id]) { save.skin = sk.id; persist(); beep(700, 0.08, "triangle"); }
     else beep(150, 0.1, "square");
   }
 }
+function treeClick(p) {
+  if (inBackBtn(p)) { state = "menu"; return; }
+  const i = Math.floor((p.y - 96) / 56);
+  if (i >= 0 && i < SKILLS.length && (p.y - 96) % 56 < 48 && p.x > 30 && p.x < W - 30) {
+    const k = SKILLS[i];
+    if (skillState(k) === "ok") { save.sp -= skillCost(k); save.skills[k.id] = lvl(k.id) + 1; persist(); beep(800, 0.15, "triangle", 0.07); }
+    else beep(150, 0.1, "square");
+  }
+}
+function openScreen(name) { enemies = []; orbs = []; powers = []; particles = []; boss = null; state = name; }
 canvas.addEventListener("pointerdown", e => {
   touchOffset = e.pointerType === "touch" ? 50 : 0;   // finger should not hide the player
   const p = toLogical(e);
   if ((state === "play" || state === "menu") && inMuteBtn(p)) { setMuted(!muted); return; }
   if (paused) { paused = false; return; }
   if (state === "skins") { skinsClick(p); return; }
-  if ((state === "menu" || state === "over") && inSkinsBtn(p)) { enemies = []; orbs = []; powers = []; particles = []; boss = null; state = "skins"; return; }
+  if (state === "tree") { treeClick(p); return; }
+  if (state === "win") { if (overT > 1) { reset(); state = "menu"; } return; }
+  if ((state === "menu" || state === "over") && inSkinsBtn(p)) { openScreen("skins"); return; }
+  if ((state === "menu" || state === "over") && inSkillsBtn(p)) { openScreen("tree"); return; }
   if (state === "menu") { startGame(); setTarget(e.clientX, e.clientY); }
   else if (state === "over" && overT > 0.6) { startGame(); setTarget(e.clientX, e.clientY); }
   else if (state === "play") setTarget(e.clientX, e.clientY);
@@ -240,7 +389,7 @@ addEventListener("blur", () => { if (state === "play") paused = true; });
 document.addEventListener("visibilitychange", () => { if (document.hidden && state === "play") paused = true; });
 addEventListener("keydown", e => {
   keys[e.key.toLowerCase()] = true;
-  if (e.key === "Escape" && state === "skins") state = "menu";
+  if (e.key === "Escape" && (state === "skins" || state === "tree")) state = "menu";
   else if (e.key === "p" || e.key === "P" || e.key === "Escape") togglePause();
   if (e.key === "m" || e.key === "M") setMuted(!muted);
   if ((e.key === " " || e.key === "Enter") && state === "menu") startGame();
@@ -263,7 +412,7 @@ function music(dt) {
 
 function update(dt) {
   if (paused) return;
-  if (state === "over") overT += dt; else overT = 0;
+  if (state === "over" || state === "win") overT += dt; else overT = 0;
   shake = Math.max(0, shake - dt);
 
   for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; }
@@ -279,8 +428,8 @@ function update(dt) {
   bossBanner = Math.max(0, bossBanner - dt);
   beamT = Math.max(0, beamT - dt);
   if (banner) { banner.t -= dt; if (banner.t <= 0) banner = null; }
-  const w = 1 + Math.floor(time / 20);
-  if (w > wave) { wave = w; waveBanner = 2; score += 100; beep(700, 0.3, "sine", 0.07); if (wave % 5 === 0 && !boss) startBoss(); }
+  const w = 1 + Math.floor(time / 15);
+  if (w > wave) { wave = w; waveBanner = 2; score += 100; beep(700, 0.3, "sine", 0.07); if (wave % 10 === 0 && wave <= 100 && !boss) startBoss(); }
 
   // Tastatursteuerung bewegt das Ziel
   const k = 340 * dt;
@@ -298,23 +447,18 @@ function update(dt) {
 
   // Spawns werden mit der Zeit haeufiger
   spawnT -= dt;
-  if (spawnT <= 0 && !boss) { spawnEnemy(); spawnT = Math.max(0.18, 0.75 - time * 0.012); }
+  if (spawnT <= 0 && !boss) { spawnEnemy(); spawnT = Math.max(0.22, 1.15 - wave * 0.011); }
   orbT -= dt;
-  if (orbT <= 0) { spawnOrb(); orbT = boss ? 0.9 : 1.1; }
+  if (orbT <= 0) { spawnOrb(); orbT = boss ? 0.8 : 1.1; }
 
   powerT -= dt;
-  if (powerT <= 0) { spawnPower(); powerT = 11 + Math.random() * 5; }
+  if (powerT <= 0) { spawnPower(); powerT = (9 + Math.random() * 4) * (1 - 0.12 * lvl("luck")); }
   shieldT = Math.max(0, shieldT - dt);
   slowT = Math.max(0, slowT - dt);
   const edt = slowT > 0 ? dt * 0.4 : dt;       // Zeitlupe wirkt nur auf Gegner
 
   if (boss) {
-    boss.t += edt;
-    boss.y += (190 - boss.y) * Math.min(1, 2 * edt);
-    boss.x = W / 2 + Math.sin(boss.t * 0.7) * 150;
-    boss.hitCd = Math.max(0, boss.hitCd - dt); boss.flash = Math.max(0, boss.flash - dt);
-    boss.fireT -= edt;
-    if (boss.fireT <= 0 && boss.y > 150) { bossFire(); boss.fireT = Math.max(0.55, 1.4 - boss.n * 0.12); }
+    updateBoss(edt, dt);
     if (Math.hypot(boss.x - player.x, boss.y - player.y) < boss.r + player.r - 2) {
       if (shieldT > 0) { if (boss.hitCd <= 0) { boss.hitCd = 1; damageBoss(2); } }
       else { gameOver(); return; }
@@ -323,7 +467,7 @@ function update(dt) {
 
   for (const e of enemies) {
     if (e.type === "seeker") {
-      const a = Math.atan2(player.y - e.y, player.x - e.x), sp = 110 + Math.min(time * 1.5, 70);
+      const a = Math.atan2(player.y - e.y, player.x - e.x), sp = 85 + Math.min(wave * 1.2, 80);
       e.vx += (Math.cos(a) * sp - e.vx) * Math.min(1, 1.6 * edt);
       e.vy += (Math.sin(a) * sp - e.vy) * Math.min(1, 1.6 * edt);
       e.age = (e.age || 0) + edt;
@@ -345,7 +489,7 @@ function update(dt) {
     pw.life -= dt;
     if (Math.hypot(pw.x - player.x, pw.y - player.y) < pw.r + player.r + 4) {
       pw.life = 0;
-      if (pw.kind === "shield") shieldT = 5; else slowT = 5;
+      if (pw.kind === "shield") shieldT = shieldDur(); else slowT = slowDur();
       burst(pw.x, pw.y, pw.kind === "shield" ? "#4da3ff" : "#ffd23d", 18);
       beep(880, 0.2, "sine", 0.07);
     }
@@ -354,13 +498,13 @@ function update(dt) {
 
   for (const o of orbs) o.life -= dt;
   for (const o of orbs) {
-    if (Math.hypot(o.x - player.x, o.y - player.y) < o.r + player.r + 4) {
+    if (Math.hypot(o.x - player.x, o.y - player.y) < o.r + player.r + 4 + 14 * lvl("magnet")) {
       o.life = 0;
-      score += 50 * combo;
+      score += Math.round(50 * combo * (1 + 0.15 * lvl("greed")));
       combo = Math.min(combo + 1, 10); maxCombo = Math.max(maxCombo, combo); orbsCollected++;
       save.orbs++; persist();
-      if (boss) { damageBoss(2); beamT = 0.12; }
-      comboTimer = 3;
+      if (boss) { damageBoss((combo >= 5 ? 3 : 2) + lvl("breaker")); beamT = 0.12; }
+      comboTimer = comboDur();
       burst(o.x, o.y, "#38f5c4", 12);
       beep(600 + combo * 60, 0.1, "triangle");
     }
@@ -368,7 +512,7 @@ function update(dt) {
   orbs = orbs.filter(o => o.life > 0);
 
   if (comboTimer > 0) { comboTimer -= dt; if (comboTimer <= 0) combo = 1; }
-  checkUnlocks();
+  if (state === "play") checkUnlocks();
 }
 
 // --- Zeichnen ---
@@ -442,10 +586,10 @@ function draw() {
     circle(e.x, e.y, e.r, c, 16);
   }
   if (boss) {
-    const bc = boss.flash > 0 ? "#ffffff" : BOSS_COLORS[boss.n % 3];
+    const bc = boss.flash > 0 ? "#ffffff" : boss.def.color, k = boss.r / 44;
     circle(boss.x, boss.y, boss.r + Math.sin(boss.t * 4) * 2, bc, 30);
-    circle(boss.x - 15, boss.y - 6, 7, "#0a0a14", 0); circle(boss.x + 15, boss.y - 6, 7, "#0a0a14", 0);
-    ctx.fillStyle = "#0a0a14"; ctx.fillRect(boss.x - 16, boss.y + 14, 32, 5);
+    circle(boss.x - 15 * k, boss.y - 6 * k, 7 * k, "#0a0a14", 0); circle(boss.x + 15 * k, boss.y - 6 * k, 7 * k, "#0a0a14", 0);
+    ctx.fillStyle = "#0a0a14"; ctx.fillRect(boss.x - 16 * k, boss.y + 14 * k, 32 * k, 5);
     if (beamT > 0) {
       ctx.strokeStyle = "rgba(255,210,61," + beamT * 6 + ")"; ctx.lineWidth = 4;
       ctx.beginPath(); ctx.moveTo(player.x, player.y); ctx.lineTo(boss.x, boss.y); ctx.stroke();
@@ -468,20 +612,20 @@ function draw() {
     text(String(Math.floor(score)), W / 2, 56, 40);
     if (combo > 1) {
       text("x" + combo + " COMBO", W / 2, 84, 18, "#38f5c4");
-      ctx.fillStyle = "#38f5c4"; ctx.fillRect(W / 2 - 40, 92, 80 * Math.max(0, comboTimer) / 3, 3);
+      ctx.fillStyle = "#38f5c4"; ctx.fillRect(W / 2 - 40, 92, 80 * Math.max(0, comboTimer) / comboDur(), 3);
     }
     if (missText > 0) { ctx.globalAlpha = missText; text("CLOSE CALL +" + 15 * combo, W / 2, 150, 16, "#ffd23d"); ctx.globalAlpha = 1; }
     text("Best " + best, W - 14, 28, 16, "#8888aa", "right");
     text("Wave " + wave, W / 2, 110, 14, "#8888aa");
     if (waveBanner > 0) { ctx.globalAlpha = Math.min(1, waveBanner); text("WAVE " + wave + "!  +100", W / 2, 290, 30, "#ffd23d"); ctx.globalAlpha = 1; }
-    if (bossBanner > 0) { ctx.globalAlpha = Math.min(1, bossBanner); text("BOSS FIGHT!", W / 2, 330, 36, "#ff2d55"); text("Collect orbs to hit the boss", W / 2, 358, 16, "#ffd23d"); ctx.globalAlpha = 1; }
-    if (banner) { ctx.globalAlpha = Math.min(1, banner.t); text(banner.text, W / 2, 400, 22, banner.color); ctx.globalAlpha = 1; }
+    if (bossBanner > 0) { ctx.globalAlpha = Math.min(1, bossBanner); text(wave >= 100 ? "FINAL BOSS" : "BOSS FIGHT!", W / 2, 330, 36, "#ff2d55"); text(boss ? boss.def.name : "", W / 2, 358, 22, "#ffffff"); text("Collect orbs to hit the boss", W / 2, 384, 16, "#ffd23d"); ctx.globalAlpha = 1; }
+    if (banner) { ctx.globalAlpha = Math.min(1, banner.t); text(banner.text, W / 2, 430, 22, banner.color); ctx.globalAlpha = 1; }
     if (boss) {
       ctx.fillStyle = "rgba(255,255,255,0.12)"; ctx.fillRect(W / 2 - 120, 126, 240, 8);
-      ctx.fillStyle = BOSS_COLORS[boss.n % 3]; ctx.fillRect(W / 2 - 120, 126, 240 * Math.max(0, boss.hp) / boss.maxhp, 8);
+      ctx.fillStyle = boss.def.color; ctx.fillRect(W / 2 - 120, 126, 240 * Math.max(0, boss.hp) / boss.maxhp, 8);
     }
-    if (shieldT > 0) { ctx.fillStyle = "#4da3ff"; ctx.fillRect(14, 20, 80 * shieldT / 5, 6); text("Shield", 14, 44, 12, "#4da3ff", "left"); }
-    if (slowT > 0) { ctx.fillStyle = "#ffd23d"; ctx.fillRect(14, 58, 80 * slowT / 5, 6); text("Slow-mo", 14, 82, 12, "#ffd23d", "left"); }
+    if (shieldT > 0) { ctx.fillStyle = "#4da3ff"; ctx.fillRect(14, 20, 80 * shieldT / shieldDur(), 6); text("Shield", 14, 44, 12, "#4da3ff", "left"); }
+    if (slowT > 0) { ctx.fillStyle = "#ffd23d"; ctx.fillRect(14, 58, 80 * slowT / slowDur(), 6); text("Slow-mo", 14, 82, 12, "#ffd23d", "left"); }
   } else if (state === "menu") {
     text("NEON DODGE", W / 2, 240, 52, "#ffffff");
     text("Collect green orbs", W / 2, 310, 20, "#38f5c4");
@@ -489,42 +633,87 @@ function draw() {
     text("S = Shield   Z = Slow-mo", W / 2, 372, 16, "#ffd23d");
     text("Tap / click to start", W / 2, 450, 22);
     text("Mouse, touch or arrows/WASD  (P = Pause)", W / 2, 472, 15, "#8888aa");
-    if (best) text("Best " + best, W / 2, 540, 22, "#8888aa");
+    text(rankLabel(save.rp) + "   " + save.rp + " RP", W / 2, 512, 20, RANKS[rankIdx(save.rp)].c);
+    if (best) text("Best " + best, W / 2, 545, 18, "#8888aa");
     skinsButton();
   } else if (state === "skins") {
     drawSkinsScreen();
+  } else if (state === "tree") {
+    drawTreeScreen();
+  } else if (state === "win") {
+    text("YOU WIN!", W / 2, 240, 56, "#ffd23d");
+    text("The OVERLORD is defeated", W / 2, 290, 20, "#ffffff");
+    text("Score " + Math.floor(score), W / 2, 350, 32);
+    text("Time " + Math.floor(time) + "s   Orbs " + orbsCollected, W / 2, 392, 16, "#8888aa");
+    runSummary(440);
+    if (newUnlocks.length) text("Unlocked: " + newUnlocks.join(", "), W / 2, 500, 16, "#ffd23d");
+    if (overT > 1) text("Tap to continue", W / 2, 540, 20);
   } else {
     text("GAME OVER", W / 2, 260, 48, "#ff3d6e");
     text("Score " + Math.floor(score), W / 2, 330, 32);
     text(score >= best && best > 0 ? "New high score!" : "Best " + best, W / 2, 372, 20, "#38f5c4");
     text("Time " + Math.floor(time) + "s   Wave " + wave, W / 2, 410, 16, "#8888aa");
     text("Orbs " + orbsCollected + "   Close calls " + nearMiss, W / 2, 434, 16, "#8888aa");
-    if (overT > 0.6) text("Tap to try again", W / 2, 490, 20);
-    if (newUnlocks.length) text("Unlocked: " + newUnlocks.join(", "), W / 2, 540, 18, "#ffd23d");
+    runSummary(462);
+    if (overT > 0.6) text("Tap to try again", W / 2, 520, 20);
+    if (newUnlocks.length) text("Unlocked: " + newUnlocks.join(", "), W / 2, 552, 16, "#ffd23d");
     skinsButton();
   }
 }
 
+function runSummary(y) {
+  const c = RANKS[rankIdx(save.rp)].c;
+  text(rankLabel(save.rp) + "   " + (lastRun.d >= 0 ? "+" : "") + lastRun.d + " RP", W / 2, y, 18, c);
+  if (lastRun.up) text("RANK UP!", W / 2, y + 22, 14, "#38f5c4");
+  else if (lastRun.down) text("Rank down", W / 2, y + 22, 14, "#ff6b6b");
+  text("+" + lastRun.sp + " skill points", W / 2, y + (lastRun.up || lastRun.down ? 42 : 22), 14, "#ffd23d");
+}
+function button(x, label) {
+  ctx.strokeStyle = "#8888aa"; ctx.lineWidth = 2; ctx.strokeRect(x, 575, 140, 45);
+  text(label, x + 70, 604, 17, "#ffffff");
+}
 function skinsButton() {
-  ctx.strokeStyle = "#8888aa"; ctx.lineWidth = 2; ctx.strokeRect(170, 575, 140, 45);
-  text("SKINS", W / 2, 606, 20, "#ffffff");
+  button(90, "SKINS");
+  button(250, save.sp > 0 ? "SKILLS (" + save.sp + ")" : "SKILLS");
+}
+function backButton() {
+  ctx.strokeStyle = "#8888aa"; ctx.lineWidth = 2; ctx.strokeRect(170, 664, 140, 44);
+  text("BACK", W / 2, 693, 20);
 }
 function drawSkinsScreen() {
-  text("SKINS", W / 2, 66, 36);
+  text("SKINS", W / 2, 50, 32);
   const done = SKINS.filter(k => save.unlocked[k.id]).length;
-  text(done + "/" + SKINS.length + " unlocked", W / 2, 90, 14, "#8888aa");
+  text(done + "/" + SKINS.length + " unlocked", W / 2, 72, 13, "#8888aa");
   SKINS.forEach((sk, i) => {
-    const y = 100 + i * 60, open = !!save.unlocked[sk.id], on = save.skin === sk.id && open;
-    ctx.fillStyle = on ? "rgba(56,245,196,0.12)" : "rgba(255,255,255,0.05)"; ctx.fillRect(30, y, W - 60, 52);
-    ctx.strokeStyle = on ? "#38f5c4" : "rgba(255,255,255,0.1)"; ctx.lineWidth = 2; ctx.strokeRect(30, y, W - 60, 52);
-    ctx.globalAlpha = open ? 1 : 0.25; drawSkin(sk, 66, y + 26, 13); ctx.globalAlpha = 1;
-    text(sk.name, 100, y + 23, 18, open ? "#ffffff" : "#8888aa", "left");
-    text(sk.goal, 100, y + 42, 12, open ? "#8888aa" : "#ffd23d", "left");
+    const y = ROW_TOP + i * ROW_PITCH, open = !!save.unlocked[sk.id], on = save.skin === sk.id && open;
+    ctx.fillStyle = on ? "rgba(56,245,196,0.12)" : "rgba(255,255,255,0.05)"; ctx.fillRect(30, y, W - 60, ROW_H);
+    ctx.strokeStyle = on ? "#38f5c4" : "rgba(255,255,255,0.1)"; ctx.lineWidth = 2; ctx.strokeRect(30, y, W - 60, ROW_H);
+    ctx.globalAlpha = open ? 1 : 0.25; drawSkin(sk, 60, y + 20, 10); ctx.globalAlpha = 1;
+    text(sk.name, 86, y + 17, 15, open ? "#ffffff" : "#8888aa", "left");
+    text(sk.goal, 86, y + 32, 11, open ? "#8888aa" : "#ffd23d", "left");
     const right = on ? "EQUIPPED" : open ? "TAP TO USE" : (sk.prog ? sk.prog() : "LOCKED");
-    text(right, W - 44, y + 31, 12, on ? "#38f5c4" : "#8888aa", "right");
+    text(right, W - 44, y + 24, 11, on ? "#38f5c4" : "#8888aa", "right");
   });
-  ctx.strokeStyle = "#8888aa"; ctx.lineWidth = 2; ctx.strokeRect(170, 640, 140, 44);
-  text("BACK", W / 2, 670, 20);
+  backButton();
+}
+function drawTreeScreen() {
+  text("SKILL TREE", W / 2, 50, 32);
+  text("Skill points: " + save.sp + "   (earned each run: waves + bosses)", W / 2, 72, 13, "#ffd23d");
+  SKILLS.forEach((k, i) => {
+    const y = 96 + i * 56, st = skillState(k), lv = lvl(k.id);
+    ctx.fillStyle = "rgba(255,255,255,0.05)"; ctx.fillRect(30, y, W - 60, 48);
+    ctx.strokeStyle = st === "ok" ? BRANCH[k.branch] : "rgba(255,255,255,0.1)"; ctx.lineWidth = 2; ctx.strokeRect(30, y, W - 60, 48);
+    ctx.fillStyle = BRANCH[k.branch]; ctx.fillRect(30, y, 5, 48);
+    const dim = st === "needs";
+    text(k.name, 46, y + 20, 16, dim ? "#666680" : "#ffffff", "left");
+    text(dim ? "Needs " + SKILLS.find(q => q.id === k.req[0]).name + " lvl " + k.req[1] : k.desc, 46, y + 38, 12, dim ? "#ff6b6b" : "#8888aa", "left");
+    let pips = "";
+    for (let q = 0; q < k.max; q++) pips += q < lv ? "\u25CF" : "\u25CB";
+    text(pips, W - 46, y + 20, 14, BRANCH[k.branch], "right");
+    text(st === "max" ? "MAX" : skillCost(k) + " SP", W - 46, y + 38, 12, st === "ok" ? "#ffd23d" : "#8888aa", "right");
+  });
+  text("Blue = Defense   Green = Flow   Orange = Offense", W / 2, 640, 12, "#8888aa");
+  backButton();
 }
 
 function drawOverlay() {
