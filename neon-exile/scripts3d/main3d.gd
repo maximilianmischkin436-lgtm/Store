@@ -28,6 +28,9 @@ var state := "play"          # play | dialog | dead | end
 var checkpoint := Vector3.ZERO
 var seen := {}
 var shards := 0
+# Kapitel 7 (Wiese) hat keinen Splitter, danach zaehlt es eins weniger
+func _shard_no() -> int:
+	return chapter if chapter < 7 else 7
 var objective := ""
 var banner_text := ""
 var banner_col := Color.WHITE
@@ -126,7 +129,7 @@ func _ready() -> void:
 	if Story.TAPES.has("c%d_a" % chapter) and door_cols.size() > 1:
 		spawn_pickup("tape", 0, _free_spot(Vector2i(door_cols[1] + 4, 20)))
 	# neue Waffen liegen irgendwo im Level (zweiter Raum)
-	var level_weapon := {1: 9, 2: 3, 3: 7, 4: 8, 5: 6}
+	var level_weapon := {1: 9, 2: 3, 3: 7, 4: 8, 5: 6, 6: 4, 8: 5}
 	if level_weapon.has(chapter) and door_cols.size() > 1:
 		var cx: int = int((door_cols[0] + door_cols[1]) / 2)
 		spawn_pickup("weapon", level_weapon[chapter], _free_spot(Vector2i(cx, 8)))
@@ -139,7 +142,7 @@ const PropHit = preload("res://scripts3d/prop_hit.gd")
 var secret_pos := Vector3.INF
 var secret_found := false
 var interactables: Array = []     # [{pos, text, cb}]
-const SECRET_WEAPON := {1: 3, 2: 4, 3: 8, 4: 6, 5: 7}
+const SECRET_WEAPON := {1: 3, 2: 4, 3: 8, 4: 6, 5: 9, 6: 7, 8: 7}
 
 func _build_secret() -> void:
 	if secret_pos == Vector3.INF:
@@ -325,6 +328,123 @@ func _unhandled_key_input(e: InputEvent) -> void:
 					if n.P.has("head"):
 						n.P.head.scale = Vector3.ONE * 2.2
 
+# ---------- Die Wiese: ein Hund, sonst nichts ----------
+var dog: Node3D
+var dog_parts := {}
+var dog_path: Array = []
+var dog_i := 0
+var dog_wait := 0.0
+var dog_petted := false
+var dog_bark_t := 3.0
+
+func _make_dog() -> void:
+	var T: float = level.T
+	dog = Node3D.new()
+	add_child(dog)
+	var fur := StandardMaterial3D.new()
+	fur.albedo_color = Color(0.85, 0.62, 0.32)
+	fur.roughness = 0.95
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.12, 0.08, 0.06)
+	var light := StandardMaterial3D.new()
+	light.albedo_color = Color(0.95, 0.85, 0.65)
+	light.roughness = 0.95
+	var red := StandardMaterial3D.new()
+	red.albedo_color = Color(0.8, 0.15, 0.15)
+	var body := _part(dog, BoxMesh.new(), Vector3(0.38, 0.36, 0.85), Vector3(0, 0.55, 0), fur)
+	_part(dog, BoxMesh.new(), Vector3(0.3, 0.12, 0.6), Vector3(0, 0.4, 0), light)
+	var head := Node3D.new()
+	head.position = Vector3(0, 0.82, -0.48)
+	dog.add_child(head)
+	_part(head, BoxMesh.new(), Vector3(0.32, 0.3, 0.32), Vector3.ZERO, fur)
+	_part(head, BoxMesh.new(), Vector3(0.2, 0.15, 0.22), Vector3(0, -0.06, -0.24), light)
+	_part(head, BoxMesh.new(), Vector3(0.08, 0.06, 0.05), Vector3(0, -0.01, -0.36), dark)
+	for sd in [-1, 1]:
+		_part(head, BoxMesh.new(), Vector3(0.05, 0.05, 0.02), Vector3(0.08 * sd, 0.06, -0.165), dark)
+		var ear := _part(head, BoxMesh.new(), Vector3(0.08, 0.2, 0.12), Vector3(0.17 * sd, 0.0, 0.02), fur)
+		ear.rotation.z = 0.25 * sd
+	_part(head, BoxMesh.new(), Vector3(0.34, 0.05, 0.08), Vector3(0, -0.14, 0.08), red)
+	var tail := Node3D.new()
+	tail.position = Vector3(0, 0.68, 0.42)
+	dog.add_child(tail)
+	var tl := _part(tail, BoxMesh.new(), Vector3(0.07, 0.07, 0.35), Vector3(0, 0.08, 0.15), fur)
+	tl.rotation.x = -0.6
+	var legs: Array = []
+	for lz in [-0.3, 0.3]:
+		for lx in [-0.13, 0.13]:
+			var lg := Node3D.new()
+			lg.position = Vector3(lx, 0.42, lz)
+			dog.add_child(lg)
+			_part(lg, BoxMesh.new(), Vector3(0.1, 0.42, 0.1), Vector3(0, -0.21, 0), fur)
+			legs.append(lg)
+	dog_parts = {"head": head, "tail": tail, "legs": legs, "body": body}
+	# Weg ueber die Wiese bis zum Ende, wo die Tuer erscheint
+	var y := 14.5 * T
+	dog_path = [Vector3(10 * T, 0, y), Vector3(22 * T, 0, 9 * T), Vector3(38 * T, 0, 18 * T), Vector3(55 * T, 0, 11 * T), Vector3(70 * T, 0, 17 * T), Vector3(84 * T, 0, y)]
+	dog.position = dog_path[0]
+	boss_spawn = dog_path[-1] - Vector3(4 * T, 0, 0)
+
+func _part(parent: Node3D, bm: BoxMesh, size: Vector3, pos: Vector3, m: Material) -> MeshInstance3D:
+	bm.size = size
+	var mi := MeshInstance3D.new()
+	mi.mesh = bm
+	mi.material_override = m
+	mi.position = pos
+	parent.add_child(mi)
+	return mi
+
+func _update_dog(delta: float) -> void:
+	if dog == null:
+		return
+	var t := play_time
+	dog_parts.tail.rotation.y = sin(t * 14.0) * 0.7
+	var target: Vector3 = dog_path[mini(dog_i, dog_path.size() - 1)]
+	var to := target - dog.position
+	to.y = 0.0
+	var pd: float = dog.position.distance_to(Vector3(player.global_position.x, 0, player.global_position.z))
+	var moving := false
+	if to.length() > 0.4:
+		# laeuft voraus, wartet aber, wenn ECHO zurueckbleibt
+		if pd < 9.0 or dog_i == 0:
+			dog.position += to.normalized() * 5.0 * delta
+			moving = true
+		dog.rotation.y = lerp_angle(dog.rotation.y, atan2(-to.x, -to.z), minf(1.0, delta * 6.0))
+	elif dog_i < dog_path.size() - 1:
+		dog_wait += delta
+		var tp: Vector3 = player.global_position - dog.position
+		dog.rotation.y = lerp_angle(dog.rotation.y, atan2(-tp.x, -tp.z), minf(1.0, delta * 4.0))
+		if pd < 6.0 and dog_wait > 0.6:
+			dog_i += 1
+			dog_wait = 0.0
+			Game.sfx("dog", 1.0, 0.8)
+	else:
+		var tp: Vector3 = player.global_position - dog.position
+		dog.rotation.y = lerp_angle(dog.rotation.y, atan2(-tp.x, -tp.z), minf(1.0, delta * 4.0))
+		objective = ch.objectives[3] if not dog_petted else objective
+	for k in 4:
+		dog_parts.legs[k].rotation.x = sin(t * 14.0 + k * PI) * (0.6 if moving else 0.0)
+	dog_parts.body.position.y = 0.55 + (abs(sin(t * 14.0)) * 0.04 if moving else 0.0)
+	dog_parts.head.rotation.x = sin(t * 3.0) * 0.08
+	dog_bark_t -= delta
+	if dog_bark_t <= 0.0:
+		dog_bark_t = randf_range(6.0, 12.0)
+		if pd < 25.0:
+			Game.sfx("dog", randf_range(0.95, 1.1), 0.6)
+	# streicheln
+	if not dog_petted and pd < 2.4 and state == "play":
+		pickup_hint = "[E]  PET BISCUIT"
+		if Input.is_action_just_pressed("interact"):
+			pet_dog()
+
+func pet_dog() -> void:
+	dog_petted = true
+	Game.sfx("dog", 1.15, 0.9)
+	for i in 3:
+		burst(dog.position + Vector3(0, 1.2, 0), Color(1, 0.6, 0.7), 12)
+	say(sid("dog"), func():
+		state = "play"
+		_open_exit())
+
 # naechste freie Bodenzelle um eine Wunsch-Zelle
 func _free_spot(c: Vector2i) -> Vector3:
 	for r in 12:
@@ -451,7 +571,7 @@ func _apply_progress(stage: int) -> void:
 	seen["intro"] = true
 	seen["intro_done"] = true
 	title_t = 0.0
-	shards = chapter - 1
+	shards = _shard_no() - 1
 	if stage >= 1:
 		seen["2"] = true
 		level.open_doors("D")
@@ -473,7 +593,7 @@ func _apply_progress(stage: int) -> void:
 		if shard_node:
 			shard_node.queue_free()
 			shard_node = null
-		shards = chapter
+		shards = _shard_no()
 		if chapter == 2:
 			player.give_weapon(2)
 		level.open_doors("G")
@@ -743,6 +863,9 @@ func spawn_npc(role: String, pos: Vector3) -> Node:
 	return e
 
 func _populate_ghosts() -> void:
+	if ch.get("peaceful", false):
+		_make_dog()
+		return
 	# friedliche Geister, die einfach herumlaufen
 	var cells: Array = level._floor_cells()
 	var rng := RandomNumberGenerator.new()
@@ -892,6 +1015,7 @@ func player_shoot(origin: Vector3, dir: Vector3, muzzle: Vector3, wd: Dictionary
 	return end
 
 # ---------- Treffer-Rueckmeldung: Zahlen, Marker, Klick ----------
+var noise := 0.0   # Laerm (nur gegen die Nachtschwester wichtig)
 var killmark_t := 0.0
 var tapes_found := 0
 var crit_t := 0.0
@@ -1201,6 +1325,7 @@ func _process(delta: float) -> void:
 	_update_pproj(delta)
 	if state == "play":
 		_update_secrets(delta)
+		_update_dog(delta)
 	killmark_t = maxf(0.0, killmark_t - delta)
 	crit_t = maxf(0.0, crit_t - delta)
 	_update_lights(delta)
@@ -1305,7 +1430,7 @@ func _check_shard() -> void:
 		burst(shard_node.position, Color("#c77dff"), 50)
 		shard_node.queue_free()
 		shard_node = null
-		shards = chapter
+		shards = _shard_no()
 		checkpoint = player.global_position
 		player.hp = player.max_hp
 		glitch_t = 1.2
@@ -1444,7 +1569,7 @@ func on_boss_killed(b) -> void:
 	Game.reach_stage(3)
 	Game.write_save()
 	var drop_pos: Vector3 = b.global_position
-	var drop := {1: ["weapon", 1], 2: ["ability", 0], 3: ["weapon", 4], 4: ["weapon", 5]}
+	var drop := {1: ["weapon", 1], 2: ["ability", 0], 3: ["weapon", 4], 4: ["weapon", 5], 5: ["weapon", 8], 6: ["weapon", 7]}
 	say(sid("victory"), func():
 		state = "play"
 		if drop.has(chapter):

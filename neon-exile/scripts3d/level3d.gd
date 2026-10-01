@@ -31,7 +31,7 @@ func _surf(mode: int, a: Color, b: Color, c: Color, sc: float) -> ShaderMaterial
 
 # Echte Texturen (generiert, nahtlos) – werden mit Weltkoordinaten (triplanar) aufgelegt
 func _tex(name: String, scale: float, tint: Color = Color.WHITE, rough: float = 0.7) -> Material:
-	var path := "res://assets/tex/%s.jpg" % name
+	var path := "res://assets/tex/%s.png" % name
 	if not ResourceLoader.exists(path):
 		return null
 	var m := StandardMaterial3D.new()
@@ -51,10 +51,13 @@ func _apply_textures() -> void:
 		"office": [["office_wall", 3.0], ["office_floor", 3.0]],
 		"school": [["school_wall", 3.0], ["school_floor", 3.0]],
 		"crown": [["crown_floor", 5.0], ["crown_floor", 5.0]],
+		"hospital": [["hospital_wall", 2.0], ["hospital_floor", 3.0]],
+		"home": [["home_wall", 2.5], ["home_floor", 2.5]],
+		"meadow": [["", 1.0], ["meadow_grass", 4.0]],
 	}
 	if not cfg.has(theme):
 		return
-	var w = _tex(cfg[theme][0][0], cfg[theme][0][1], Color(0.95, 0.95, 0.95), 0.6)
+	var w = null if cfg[theme][0][0] == "" else _tex(cfg[theme][0][0], cfg[theme][0][1], Color(0.95, 0.95, 0.95), 0.6)
 	var f = _tex(cfg[theme][1][0], cfg[theme][1][1], Color.WHITE, 0.35 if theme in ["pool", "mall", "crown"] else 0.85)
 	if w:
 		wall_mat = w
@@ -88,6 +91,23 @@ func _setup_mats() -> void:
 			wall_mat = _surf(0, Color(0.93, 0.92, 0.95), Color(0.82, 0.8, 0.86), Color(0.75, 0.7, 0.85), 0.9)
 			floor_mat = _surf(3, Color(0.9, 0.89, 0.92), Color(0.7, 0.68, 0.75), Color.WHITE, 0.8)
 			ceil_mat = _surf(5, Color(0.97, 0.96, 0.98), Color(0.85, 0.84, 0.88), Color.WHITE, 1.2)
+		"hospital":
+			wall_mat = _surf(0, Color(0.78, 0.9, 0.85), Color(0.6, 0.72, 0.68), Color(0.4, 0.6, 0.55), 0.6)
+			floor_mat = _surf(3, Color(0.8, 0.85, 0.82), Color(0.6, 0.66, 0.62), Color.WHITE, 0.8)
+			ceil_mat = _surf(5, Color(0.92, 0.95, 0.93), Color(0.75, 0.8, 0.78), Color.WHITE, 1.2)
+		"home":
+			wall_mat = _surf(1, Color(0.85, 0.72, 0.55), Color(0.7, 0.55, 0.4), Color(0.5, 0.35, 0.25), 0.5)
+			floor_mat = _surf(2, Color(0.6, 0.42, 0.25), Color(0.45, 0.3, 0.18), Color.WHITE, 1.0)
+			ceil_mat = _surf(5, Color(0.9, 0.86, 0.8), Color(0.7, 0.65, 0.6), Color.WHITE, 1.2)
+		"meadow":
+			# draussen: unsichtbare Grenze, Gras, keine Decke
+			var inv := StandardMaterial3D.new()
+			inv.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			inv.albedo_color = Color(1, 1, 1, 0)
+			wall_mat = inv
+			trim_mat = inv
+			floor_mat = _surf(3, Color(0.35, 0.65, 0.25), Color(0.28, 0.55, 0.2), Color.WHITE, 2.0)
+			ceil_mat = inv
 		"school":
 			wall_mat = _surf(4, Color(0.9, 0.85, 0.72), Color(0.35, 0.55, 0.5), Color(0.2, 0.3, 0.3), 1.0)
 			floor_mat = _surf(3, Color(0.8, 0.78, 0.7), Color(0.5, 0.35, 0.3), Color.WHITE, 0.6)
@@ -244,7 +264,7 @@ func _build_water_and_ceiling() -> void:
 	chrome.albedo_color = Color(0.85, 0.88, 0.9)
 	chrome.metallic = 1.0
 	chrome.roughness = 0.15
-	if theme != "pool":
+	if theme != "pool" and theme != "meadow":
 		_build_ceiling()
 		return
 	# Wasser: flache Schicht ueber dem ganzen Boden (man watet hindurch)
@@ -305,9 +325,14 @@ func _decorate() -> void:
 		"office": _deco_office()
 		"school": _deco_school()
 		"crown": pass
+		"hospital": _deco_hospital()
+		"home": _deco_home()
+		"meadow": _deco_meadow()
 		_: _deco_pool()
 	_place_props()
-	if theme == "crown":
+	if theme in ["hospital", "home", "meadow"]:
+		pass
+	elif theme == "crown":
 		# Bruchstuecke aller vorherigen Orte, durcheinander
 		for th in ["pool", "mall", "office", "school"]:
 			theme = th
@@ -653,11 +678,245 @@ func _deco_school() -> void:
 		for lx in [-0.5, 0.5]:
 			_box(p + Vector3(lx, 0.37, 0), Vector3(0.05, 0.74, 0.6), leg, false)
 
+# ---------- Krankenhaus ----------
+func _deco_hospital() -> void:
+	var cells := _floor_cells()
+	var white := _plain(Color(0.92, 0.94, 0.93), 0.5)
+	var metal := _plain(Color(0.7, 0.72, 0.74), 0.3, 0.8)
+	var sheet := _plain(Color(0.85, 0.92, 0.95), 0.9)
+	for i in 34:
+		var c: Vector2i = cells[rng.randi() % cells.size()]
+		if 12 <= c.y and c.y <= 17:
+			continue
+		var p := cell_center(c)
+		var r := rng.randf_range(-0.2, 0.2) + (PI / 2.0 if rng.randf() < 0.5 else 0.0)
+		match rng.randi() % 4:
+			0, 1:
+				# Krankenbett mit Laken, Kissen, Gelaender
+				_bx(p + Vector3(0, 0.55, 0), Vector3(0.95, 0.12, 2.0), Color(0.9, 0.92, 0.93), 0.5, 0.0, true, r)
+				_bx(p + Vector3(0, 0.66, 0), Vector3(0.9, 0.1, 1.9), Color(0.85, 0.92, 0.95), 0.9, 0.0, false, r)
+				var pil := _bx(p + Vector3(0, 0.75, 0), Vector3(0.6, 0.12, 0.35), Color(0.98, 0.98, 0.98), 0.9, 0.0, false, r)
+				pil.translate_object_local(Vector3(0, 0, 0.75))
+				for lx in [-0.42, 0.42]:
+					var rail := _bx(p + Vector3(0, 0.85, 0), Vector3(0.04, 0.3, 1.2), Color(0.7, 0.72, 0.74), 0.3, 0.8, false, r)
+					rail.translate_object_local(Vector3(lx, 0, 0))
+				for lz in [-0.9, 0.9]:
+					for lx in [-0.4, 0.4]:
+						var leg := _bx(p + Vector3(0, 0.25, 0), Vector3(0.05, 0.5, 0.05), Color(0.6, 0.62, 0.64), 0.3, 0.8, false, r)
+						leg.translate_object_local(Vector3(lx, 0, lz))
+				# Herzmonitor daneben
+				var mon := _bx(p + Vector3(0, 1.2, 0), Vector3(0.45, 0.35, 0.25), Color(0.2, 0.22, 0.24), 0.4, 0.3, false, r)
+				mon.translate_object_local(Vector3(0.75, 0, 0.8))
+				var scr := MeshInstance3D.new()
+				var qm := QuadMesh.new()
+				qm.size = Vector2(0.38, 0.26)
+				scr.mesh = qm
+				scr.material_override = _emit(Color(0.2, 1.0, 0.5), 1.6)
+				scr.position = Vector3(0, 0, -0.13)
+				scr.rotation.y = PI
+				mon.add_child(scr)
+				flicker.append(scr.material_override)
+			2:
+				# Infusionsstaender
+				_bx(p + Vector3(0, 0.95, 0), Vector3(0.04, 1.9, 0.04), Color(0.7, 0.72, 0.74), 0.3, 0.8, false)
+				_bx(p + Vector3(0, 1.75, 0.08), Vector3(0.18, 0.28, 0.06), Color(0.85, 0.95, 1.0), 0.1, 0.0, false)
+				_bx(p + Vector3(0, 0.03, 0), Vector3(0.5, 0.05, 0.5), Color(0.5, 0.5, 0.52), 0.3, 0.8, false)
+			3:
+				# Rollstuhl
+				_bx(p + Vector3(0, 0.5, 0), Vector3(0.5, 0.06, 0.5), Color(0.25, 0.25, 0.28), 0.5, 0.0, true, r)
+				var back := _bx(p + Vector3(0, 0.8, 0), Vector3(0.5, 0.55, 0.05), Color(0.25, 0.25, 0.28), 0.5, 0.0, false, r)
+				back.translate_object_local(Vector3(0, 0, 0.25))
+				for sd in [-0.3, 0.3]:
+					var tm := TorusMesh.new()
+					tm.inner_radius = 0.24
+					tm.outer_radius = 0.28
+					var wheel := MeshInstance3D.new()
+					wheel.mesh = tm
+					wheel.material_override = metal
+					wheel.position = p + Vector3(0, 0.3, 0)
+					wheel.rotation = Vector3(0, r, PI / 2.0)
+					add_child(wheel)
+					wheel.translate_object_local(Vector3(0, sd, 0))
+	# Vorhaenge zwischen den Betten und Schilder
+	_on_wall(14, func(p, r, d):
+		_bx(p + Vector3(0, 1.4, 0), Vector3(1.8, 2.2, 0.03), Color(0.75, 0.88, 0.85), 0.9, 0.0, false, r))
+	_on_wall(6, func(p, r, d):
+		_label(["WARD 4", "QUIET PLEASE", "VISITING HOURS 4 - 6", "PEDIATRICS", "NO VISITORS"][rng.randi() % 5], p + Vector3(0, 2.4, 0), r, Color(0.1, 0.35, 0.3), 56))
+
+# ---------- Zuhause ----------
+func _deco_home() -> void:
+	var cells := _floor_cells()
+	# Wohnungstueren mit Nummer 440, Familienfotos, Schuhe vor der Tuer
+	_on_wall(26, func(p, r, d):
+		var door := _bx(p + Vector3(0, 1.05, 0), Vector3(1.0, 2.1, 0.06), Color(0.45, 0.3, 0.2), 0.6, 0.0, false, r)
+		var knob := _bx(p + Vector3(0, 1.0, 0), Vector3(0.06, 0.06, 0.06), Color(0.85, 0.7, 0.3), 0.3, 0.9, false, r)
+		knob.translate_object_local(Vector3(0.38, 0, -0.06))
+		_label("440", p + Vector3(0, 1.75, 0) - Vector3(d.x, 0, d.y) * 0.05, r, Color(0.85, 0.7, 0.3), 40)
+		if rng.randf() < 0.4:
+			for k in 2:
+				var sh := _bx(p + Vector3(0, 0.05, 0), Vector3(0.1, 0.08, 0.22), Color(0.8, 0.15, 0.15), 0.6, 0.0, false, r)
+				sh.translate_object_local(Vector3(-0.1 + k * 0.15, 0, -0.35)))
+	_on_wall(18, func(p, r, d):
+		var fr := _bx(p + Vector3(0, 1.6, 0), Vector3(0.5, 0.4, 0.04), Color(0.3, 0.2, 0.12), 0.6, 0.0, false, r)
+		var pic := MeshInstance3D.new()
+		var qm := QuadMesh.new()
+		qm.size = Vector2(0.42, 0.32)
+		pic.mesh = qm
+		pic.material_override = _plain(Color(0.75, 0.68, 0.6), 0.9)
+		pic.position = Vector3(0, 0, -0.025)
+		pic.rotation.y = PI
+		fr.add_child(pic)
+		# drei Gesichter, zerkratzt
+		for k in 3:
+			var f := _bx(p + Vector3(0, 1.62, 0), Vector3(0.07, 0.09, 0.01), Color(0.15, 0.1, 0.08), 0.9, 0.0, false, r)
+			f.translate_object_local(Vector3(-0.12 + k * 0.12, 0, -0.035)))
+	for i in 14:
+		var c: Vector2i = cells[rng.randi() % cells.size()]
+		if 12 <= c.y and c.y <= 17:
+			continue
+		var p := cell_center(c)
+		var r := rng.randf() * TAU
+		match rng.randi() % 3:
+			0:
+				# Fernseher mit Rauschen
+				_bx(p + Vector3(0, 0.3, 0), Vector3(0.9, 0.6, 0.5), Color(0.35, 0.25, 0.18), 0.6, 0.0, true, r)
+				var tv := _bx(p + Vector3(0, 0.85, 0), Vector3(0.7, 0.5, 0.5), Color(0.15, 0.15, 0.17), 0.4, 0.2, false, r)
+				var scr := MeshInstance3D.new()
+				var qm := QuadMesh.new()
+				qm.size = Vector2(0.55, 0.38)
+				scr.mesh = qm
+				scr.material_override = _emit(Color(0.75, 0.8, 0.85), 1.5)
+				scr.position = Vector3(0, 0, -0.26)
+				scr.rotation.y = PI
+				tv.add_child(scr)
+				flicker.append(scr.material_override)
+			1:
+				# Kuechentisch, gedeckt fuer drei
+				_bx(p + Vector3(0, 0.75, 0), Vector3(1.4, 0.06, 0.9), Color(0.6, 0.45, 0.3), 0.6, 0.0, true, r)
+				for k in 3:
+					var pl := _bx(p + Vector3(0, 0.8, 0), Vector3(0.22, 0.02, 0.22), Color(0.95, 0.95, 0.92), 0.3, 0.0, false, r)
+					pl.translate_object_local(Vector3(-0.45 + k * 0.45, 0, 0.2))
+			2:
+				# Kuehlschrank mit Zeichnung
+				var fr := _bx(p + Vector3(0, 0.9, 0), Vector3(0.8, 1.8, 0.7), Color(0.92, 0.92, 0.9), 0.3, 0.1, true, r)
+				var lab := Label3D.new()
+				lab.text = "ECHO + MIRA"
+				lab.font_size = 36
+				lab.modulate = Color(0.9, 0.3, 0.3)
+				lab.position = Vector3(0, 0.2, -0.36)
+				lab.rotation.y = PI
+				fr.add_child(lab)
+
+# ---------- Wiese: draussen, blauer Himmel, Haeuser in der Ferne ----------
+var butterflies: Array = []
+
+func _deco_meadow() -> void:
+	var cx := w * T / 2.0
+	var cz := h * T / 2.0
+	# weite Graslandschaft weit ueber die (unsichtbare) Grenze hinaus
+	var far := _box(Vector3(cx, -0.26, cz), Vector3(w * T * 6.0, 0.5, h * T * 12.0), floor_mat, false)
+	far.name = "FarGrass"
+	# sanfte Huegel am Horizont
+	var hill := _plain(Color(0.3, 0.58, 0.22), 0.95)
+	for i in 14:
+		var a := rng.randf() * TAU
+		var d := rng.randf_range(300.0, 420.0)
+		var mi := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = rng.randf_range(50.0, 90.0)
+		sm.height = sm.radius * 2.0
+		mi.mesh = sm
+		mi.material_override = hill
+		mi.position = Vector3(cx + cos(a) * d, -sm.radius * 0.8, cz + sin(a) * d)
+		mi.scale = Vector3(1.6, 1.0, 1.6)
+		add_child(mi)
+	# Haeuser weit weg (kleines Dorf)
+	for i in 16:
+		var a := rng.randf_range(-1.2, 1.2) + (0.0 if i % 2 == 0 else PI)
+		var d := rng.randf_range(90.0, 150.0)
+		var p := Vector3(cx + cos(a) * d * 1.3, 0, cz + sin(a) * d)
+		var hw := rng.randf_range(5.0, 8.0)
+		var hc: Color = [Color(0.95, 0.92, 0.85), Color(0.9, 0.85, 0.75), Color(0.85, 0.88, 0.9), Color(0.95, 0.85, 0.8)][i % 4]
+		_bx(p + Vector3(0, 3.0, 0), Vector3(hw, 6.0, hw * 0.8), hc, 0.8, 0.0, false, a)
+		var roof := MeshInstance3D.new()
+		var pm := PrismMesh.new()
+		pm.size = Vector3(hw * 1.1, 3.0, hw * 0.9)
+		roof.mesh = pm
+		roof.material_override = _plain([Color(0.65, 0.2, 0.15), Color(0.35, 0.3, 0.3), Color(0.55, 0.3, 0.2)][i % 3], 0.8)
+		roof.position = p + Vector3(0, 7.5, 0)
+		roof.rotation.y = a
+		add_child(roof)
+		for k in 2:
+			var win := _bx(p + Vector3(0, 3.5, 0), Vector3(1.0, 1.2, 0.05), Color(0.6, 0.75, 0.9), 0.1, 0.3, false, a)
+			win.translate_object_local(Vector3(-1.5 + k * 3.0, 0, -hw * 0.4 - 0.03))
+	# Baeume
+	var trunk := _plain(Color(0.4, 0.28, 0.18), 0.9)
+	var leaves := _plain(Color(0.25, 0.55, 0.2), 0.9)
+	for i in 40:
+		var p := Vector3(rng.randf_range(-40, w * T + 40), 0, rng.randf_range(-40, h * T + 40))
+		if p.x > 4 and p.x < w * T - 4 and p.z > 4 and p.z < h * T - 4 and rng.randf() < 0.75:
+			continue
+		var s := rng.randf_range(0.8, 1.6)
+		var tr := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.25 * s
+		cm.bottom_radius = 0.35 * s
+		cm.height = 3.0 * s
+		tr.mesh = cm
+		tr.material_override = trunk
+		tr.position = p + Vector3(0, 1.5 * s, 0)
+		add_child(tr)
+		for k in 3:
+			var lf := MeshInstance3D.new()
+			var sm := SphereMesh.new()
+			sm.radius = rng.randf_range(1.3, 2.0) * s
+			sm.height = sm.radius * 2.0
+			lf.mesh = sm
+			lf.material_override = leaves
+			lf.position = p + Vector3(rng.randf_range(-0.8, 0.8), 3.5 * s + k * 0.7, rng.randf_range(-0.8, 0.8))
+			add_child(lf)
+	# Blumen
+	var fcols := [Color(1, 1, 1), Color(1, 0.9, 0.2), Color(0.9, 0.4, 0.6), Color(0.6, 0.5, 1.0)]
+	for i in 500:
+		var p := Vector3(rng.randf_range(4, w * T - 4), 0, rng.randf_range(4, h * T - 4))
+		var st := _bx(p + Vector3(0, 0.12, 0), Vector3(0.02, 0.24, 0.02), Color(0.2, 0.5, 0.15), 0.9, 0.0, false)
+		var fl := _bx(p + Vector3(0, 0.26, 0), Vector3(0.09, 0.04, 0.09), fcols[i % 4], 0.6, 0.0, false)
+	# Grasbuesche
+	for i in 260:
+		var p := Vector3(rng.randf_range(4, w * T - 4), 0, rng.randf_range(4, h * T - 4))
+		for k in 3:
+			var g := _bx(p + Vector3(rng.randf_range(-0.15, 0.15), 0.2, rng.randf_range(-0.15, 0.15)), Vector3(0.03, 0.4, 0.01), Color(0.3, 0.6, 0.2), 0.9, 0.0, false, rng.randf() * TAU)
+			g.rotation.z = rng.randf_range(-0.3, 0.3)
+	# Holzzaun am Rand
+	var wood := Color(0.6, 0.45, 0.3)
+	var x := 3.0
+	while x < w * T - 3.0:
+		for z in [3.0, h * T - 3.0]:
+			_bx(Vector3(x, 0.55, z), Vector3(0.12, 1.1, 0.12), wood, 0.9, 0.0, false)
+			_bx(Vector3(x + 1.0, 0.8, z), Vector3(2.0, 0.08, 0.06), wood, 0.9, 0.0, false)
+		x += 2.0
+	# Schmetterlinge
+	for i in 14:
+		var b := MeshInstance3D.new()
+		var qm := QuadMesh.new()
+		qm.size = Vector2(0.16, 0.1)
+		b.mesh = qm
+		var bm := _plain([Color(1, 0.8, 0.2), Color(1, 1, 1), Color(0.5, 0.7, 1)][i % 3], 0.6)
+		bm.cull_mode = BaseMaterial3D.CULL_DISABLED
+		b.material_override = bm
+		b.position = Vector3(rng.randf_range(10, w * T - 10), 1.0, rng.randf_range(8, h * T - 8))
+		add_child(b)
+		butterflies.append({"n": b, "o": b.position, "ph": rng.randf() * TAU})
+
 func dream_update(delta: float, player_pos: Vector3, t: float) -> void:
 	for lab in memories:
 		var d: float = lab.global_position.distance_to(player_pos)
 		var a := clampf((d - 5.0) / 5.0, 0.0, 1.0) * clampf((26.0 - d) / 8.0, 0.0, 1.0)
 		lab.modulate.a = lerpf(lab.modulate.a, a * 0.7, minf(1.0, delta * 2.0))
+	for bf in butterflies:
+		var ph: float = t * 1.3 + bf.ph
+		bf.n.position = bf.o + Vector3(sin(ph) * 2.0, sin(ph * 2.7) * 0.4 + 0.3, cos(ph * 0.8) * 2.0)
+		bf.n.rotation.x = sin(t * 18.0 + bf.ph) * 1.2
 	for m in flicker:
 		m.emission_energy_multiplier = 0.0 if fmod(t * 7.3 + m.get_instance_id() * 0.37, 5.0) < 0.35 else 2.5
 
@@ -667,6 +926,8 @@ const PROPS := {
 	"mall": [["GlamVelvetSofa", 5, 0.9], ["Corset", 4, 1.1], ["Avocado", 4, 0.25], ["BarramundiFish", 2, 0.6], ["ChairDamaskPurplegold", 3, 1.0]],
 	"office": [["SheenChair", 9, 1.0], ["WaterBottle", 6, 0.3], ["Lantern", 2, 1.6], ["AntiqueCamera", 2, 0.5]],
 	"school": [["SheenChair", 3, 1.0], ["ToyCar", 3, 0.35], ["Duck", 2, 0.3], ["Lantern", 2, 1.4], ["Avocado", 2, 0.2]],
+	"hospital": [["WaterBottle", 6, 0.3], ["Lantern", 2, 1.4], ["SheenChair", 4, 1.0]],
+	"home": [["GlamVelvetSofa", 4, 0.9], ["ChairDamaskPurplegold", 5, 1.0], ["ToyCar", 4, 0.35], ["Duck", 2, 0.3], ["AntiqueCamera", 1, 0.5], ["Avocado", 3, 0.2]],
 	"crown": [["SheenChair", 3, 1.0], ["ToyCar", 2, 0.35], ["GlamVelvetSofa", 2, 0.9], ["ChairDamaskPurplegold", 4, 1.0], ["AntiqueCamera", 2, 0.5], ["Lantern", 3, 1.6], ["Duck", 3, 0.3], ["Corset", 2, 1.1]],
 }
 

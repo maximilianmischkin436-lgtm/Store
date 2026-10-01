@@ -38,6 +38,9 @@ func _process(delta: float) -> void:
 	var p = main.player
 	if main.dialog.active and step != 1 and step != 6 and step != 11:
 		main.dialog.skip()
+	if main.ch.get("peaceful", false):
+		_meadow(delta)
+		return
 	match step:
 		0:
 			if t > 1.0: snap("01_title"); step = 1; t = 0
@@ -123,3 +126,36 @@ func _process(delta: float) -> void:
 				step = 14; t = 0
 		14:
 			print("AUTOTEST3D done"); get_tree().quit()
+
+# Wiese: dem Hund folgen, streicheln, durch die Tuer
+func _meadow(_delta: float) -> void:
+	var p = main.player
+	if main.dialog.active and step != 1 and step != 4:
+		main.dialog.skip()
+	match step:
+		0:
+			if t > 1.5: snap("01_title"); step = 1; t = 0
+		1:
+			if main.dialog.active and t > 1.0: snap("02_dialog"); main.dialog.skip(); step = 2; t = 0
+			elif t > 4.0: step = 2; t = 0
+		2:
+			# dem Hund hinterher laufen (teleportieren in Etappen)
+			var d: Vector3 = main.dog.position
+			p.global_position = d + Vector3(-3, 0.2, 0)
+			p.yaw = -PI / 2
+			if t > 2.0 and t < 2.05: snap("03_follow")
+			if main.dog_i >= main.dog_path.size() - 1 and main.dog.position.distance_to(main.dog_path[-1]) < 0.5:
+				p.global_position = main.dog.position + Vector3(-1.5, 0.2, 0)
+				snap("04_dog")
+				main.pet_dog(); step = 4; t = 0
+		4:
+			if t > 0.5: step = 5; t = 0
+		5:
+			if t > 0.5 and main.exit_node:
+				print("exit open: ", main.objective)
+				p.global_position = main.exit_node.position + Vector3(0, 0.2, 0)
+				step = 6; t = 0
+		6:
+			if t > 4.0:
+				print("final state: ", main.state, " next chapter: ", Game.chapter)
+				print("AUTOTEST3D done"); get_tree().quit()

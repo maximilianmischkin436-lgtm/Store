@@ -29,6 +29,7 @@ const SFX := {
 	"jump": "res://assets/kenney/sounds/jump_a.ogg",
 	"land": "res://assets/kenney/sounds/land.ogg",
 	"swap": "res://assets/kenney/sounds/weapon_change.ogg",
+	"dog": "res://assets/sfx/dog.ogg",
 }
 
 func _ready() -> void:
@@ -42,7 +43,8 @@ func _ready() -> void:
 		add_child(p)
 		sfx_pool.append(p)
 	for k in SFX:
-		sounds[k] = load(SFX[k])
+		if ResourceLoader.exists(SFX[k]):
+			sounds[k] = load(SFX[k])
 	walk = AudioStreamPlayer.new()
 	walk.stream = load("res://assets/kenney/sounds/walking.ogg")
 	walk.finished.connect(func(): if walk.get_meta("on", false): walk.play())

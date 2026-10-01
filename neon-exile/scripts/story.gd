@@ -136,7 +136,16 @@ const DIALOG := {
 		["MIRA", "You don't have to hate him. He's just the part of you that stayed at the server."],
 		["ECHO", "Then I'll take him with me. All the way up."],
 	],
-	# ---- Kapitel 7: die Krone, das Ende ----
+	# ---- Kapitel 7: die Wiese (keine Monster, nur ein Hund) ----
+	"c7_intro": [
+		["ECHO", "...Grass. A real sky. Where is this?"],
+		["MIRA", "The only memory she never touched. The day we got Biscuit. Go on. He's waiting for you."],
+	],
+	"c7_dog": [
+		["MIRA", "He waited by the door every day after. Even when nobody came home."],
+		["ECHO", "Good boy. ...Good boy. I'm home now."],
+	],
+	# ---- Kapitel 8: die Krone, das Ende ----
 	"c8_intro": [
 		["MIRA", "This is the Crown. Everything she couldn't let go of is stored up here."],
 		["ECHO", "The pool. The market. The office. The school. It's all here at once."],
@@ -202,6 +211,8 @@ const RADIO := {
 	"c6_gate": [["MIRA", "The last door. He fights like you. Because he is you."]],
 	"c6_halfway": [["MIRA", "He's breaking. So are you. That's okay."]],
 	"c6_exit": [["MIRA", "Up. Toward the Crown. Toward her."]],
+	"c7_controls": [["MIRA", "No monsters here. Just breathe."]],
+	"c7_exit": [["MIRA", "Rest a moment. Then we go up."]],
 	"c8_controls": [["MIRA", "Careful. Up here, every room remembers something different."]],
 	"c8_scrap": [["MIRA", "All of them. Everyone from that day. They're still waiting."]],
 	"c8_drones": [["MIRA", "The ones from every place at once. Don't let them corner you."]],

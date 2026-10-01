@@ -68,10 +68,19 @@ func _ready() -> void:
 func _build_giant() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5
-	var o := Figure.outfit({"lifeguard": "lifeguard", "mannequin": "mannequin", "headmaster": "teacher", "halcyon": "shopper"}[kind], rng)
+	var o := Figure.outfit({"lifeguard": "lifeguard", "mannequin": "mannequin", "headmaster": "teacher", "halcyon": "shopper", "nurse": "nurse", "mirror": "worker"}[kind], rng)
 	o.height = 2.6
 	if kind == "lifeguard":
 		o.width = 0.85
+	if kind == "nurse":
+		o.height = 3.1
+		o.width = 0.75
+	if kind == "mirror":
+		# sieht aus wie ECHO: dunkel, mit tuerkisem Leuchten, nur etwas groesser
+		o.height = 1.6
+		o.shirt = Color(0.08, 0.1, 0.12)
+		o.pants = Color(0.05, 0.06, 0.08)
+		o.extras = ["collar"]
 	if kind == "halcyon":
 		o.height = 3.2
 		o.shirt = Color(0.96, 0.95, 0.98)
@@ -110,6 +119,33 @@ func _build_giant() -> void:
 		halo.light_energy = 1.5
 		halo.omni_range = 8.0
 		P.head.add_child(halo)
+	if kind == "nurse":
+		# viel zu lange Arme, Spritze in der Hand
+		for sd in [-1, 1]:
+			P["el%d" % sd].scale = Vector3(1, 2.2, 1)
+		var syr := MeshInstance3D.new()
+		syr.mesh = Figure.box(0.06, 0.4, 0.06)
+		syr.material_override = Figure.mat(Color(0.8, 0.95, 1.0), 0.7, 0.1)
+		syr.position = Vector3(0, -0.6, 0)
+		P.el1.add_child(syr)
+	if kind == "mirror":
+		for m in mats:
+			m.emission = Color("#38f5c4")
+		var glow := Figure.mat(Color("#38f5c4"), 1.0, 0.2)
+		glow.emission_enabled = true
+		glow.emission = Color("#38f5c4")
+		glow.emission_energy_multiplier = 3.0
+		for sd in [-1, 1]:
+			var eye_m := MeshInstance3D.new()
+			eye_m.mesh = Figure.box(0.04, 0.015, 0.01)
+			eye_m.material_override = glow
+			eye_m.position = Vector3(0.045 * sd, 0.03, -0.125)
+			P.head.add_child(eye_m)
+		var gun_m := MeshInstance3D.new()
+		gun_m.mesh = Figure.box(0.08, 0.1, 0.5)
+		gun_m.material_override = glow
+		gun_m.position = Vector3(0, -0.5, -0.2)
+		P.el1.add_child(gun_m)
 	if kind == "headmaster" or kind == "halcyon":
 		beam = MeshInstance3D.new()
 		var bm := BoxMesh.new()
@@ -209,6 +245,8 @@ func _physics_process(delta: float) -> void:
 		"mnemos": _mnemos(delta, p, to, d)
 		"headmaster": _headmaster(delta, p, to, d)
 		"halcyon": _halcyon(delta, p, to, d)
+		"nurse": _nurse(delta, p, to, d)
+		"mirror": _mirror(delta, p, to, d)
 	if kind != "mnemos":
 		velocity.y = 0.0 if mode != "jump" else velocity.y
 	move_and_slide()
@@ -616,6 +654,170 @@ func _start_quiz(p) -> void:
 		if i == q[2]:
 			quiz_ok = n.global_position
 			quiz_ok.y = 0.0
+
+# ---------------- THE NIGHT NURSE ----------------
+# Laerm lockt sie an (Schiessen/Dashen fuellt die Laerm-Anzeige), EKG-Linien im Herzschlag,
+# Spritzen-Faecher, und ab Phase 2 "CODE BLUE": Licht aus, Patienten stehen auf.
+var beats := 0
+func _nurse(delta: float, p, to: Vector3, d: float) -> void:
+	var dir := to.normalized()
+	_face(dir, delta)
+	main.noise = maxf(0.0, main.noise - delta * 0.12)
+	if main.noise >= 1.0 and mode == "idle":
+		main.noise = 0.0
+		main.banner("SHHHHHHH", Color("#7dffd0"))
+		Game.sfx("enemy_hurt", 0.4, 1.0)
+		var back: Vector3 = p.global_basis.z
+		var tp: Vector3 = p.global_position + Vector3(back.x, 0, back.z).normalized() * 3.5
+		if not main.level.solid(tp):
+			global_position = Vector3(tp.x, 0, tp.z)
+		main.burst(global_position + Vector3(0, 2, 0), Color(0.8, 1, 0.95), 40)
+		main.add_hazard("circle", Vector3(p.global_position.x, 0, p.global_position.z), Vector2(3.0, 0), 0.6, 0.0, Color(0.4, 1, 0.8))
+		cd = 1.4
+		return
+	match mode:
+		"idle":
+			if d > 5.0:
+				_walk(delta, dir, 1.5 + phase * 0.6)
+			else:
+				Figure.walk(P, walk_ph, 0.0)
+			cd -= delta
+			if cd <= 0.0:
+				var lists := [["ecg", "syringes", "ecg", "syringes"], ["ecg", "syringes", "codeblue", "ecg"], ["ecg", "syringes", "codeblue", "ecg", "syringes"]]
+				match _next(lists[phase]):
+					"ecg":
+						main.banner("BEEP... BEEP...", Color("#7dffd0"))
+						mode = "ecg"
+						mode_t = 0.0
+						beats = 4 + phase * 2
+					"syringes":
+						mode = "syringes"
+						mode_t = 0.0
+						tp_t = 3 + phase
+					"codeblue":
+						main.banner("CODE BLUE", Color("#ff3030"))
+						main.blackout(3.0 + phase)
+						for i in 2 + phase:
+							main.spawn_npc("hostile", global_position + Vector3(randf_range(-6, 6), 0, randf_range(-6, 6)))
+						cd = 2.5
+		"ecg":
+			# EKG: im Herzschlag schlagen Linien quer durch den Raum ein, abwechselnd laengs und quer
+			mode_t -= delta
+			if mode_t <= 0.0:
+				mode_t = 0.55 - phase * 0.08
+				beats -= 1
+				Game.sfx("swap", 2.8, 0.7)
+				var yaw: float = atan2(-dir.x, -dir.z) + (PI / 2.0 if beats % 2 == 0 else 0.0)
+				main.add_hazard("line", Vector3(p.global_position.x, 0, p.global_position.z), Vector2(2.2, 34.0), 0.6, yaw, Color(0.3, 1.0, 0.6))
+				if beats <= 0:
+					mode = "idle"
+					cd = 1.6 * _rate()
+		"syringes":
+			mode_t -= delta
+			if mode_t <= 0.0:
+				mode_t = 0.4
+				tp_t -= 1
+				var hp_: Vector3 = global_position + Vector3(0, 3.8, 0)
+				for s_ in [-0.24, -0.12, 0.0, 0.12, 0.24]:
+					var aim: Vector3 = (p.center() - hp_).normalized().rotated(Vector3.UP, s_)
+					main.spawn_proj(hp_, aim * 19.0, Color(0.8, 0.95, 1.0))
+				if tp_t <= 0:
+					mode = "idle"
+					cd = 1.3 * _rate()
+
+# ---------------- ECHO (das Spiegelbild) ----------------
+# Kaempft wie du: kreist um dich, Dash-Schnitt, Pulse-Salven, Schrot aus der Naehe,
+# Katana-Wirbel, und ab Phase 2 Zeitsprung zurueck und Schattenkopien.
+var history: Array = []
+var circle_dir := 1.0
+func _mirror(delta: float, p, to: Vector3, d: float) -> void:
+	var dir := to.normalized()
+	_face(dir, delta * 2.0)
+	history.append(global_position)
+	if history.size() > 180:
+		history.pop_front()
+	match mode:
+		"idle":
+			# seitlich um den Spieler kreisen, Abstand halten
+			var side := dir.cross(Vector3.UP) * circle_dir
+			var want := side * 5.0 + dir * (d - 8.0) * 0.8
+			velocity.x = want.x
+			velocity.z = want.z
+			walk_ph += delta * 8.0
+			Figure.walk(P, walk_ph, 1.0)
+			if randf() < delta * 0.4:
+				circle_dir = -circle_dir
+			cd -= delta
+			if cd <= 0.0:
+				var lists := [["pulse", "dash", "pulse", "scatter"], ["dash", "pulse", "katana", "rewind", "scatter"], ["dash", "pulse", "shadows", "katana", "rewind", "dash"]]
+				var a := _next(lists[phase])
+				if a == "scatter" and d > 9.0:
+					a = "dash"
+				match a:
+					"pulse":
+						mode = "pulse"
+						mode_t = 0.0
+						tp_t = 10 + phase * 4
+					"scatter":
+						Game.sfx("scatter", 0.8, 1.0)
+						for i in 9:
+							var aim: Vector3 = (p.center() - global_position - Vector3(0, 1.2, 0)).normalized().rotated(Vector3.UP, randf_range(-0.3, 0.3))
+							main.spawn_proj(global_position + Vector3(0, 1.2, 0), aim * 22.0, Color("#ff9f3d"))
+						cd = 1.0 * _rate()
+					"dash":
+						mode = "dash_wind"
+						mode_t = 0.45
+						jump_to = Vector3(p.global_position.x, 0, p.global_position.z) + dir * 3.0
+						var yaw: float = atan2(-dir.x, -dir.z)
+						main.add_hazard("line", (global_position + jump_to) / 2.0, Vector2(1.8, global_position.distance_to(jump_to) + 2.0), 0.45, yaw, Color("#38f5c4"))
+					"katana":
+						main.banner("TOO SLOW", Color("#38f5c4"))
+						_ring(18 + phase * 4, 9.0, 0.5)
+						Game.sfx("jump", 2.4, 1.0)
+						cd = 1.2 * _rate()
+					"rewind":
+						if history.size() > 10:
+							main.burst(global_position + Vector3(0, 1, 0), Color("#38f5c4"), 40)
+							global_position = history[0]
+							main.burst(global_position + Vector3(0, 1, 0), Color("#38f5c4"), 40)
+							main.glitch_t = 0.6
+							Game.sfx("swap", 0.5, 1.0)
+						cd = 0.6
+					"shadows":
+						main.banner("WE WERE ALL LATE", Color("#ff4d6d"))
+						for i in 3:
+							main.spawn_npc("hostile", global_position + Vector3(randf_range(-4, 4), 0, randf_range(-4, 4)))
+						cd = 2.0
+		"pulse":
+			mode_t -= delta
+			Figure.walk(P, walk_ph, 0.0)
+			if mode_t <= 0.0:
+				mode_t = 0.09
+				tp_t -= 1
+				var src: Vector3 = global_position + Vector3(0, 1.2, 0)
+				var aim: Vector3 = (p.center() - src).normalized().rotated(Vector3.UP, randf_range(-0.05, 0.05))
+				main.spawn_proj(src, aim * 26.0, Color("#38f5c4"))
+				if int(tp_t) % 3 == 0:
+					Game.sfx("pulse", 1.1, 0.4)
+				if tp_t <= 0:
+					mode = "idle"
+					cd = 1.0 * _rate()
+		"dash_wind":
+			mode_t -= delta
+			if mode_t <= 0.0:
+				mode = "dash"
+				mode_t = 0.25
+				Game.sfx("jump", 1.5, 1.0)
+		"dash":
+			mode_t -= delta
+			var dd: Vector3 = jump_to - global_position
+			dd.y = 0.0
+			velocity = dd.normalized() * 34.0 if dd.length() > 0.5 else Vector3.ZERO
+			if (p.global_position - global_position).length() < 1.6:
+				p.hurt(1)
+			if mode_t <= 0.0 or dd.length() < 0.5:
+				mode = "idle"
+				cd = 0.9 * _rate()
 
 # ---------------- HALCYON ----------------
 # Benutzt die Angriffe der anderen: Pfeife (springen), Sprung, Ausverkauf-Kreise, Akten-Schlaege,

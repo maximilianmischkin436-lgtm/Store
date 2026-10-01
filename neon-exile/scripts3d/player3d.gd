@@ -577,6 +577,7 @@ func reload_progress() -> float:
 
 func _fire(wd: Dictionary) -> void:
 	var w := weapon
+	main.noise += [0.06, 0.14, 0.2, 0.03, 0.15, 0.18, 0.02, 0.08, 0.0, 0.0][w]
 	var shot := wd.duplicate()
 	var bonus := 1 if perfect[w] else 0
 	var last: bool = ammo[w] == 1

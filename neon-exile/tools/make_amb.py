@@ -6,8 +6,14 @@ CFG = {  # theme: (hum Hz, hum vol, noise lowpass, noise vol)
     "office": (120, 0.05, 400, 0.04),
     "school": (0,   0.0,  700, 0.03),
     "crown":  (55,  0.03, 300, 0.05),
+    "hospital": (60, 0.03, 500, 0.03),
+    "home":   (50,  0.02, 400, 0.03),
+    "meadow": (0,   0.0,  2500, 0.02),
 }
+import sys
+only = sys.argv[1:]
 for th, (hz, hv, lp, nv) in CFG.items():
+    if only and th not in only: continue
     rnd = random.Random(th)
     srcs = [f"tools/audio_raw/amb_{th}.mp3", f"tools/audio_raw/amb2_{th}.mp3"]
     inputs = ["-f", "lavfi", "-i", f"anoisesrc=color=brown:amplitude={nv}:duration=30", ]

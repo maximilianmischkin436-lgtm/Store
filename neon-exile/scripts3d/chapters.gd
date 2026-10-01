@@ -69,6 +69,17 @@ const CHAPTERS := [
 		"memories": ["family photo, 3 faces scratched out", "dinner at 6", "MOM: pick up your sister", "the TV only shows 4:40", "your room is exactly how you left it", "a drawing on the fridge: ECHO + MIRA", "you never came home that night", "her shoes are still by the door"],
 	},
 	{
+		"name": "SOMEWHERE GREEN", "map": "res://data/chapter7.txt", "theme": "meadow", "music": "meadow", "wall_h": 4.0, "peaceful": true,
+		"objectives": ["Follow the dog", "Follow the dog", "Follow the dog", "Pet the dog", "Go through the door"],
+		"env": {"sky_top": Color(0.22, 0.48, 0.9), "sky_hor": Color(0.75, 0.88, 1.0), "fog": Color(0.7, 0.82, 0.95), "fog_d": 0.003, "amb": 0.35, "exp": 0.7, "sun": Color(1.0, 0.96, 0.85), "sun_e": 1.0, "sun_rot": Vector3(-0.9, 0.6, 0), "sat": 1.15},
+		"lights": ["#fff6e0", "#fff6e0", "#fff6e0", "#fff6e0"], "light_e": 0.2,
+		"enemy": Color.WHITE, "drone": Color.WHITE, "proj": Color.WHITE,
+		"boss": {"name": "", "kind": "none", "proj": Color.WHITE, "hp": 1, "phase1": "", "phase2": ""},
+		"next": "Chapter 8: The Crown",
+		"transition": ["The door is just standing in the grass.", "Biscuit sits down next to it. He won't follow you.", "That's okay. He already waited long enough."],
+		"memories": [],
+	},
+	{
 		"name": "THE CROWN", "map": "res://data/chapter8.txt", "theme": "crown", "music": "crown", "wall_h": 7.0,
 		"objectives": ["Climb into the Crown", "Walk through what's left", "Find the last fragment", "Reach the throne room", "Face HALCYON"],
 		"env": {"sky_top": Color(0.85, 0.85, 0.92), "sky_hor": Color(1.0, 0.97, 0.94), "fog": Color(0.78, 0.76, 0.84), "fog_d": 0.014, "amb": 0.3, "exp": 0.55, "sun": Color(1.0, 0.97, 0.92), "sun_e": 0.5, "sun_rot": Vector3(-1.3, 0.4, 0), "sat": 0.85},

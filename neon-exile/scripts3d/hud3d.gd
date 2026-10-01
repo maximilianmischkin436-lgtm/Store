@@ -136,6 +136,12 @@ func _draw() -> void:
 		draw_rect(r, wd.col if on else Color(1, 1, 1, 0.15), false, 2.0)
 		draw_string(font, r.position + Vector2(6, 16), str(i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.6))
 		draw_string(font, r.position + Vector2(6, 33), wd.name.split(" ")[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 14, wd.col)
+	# Laerm-Anzeige (nur gegen die Nachtschwester)
+	if main.boss and is_instance_valid(main.boss) and main.boss.kind == "nurse" and main.boss.active:
+		var nr := Rect2(sz.x / 2.0 - 120, 70, 240, 8)
+		draw_rect(nr, Color(0, 0, 0, 0.4))
+		draw_rect(Rect2(nr.position, Vector2(nr.size.x * clampf(main.noise, 0.0, 1.0), 8)), Color(0.4, 1, 0.8) if main.noise < 0.7 else Color(1, 0.3, 0.3))
+		draw_string(font, Vector2(0, 66), "NOISE", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 12, Color(1, 1, 1, 0.6))
 	# Munition + Nachladen
 	if p.has_gun() and p.weapon >= 0:
 		var wdc: Dictionary = p.WEAPONS[p.weapon]
