@@ -16,7 +16,7 @@ Neon Dodge is a fast arcade game for quick sessions.
 - Dodge red balls, purple tanks and homing seekers
 - Grab the Shield (S), Slow-mo (Z) and Bomb (B) power-ups, and chase golden orbs for x4 points
 - Daily missions, a login streak and a player level keep every run worth playing
-- 10 different bosses, one every 10 waves, with a final boss at wave 100
+- 10 different bosses, one every 10 waves, a final boss at wave 100, then Endless mode with ever stronger bosses
 - Ranked ladder from Bronze to Legend: every run raises or lowers your rating
 - Skill tree with permanent upgrades (shield, combo, orb magnet, second wind...)
 - Unlock 12 ship skins by completing challenges, some need serious grinding (progress is saved in your browser)

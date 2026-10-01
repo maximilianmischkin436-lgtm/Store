@@ -276,9 +276,10 @@ const BOSSES = [
 ];
 
 function startBoss() {
-  const n = Math.min(9, wave / 10 - 1), def = BOSSES[n];     // 0 beim ersten Boss
+  const n = wave <= 100 ? wave / 10 - 1 : (wave / 10 - 1) % 9, def = BOSSES[n];   // nach Welle 100: Endless, Bosse wiederholen sich staerker
+  const mul = wave > 100 ? 1 + (wave - 100) / 40 : 1, hp = Math.round(def.hp * mul);
   enemies = [];
-  boss = { x: W / 2, y: -80, r: def.r || 44, n, def, hp: def.hp, maxhp: def.hp, t: 0, fireT: 2, pat: 0,
+  boss = { x: W / 2, y: -80, r: def.r || 44, n, def, hp, maxhp: hp, final: wave === 100, t: 0, fireT: 2, pat: 0,
            hitCd: 0, flash: 0, mode: "idle", modeT: 0, vx: 0, vy: 0, spiral: 0, spT: 0, ang: 0, dbl: false, rain: 0, rainT: 0 };
   bossBanner = 3.5;
   beep(80, 0.6, "sawtooth", 0.09);
@@ -349,7 +350,7 @@ function damageBoss(d) {
   burst(boss.x + (Math.random() - 0.5) * 40, boss.y + (Math.random() - 0.5) * 40, "#ffd23d", 10);
   beep(260, 0.08, "sawtooth", 0.06);
   if (boss.hp <= 0) {
-    const bonus = 500 + boss.n * 400, final = boss.n === 9;
+    const bonus = 500 + boss.n * 400, final = boss.final;
     runBosses++;
     score += bonus; save.bosses++;
     burst(boss.x, boss.y, boss.def.color, 70); shake = 0.5;
@@ -435,7 +436,13 @@ canvas.addEventListener("pointerdown", e => {
   if (state === "skins") { skinsClick(p); return; }
   if (state === "tree") { treeClick(p); return; }
   if (state === "missions") { if (inBackBtn(p)) state = "menu"; return; }
-  if (state === "win") { if (overT > 1) { reset(); state = "menu"; } return; }
+  if (state === "win") {
+    if (overT > 1) {
+      if (inRect(p, 170, 575, 310, 620)) { reset(); state = "menu"; }
+      else { state = "play"; spawnT = 2; banner = { text: "ENDLESS MODE", color: "#ff4d6d", t: 3 }; }   // weiterspielen
+    }
+    return;
+  }
   if ((state === "menu" || state === "over") && inSkinsBtn(p)) { openScreen("skins"); return; }
   if ((state === "menu" || state === "over") && inSkillsBtn(p)) { openScreen("tree"); return; }
   if ((state === "menu" || state === "over") && inMissionsBtn(p)) { openScreen("missions"); return; }
@@ -462,11 +469,14 @@ function music(dt) {
   if (muted || state !== "play") return;
   musicT -= dt;
   if (musicT > 0) return;
-  musicT = Math.max(0.12, 0.22 - time * 0.0012);        // wird mit der Zeit schneller
-  const scale = [110, 130.8, 146.8, 164.8, 196, 220];
-  const notes = [0, 2, 4, 2, 0, 3, 5, 3];
-  beep(scale[notes[musicStep % 8]] * (musicStep % 16 < 8 ? 1 : 1.5), 0.2, "triangle", 0.025);
-  musicStep++;
+  musicT = boss ? 0.16 : Math.max(0.13, 0.22 - wave * 0.0012);          // Boss: schneller und dunkler
+  const scale = boss ? [98, 116.5, 130.8, 155.6, 174.6, 196] : [110, 130.8, 146.8, 164.8, 196, 220];
+  const notes = boss ? [0, 0, 3, 0, 2, 0, 4, 3] : [0, 2, 4, 2, 0, 3, 5, 3];
+  const st = musicStep++;
+  beep(scale[notes[st % 8]] * (st % 16 < 8 ? 1 : 1.5), 0.2, boss ? "sawtooth" : "triangle", boss ? 0.02 : 0.025);
+  if (st % 4 === 0) beep(55, 0.12, "sine", 0.07);                          // Kick
+  if (st % 4 === 2) beep(boss ? 330 : 440, 0.04, "square", 0.012);         // Hi-Hat-Tick
+  if (wave >= 5 && st % 8 === 6) beep(scale[5] * 2, 0.08, "triangle", 0.02);   // Extra-Melodie ab Welle 5
 }
 
 function update(dt) {
@@ -491,7 +501,7 @@ function update(dt) {
   beamT = Math.max(0, beamT - dt);
   if (banner) { banner.t -= dt; if (banner.t <= 0) banner = null; }
   const w = 1 + Math.floor(time / 15);
-  if (w > wave) { wave = w; waveBanner = 2; score += 100; beep(700, 0.3, "sine", 0.07); if (wave % 10 === 0 && wave <= 100 && !boss) startBoss(); }
+  if (w > wave) { wave = w; waveBanner = 2; score += 100; beep(700, 0.3, "sine", 0.07); if (wave % 10 === 0 && !boss) startBoss(); }
 
   // Tastatursteuerung bewegt das Ziel
   const k = 340 * dt;
@@ -728,7 +738,7 @@ function draw() {
     text("Time " + Math.floor(time) + "s   Orbs " + orbsCollected, W / 2, 392, 16, "#8888aa");
     runSummary(430);
     if (newUnlocks.length) text("Unlocked: " + newUnlocks.join(", "), W / 2, 500, 16, "#ffd23d");
-    if (overT > 1) text("Tap to continue", W / 2, 540, 20);
+    if (overT > 1) { text("Tap to play on: ENDLESS", W / 2, 540, 20); button(170, "MENU"); }
   } else {
     text("GAME OVER", W / 2, 190, 48, "#ff3d6e");
     text("Score " + Math.floor(score), W / 2, 250, 32);
