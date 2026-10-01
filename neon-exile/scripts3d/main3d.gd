@@ -30,7 +30,7 @@ var seen := {}
 var shards := 0
 # Kapitel 7 (Wiese) hat keinen Splitter, danach zaehlt es eins weniger
 func _shard_no() -> int:
-	return chapter if chapter < 7 else 7
+	return mini(chapter, 6) if chapter < 9 else 7
 var objective := ""
 var banner_text := ""
 var banner_col := Color.WHITE
@@ -135,7 +135,7 @@ func _ready() -> void:
 	if Story.TAPES.has("c%d_a" % chapter) and door_cols.size() > 1:
 		spawn_pickup("tape", 0, _free_spot(Vector2i(door_cols[1] + 4, 20)))
 	# neue Waffen liegen irgendwo im Level (zweiter Raum)
-	var level_weapon := {1: 9, 2: 3, 3: 7, 4: 8, 5: 6, 6: 4, 8: 5}
+	var level_weapon := {1: 9, 2: 3, 3: 7, 4: 8, 5: 6, 6: 4, 7: 1, 9: 5}
 	if level_weapon.has(chapter) and door_cols.size() > 1:
 		var cx: int = int((door_cols[0] + door_cols[1]) / 2)
 		spawn_pickup("weapon", level_weapon[chapter], _free_spot(Vector2i(cx, 8)))
@@ -149,7 +149,7 @@ const FigureLib = preload("res://scripts3d/figure.gd")
 var secret_pos := Vector3.INF
 var secret_found := false
 var interactables: Array = []     # [{pos, text, cb}]
-const SECRET_WEAPON := {1: 3, 2: 4, 3: 8, 4: 6, 5: 9, 6: 7, 8: 7}
+const SECRET_WEAPON := {1: 3, 2: 4, 3: 8, 4: 6, 5: 9, 6: 7, 7: 2, 9: 7}
 
 func _build_secret() -> void:
 	if secret_pos == Vector3.INF:
@@ -461,7 +461,8 @@ const EVENTS := {
 	4: {"type": "collect", "title": "HIDE AND SEEK - FIND 3 CRYING CHILDREN", "label": "CRYING CHILD", "col": Color("#9fd8ff"), "child": true},
 	5: {"type": "collect", "title": "STAY QUIET - FIND 3 PATIENT FILES", "label": "PATIENT FILE", "col": Color("#7dffd0")},
 	6: {"type": "doors", "title": "WHICH DOOR IS YOURS?"},
-	8: {"type": "survive", "title": "EVERYONE IS HERE - SURVIVE", "time": 30.0},
+	7: {"type": "survive", "title": "MIND THE GAP - HOLD ON UNTIL THE TRAIN COMES", "time": 35.0},
+	9: {"type": "survive", "title": "EVERYONE IS HERE - SURVIVE", "time": 30.0},
 }
 var event := {}
 var event_left := 0
@@ -819,7 +820,7 @@ func _apply_progress(stage: int) -> void:
 	seen["intro"] = true
 	seen["intro_done"] = true
 	title_t = 0.0
-	shards = _shard_no() - 1
+	shards = _shard_no() - (1 if chapter <= 6 or chapter >= 9 else 0)
 	if stage >= 1:
 		waves_left = 0
 		seen["2"] = true

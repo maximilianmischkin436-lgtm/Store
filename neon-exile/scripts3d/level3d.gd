@@ -54,6 +54,7 @@ func _apply_textures() -> void:
 		"hospital": [["hospital_wall", 2.0], ["hospital_floor", 3.0]],
 		"home": [["home_wall", 2.5], ["home_floor", 2.5]],
 		"meadow": [["", 1.0], ["meadow_grass", 4.0]],
+		"subway": [["subway_wall", 2.0], ["subway_floor", 3.0]],
 	}
 	if not cfg.has(theme):
 		return
@@ -99,6 +100,10 @@ func _setup_mats() -> void:
 			wall_mat = _surf(1, Color(0.85, 0.72, 0.55), Color(0.7, 0.55, 0.4), Color(0.5, 0.35, 0.25), 0.5)
 			floor_mat = _surf(2, Color(0.6, 0.42, 0.25), Color(0.45, 0.3, 0.18), Color.WHITE, 1.0)
 			ceil_mat = _surf(5, Color(0.9, 0.86, 0.8), Color(0.7, 0.65, 0.6), Color.WHITE, 1.2)
+		"subway":
+			wall_mat = _surf(0, Color(0.85, 0.88, 0.8), Color(0.7, 0.75, 0.66), Color(0.3, 0.45, 0.3), 0.5)
+			floor_mat = _surf(2, Color(0.45, 0.45, 0.42), Color(0.35, 0.35, 0.33), Color.WHITE, 1.0)
+			ceil_mat = _surf(5, Color(0.6, 0.6, 0.56), Color(0.45, 0.45, 0.42), Color.WHITE, 1.2)
 		"meadow":
 			# draussen: unsichtbare Grenze, Gras, keine Decke
 			var inv := StandardMaterial3D.new()
@@ -337,9 +342,10 @@ func _decorate() -> void:
 		"hospital": _deco_hospital()
 		"home": _deco_home()
 		"meadow": _deco_meadow()
+		"subway": _deco_subway()
 		_: _deco_pool()
 	_place_props()
-	if theme in ["hospital", "home", "meadow"]:
+	if theme in ["hospital", "home", "meadow", "subway"]:
 		pass
 	elif theme == "crown":
 		# Bruchstuecke aller vorherigen Orte, durcheinander
@@ -816,6 +822,63 @@ func _deco_home() -> void:
 				lab.rotation.y = PI
 				fr.add_child(lab)
 
+# ---------- U-Bahn ----------
+func _deco_subway() -> void:
+	var cells := _floor_cells()
+	var yellow := Color(0.95, 0.8, 0.15)
+	# Gleisbetten mit Schienen und gelber Sicherheitslinie (entlang der Raender oben und unten)
+	for row in [4, 25]:
+		for x in range(3, w - 3):
+			var c := Vector2i(x, row)
+			if grid[c.y][c.x] != ".":
+				continue
+			var p := cell_center(c)
+			_bx(p + Vector3(0, 0.01, 0), Vector3(T, 0.02, T), Color(0.12, 0.12, 0.12), 0.9)
+			for rz in [-0.5, 0.5]:
+				_bx(p + Vector3(0, 0.07, rz), Vector3(T, 0.08, 0.08), Color(0.55, 0.55, 0.58), 0.3, 0.9)
+			for k in 3:
+				_bx(p + Vector3(-1.0 + k, 0.03, 0), Vector3(0.2, 0.05, 1.5), Color(0.3, 0.22, 0.15), 0.9)
+			var edge := 1.0 if row == 4 else -1.0
+			_bx(p + Vector3(0, 0.03, edge * T * 0.5), Vector3(T, 0.03, 0.25), yellow, 0.5)
+	# Baenke, Fahrkartenautomaten, Muelleimer
+	for i in 26:
+		var c: Vector2i = cells[rng.randi() % cells.size()]
+		if 12 <= c.y and c.y <= 17:
+			continue
+		var p := cell_center(c)
+		var r := (PI / 2.0) * float(rng.randi() % 2)
+		match rng.randi() % 3:
+			0:
+				_bx(p + Vector3(0, 0.45, 0), Vector3(2.0, 0.08, 0.5), Color(0.55, 0.35, 0.2), 0.7, 0.0, true, r)
+				var back := _bx(p + Vector3(0, 0.75, 0), Vector3(2.0, 0.5, 0.06), Color(0.55, 0.35, 0.2), 0.7, 0.0, false, r)
+				back.translate_object_local(Vector3(0, 0, 0.25))
+			1:
+				var m := _bx(p + Vector3(0, 0.9, 0), Vector3(0.8, 1.8, 0.6), Color(0.2, 0.35, 0.5), 0.4, 0.4, true, r)
+				var scr := MeshInstance3D.new()
+				var qm := QuadMesh.new()
+				qm.size = Vector2(0.5, 0.35)
+				scr.mesh = qm
+				scr.material_override = _emit(Color(0.3, 0.9, 1.0), 1.4)
+				scr.position = Vector3(0, 0.35, -0.31)
+				scr.rotation.y = PI
+				m.add_child(scr)
+				flicker.append(scr.material_override)
+			2:
+				_bx(p + Vector3(0, 0.45, 0), Vector3(0.5, 0.9, 0.5), Color(0.25, 0.3, 0.25), 0.6, 0.3, true)
+	# Abfahrtstafeln
+	_on_wall(10, func(p, r, d):
+		var b := _bx(p + Vector3(0, 2.6, 0), Vector3(2.6, 0.8, 0.08), Color(0.05, 0.05, 0.06), 0.4, 0.0, false, r)
+		_label(["4:00  SCHOOL      CANCELLED", "4:12  SERVER 7    PLATFORM 4", "4:40  ---           ---", "NEXT TRAIN: NEVER"][rng.randi() % 4], p + Vector3(0, 2.6, 0) - Vector3(d.x, 0, d.y) * 0.06, r, Color(1.0, 0.75, 0.2), 30, true))
+	_on_wall(8, func(p, r, d):
+		_label(["MIND THE GAP", "PLATFORM 4", "EXIT", "STAND BEHIND THE YELLOW LINE"][rng.randi() % 4], p + Vector3(0, 3.6, 0), r, Color(0.95, 0.95, 0.9), 44))
+	# ein stehengebliebener Wagen im Gleisbett
+	var car := Vector3(w * T * 0.3, 0, cell_center(Vector2i(0, 4)).z)
+	_bx(car + Vector3(0, 1.8, 0), Vector3(14.0, 3.2, 2.8), Color(0.75, 0.78, 0.8), 0.3, 0.5, true)
+	for k in 5:
+		var win := _bx(car + Vector3(-5.5 + k * 2.75, 2.2, 1.42), Vector3(1.6, 1.0, 0.04), Color(1, 0.95, 0.7), 0.1)
+		win.set_meta("w", 1)
+	_bx(car + Vector3(0, 1.0, 1.43), Vector3(14.0, 0.25, 0.03), Color(0.85, 0.15, 0.15), 0.4)
+
 # ---------- Wiese: draussen, blauer Himmel, Haeuser in der Ferne ----------
 var butterflies: Array = []
 
@@ -937,6 +1000,7 @@ const PROPS := {
 	"school": [["SheenChair", 3, 1.0], ["ToyCar", 3, 0.35], ["Duck", 2, 0.3], ["Lantern", 2, 1.4], ["Avocado", 2, 0.2]],
 	"hospital": [["WaterBottle", 6, 0.3], ["Lantern", 2, 1.4], ["SheenChair", 4, 1.0]],
 	"home": [["GlamVelvetSofa", 4, 0.9], ["ChairDamaskPurplegold", 5, 1.0], ["ToyCar", 4, 0.35], ["Duck", 2, 0.3], ["AntiqueCamera", 1, 0.5], ["Avocado", 3, 0.2]],
+	"subway": [["WaterBottle", 5, 0.3], ["ToyCar", 2, 0.35], ["Lantern", 3, 1.4], ["Duck", 1, 0.3]],
 	"crown": [["SheenChair", 3, 1.0], ["ToyCar", 2, 0.35], ["GlamVelvetSofa", 2, 0.9], ["ChairDamaskPurplegold", 4, 1.0], ["AntiqueCamera", 2, 0.5], ["Lantern", 3, 1.6], ["Duck", 3, 0.3], ["Corset", 2, 1.1]],
 }
 

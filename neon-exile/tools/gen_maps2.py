@@ -99,5 +99,6 @@ gen(3, 33, [12, 28, 26], ['maze', 'grid'], 8, 5)         # Archiv: Trennwand-Lab
 gen(4, 44, [14, 26, 24], ['rows', 'maze'], 7, 5)         # Schule: Bankreihen, Flure
 gen(5, 55, [12, 30, 24], ['grid', 'rows'], 8, 6)         # Krankenhaus: Bettenreihen
 gen(6, 66, [13, 24, 30], ['maze', 'scatter'], 8, 6)      # Zuhause: verwinkelt
-gen(8, 88, [14, 28, 24], ['ring', 'scatter'], 9, 6)      # Krone
+gen(7, 77, [12, 30, 26], ['rows', 'grid'], 9, 6)      # U-Bahn: Bahnsteig-Saeulen, Schalterhalle
+gen(9, 88, [14, 28, 24], ['ring', 'scatter'], 9, 6)      # Krone
 subprocess.run(['python3', 'tools/carve_secrets.py'])

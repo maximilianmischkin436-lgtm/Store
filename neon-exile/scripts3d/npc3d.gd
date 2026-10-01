@@ -13,6 +13,7 @@ const KIND := {
 	"pool": ["swimmer", "lifeguard"], "mall": ["shopper", "mannequin"],
 	"office": ["worker", "manager"], "school": ["student", "teacher"],
 	"hospital": ["patient", "nurse"], "home": ["resident", "parent"],
+	"subway": ["commuter", "inspector"],
 }
 
 var main
@@ -294,7 +295,7 @@ func _special(delta: float, p, to: Vector3, d: float) -> void:
 	ability_t -= delta
 	# neue Orte nutzen die Mechaniken der alten: Krankenschwester = Alarm wie der Bademeister,
 	# Eltern auf den Familienfotos = bewegen sich nur, wenn man wegschaut
-	var beh: String = {"hospital": "pool", "home": "mall"}.get(theme, theme)
+	var beh: String = {"hospital": "pool", "home": "mall", "subway": "office"}.get(theme, theme)
 	match beh:
 		"pool":
 			# Bademeister: pfeift, alle Schwimmer in der Naehe werden feindlich

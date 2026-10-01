@@ -68,10 +68,13 @@ func _ready() -> void:
 func _build_giant() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5
-	var o := Figure.outfit({"lifeguard": "lifeguard", "mannequin": "mannequin", "headmaster": "teacher", "halcyon": "shopper", "nurse": "nurse", "mirror": "worker"}[kind], rng)
+	var o := Figure.outfit({"lifeguard": "lifeguard", "mannequin": "mannequin", "headmaster": "teacher", "halcyon": "shopper", "nurse": "nurse", "mirror": "worker", "conductor": "inspector"}[kind], rng)
 	o.height = 2.6
 	if kind == "lifeguard":
 		o.width = 0.85
+	if kind == "conductor":
+		o.height = 3.0
+		o.width = 1.1
 	if kind == "nurse":
 		o.height = 3.1
 		o.width = 0.75
@@ -246,6 +249,7 @@ func _physics_process(delta: float) -> void:
 		"headmaster": _headmaster(delta, p, to, d)
 		"halcyon": _halcyon(delta, p, to, d)
 		"nurse": _nurse(delta, p, to, d)
+		"conductor": _conductor(delta, p, to, d)
 		"mirror": _mirror(delta, p, to, d)
 	if kind != "mnemos":
 		velocity.y = 0.0 if mode != "jump" else velocity.y
@@ -725,6 +729,109 @@ func _nurse(delta: float, p, to: Vector3, d: float) -> void:
 					mode = "idle"
 					cd = 1.3 * _rate()
 
+# ---------------- THE CONDUCTOR ----------------
+# Zuege rasen durch Fahrspuren (rote Spur = gleich kommt einer), zielsuchende Fahrkarten,
+# "MIND THE GAP": Loecher oeffnen sich unter dir, "DOORS CLOSING": zwei Waende schliessen von den Seiten,
+# ab Phase 2 Expresszuege in mehreren Spuren mit nur einer Luecke.
+var trains: Array = []
+func _conductor(delta: float, p, to: Vector3, d: float) -> void:
+	var dir := to.normalized()
+	_face(dir, delta)
+	_update_trains(delta, p)
+	match mode:
+		"idle":
+			if d > 7.0:
+				_walk(delta, dir, 2.0 + phase * 0.6)
+			else:
+				Figure.walk(P, walk_ph, 0.0)
+			cd -= delta
+			if cd <= 0.0:
+				var lists := [["train", "tickets", "gap", "train"], ["train", "doors", "tickets", "gap", "express"], ["express", "tickets", "doors", "gap", "train", "passengers"]]
+				match _next(lists[phase]):
+					"train":
+						main.banner("TRAIN APPROACHING", Color("#ffd23d"))
+						_send_train(p.global_position, randf() < 0.5, 0.9)
+						cd = 1.4 * _rate()
+					"express":
+						main.banner("EXPRESS - DOES NOT STOP", Color("#ff4d6d"))
+						var horizontal := randf() < 0.5
+						var safe := randi() % 4
+						for k in 4:
+							if k == safe:
+								continue
+							var off := Vector3((k - 1.5) * 4.0, 0, 0) if not horizontal else Vector3(0, 0, (k - 1.5) * 4.0)
+							_send_train(p.global_position + off, horizontal, 1.1)
+						cd = 2.2 * _rate()
+					"tickets":
+						mode = "tickets"
+						mode_t = 0.0
+						tp_t = 4 + phase * 2
+					"gap":
+						main.banner("MIND THE GAP", Color("#ffd23d"))
+						for k in 5 + phase * 2:
+							var off := Vector3(randf_range(-4, 4), 0, randf_range(-4, 4)) if k > 0 else Vector3.ZERO
+							main.add_hazard("circle", Vector3(p.global_position.x, 0, p.global_position.z) + off, Vector2(1.8, 0), 0.8 + k * 0.25, 0.0, Color(0.1, 0.1, 0.1))
+						cd = 2.0 * _rate()
+					"doors":
+						main.banner("DOORS CLOSING", Color("#ff4d6d"))
+						for sd in [-1.0, 1.0]:
+							var yaw: float = atan2(-dir.x, -dir.z) + PI / 2.0
+							var side: Vector3 = dir.cross(Vector3.UP) * sd * 3.2
+							main.add_hazard("line", Vector3(p.global_position.x, 0, p.global_position.z) + side, Vector2(3.2, 30.0), 1.0, yaw - PI / 2.0, Color(1, 0.4, 0.2))
+						cd = 1.8 * _rate()
+					"passengers":
+						main.banner("PLEASE BOARD THE TRAIN", Color("#ffd23d"))
+						for i in 3 + phase:
+							main.spawn_npc("hostile", global_position + Vector3(randf_range(-6, 6), 0, randf_range(-6, 6))).awake = true
+						cd = 2.5
+		"tickets":
+			mode_t -= delta
+			if mode_t <= 0.0:
+				mode_t = 0.3
+				tp_t -= 1
+				var src: Vector3 = global_position + Vector3(0, 3.5, 0)
+				var v: Vector3 = (p.center() - src).normalized().rotated(Vector3.UP, randf_range(-0.6, 0.6)) * 8.0
+				main.spawn_proj(src, v, Color(1, 0.85, 0.2), true)
+				Game.sfx("swap", 2.2, 0.5)
+				if tp_t <= 0:
+					mode = "idle"
+					cd = 1.2 * _rate()
+
+# Ein Zug: rote Spur als Warnung, dann rast ein Wagen durch die Spur
+func _send_train(at: Vector3, horizontal: bool, warn: float) -> void:
+	var yaw := PI / 2.0 if horizontal else 0.0
+	var lane := Vector3(at.x, 0, at.z)
+	main.add_hazard("line", lane, Vector2(3.0, 80.0), warn, yaw, Color(1, 0.85, 0.2))
+	var car := MeshInstance3D.new()
+	car.mesh = Figure.box(2.8, 3.0, 12.0)
+	var cm := Figure.mat(Color(0.75, 0.78, 0.82), 1.0, 0.3)
+	cm.emission_enabled = true
+	cm.emission = Color(1, 0.9, 0.6)
+	cm.emission_energy_multiplier = 0.4
+	car.material_override = cm
+	car.visible = false
+	main.add_child(car)
+	var fwd := Vector3(sin(yaw), 0, cos(yaw))
+	trains.append({"n": car, "from": lane - fwd * 45.0, "to": lane + fwd * 45.0, "t": -warn, "yaw": yaw})
+	Game.sfx("enemy_attack", 0.4, 0.6)
+
+func _update_trains(delta: float, p) -> void:
+	for tr in trains:
+		tr.t += delta
+		var n: MeshInstance3D = tr.n
+		if tr.t < 0.0:
+			continue
+		n.visible = true
+		var k: float = tr.t / 0.7
+		n.global_position = tr.from.lerp(tr.to, k) + Vector3(0, 1.5, 0)
+		n.rotation.y = tr.yaw
+		if k > 0.0 and k < 1.0 and int(tr.t * 30.0) % 4 == 0:
+			main.shake(0.15)
+	for tr in trains:
+		if tr.t > 0.7:
+			tr.n.queue_free()
+	trains = trains.filter(func(x): return x.t <= 0.7)
+
 # ---------------- ECHO (das Spiegelbild) ----------------
 # Kaempft wie du: kreist um dich, Dash-Schnitt, Pulse-Salven, Schrot aus der Naehe,
 # Katana-Wirbel, und ab Phase 2 Zeitsprung zurueck und Schattenkopien.
@@ -968,6 +1075,10 @@ func hit(dmg: int, _dir: Vector3) -> void:
 			_lower_boards()
 		if ruler:
 			ruler.queue_free()
+		for tr in trains:
+			if is_instance_valid(tr.n):
+				tr.n.queue_free()
+		trains.clear()
 		for n in quiz_nodes:
 			n.queue_free()
 		main.blackout_t = 0.0

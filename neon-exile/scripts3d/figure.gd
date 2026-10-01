@@ -143,6 +143,17 @@ static func outfit(kind: String, rng: RandomNumberGenerator) -> Dictionary:
 			o.pants = Color(0.25, 0.22, 0.2)
 			o.hair_style = rng.randi() % 4 + 1
 			o.extras = ["collar"]
+		"commuter":
+			o.shirt = [Color(0.35, 0.33, 0.3), Color(0.25, 0.28, 0.35), Color(0.45, 0.3, 0.25), Color(0.5, 0.48, 0.42)][rng.randi() % 4]
+			o.pants = Color(0.18, 0.18, 0.2)
+			o.hair_style = rng.randi() % 4 + 1
+			o.extras = ["collar", "briefcase"] if rng.randf() < 0.5 else ["collar", "bags"]
+		"inspector":
+			o.height = 1.1
+			o.shirt = Color(0.12, 0.16, 0.32)
+			o.pants = Color(0.1, 0.12, 0.25)
+			o.hair_style = 3
+			o.extras = ["collar", "tie", "badge", "cap"]
 		"parent":
 			o.height = 1.1
 			o.shirt = Color(0.5, 0.42, 0.38)
@@ -265,6 +276,9 @@ static func build(root: Node3D, o: Dictionary, alpha: float, glow: float, hostil
 			_mesh(head, sph(0.128), Vector3(0, 0.09, 0.02), Vector3(1.0, 0.55, 1.05), mat(Color(0.5, 0.48, 0.45), alpha, 0.9, glow))
 		4:
 			_mesh(head, sph(0.128), Vector3(0, 0.06, 0.0), Vector3(1.03, 0.85, 1.06), mat(Color(0.95, 0.95, 0.97), alpha, 0.3, glow))
+	if o.extras.has("cap"):
+		_mesh(head, cyl(0.14, 0.13, 0.08), Vector3(0, 0.13, 0), Vector3.ONE, mat(Color(0.1, 0.12, 0.25), alpha, 0.5, glow))
+		_mesh(head, box(0.2, 0.015, 0.1), Vector3(0, 0.1, -0.13), Vector3.ONE, mat(Color(0.05, 0.05, 0.08), alpha, 0.3, glow))
 	if o.extras.has("nursecap"):
 		_mesh(head, box(0.16, 0.06, 0.1), Vector3(0, 0.15, 0.02), Vector3.ONE, mat(Color(1, 1, 1), alpha, 0.5, glow))
 		_mesh(head, box(0.04, 0.04, 0.005), Vector3(0, 0.155, -0.032), Vector3.ONE, mat(Color(0.85, 0.1, 0.1), alpha, 0.5, glow))

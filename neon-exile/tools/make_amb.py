@@ -1,6 +1,7 @@
 # Baut 30s-Ambience-Loops: Raumrauschen + Brummen + die kurzen ElevenLabs-Geraeusche zufaellig verteilt
 import random, subprocess
-CFG = {  # theme: (hum Hz, hum vol, noise lowpass, noise vol)
+CFG = {
+    "subway": (50, 0.03, 600, 0.04),  # theme: (hum Hz, hum vol, noise lowpass, noise vol)
     "pool":   (0,   0.0,  900, 0.05),
     "mall":   (120, 0.02, 600, 0.04),
     "office": (120, 0.05, 400, 0.04),

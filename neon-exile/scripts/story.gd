@@ -17,6 +17,7 @@ const SPEAKERS := {
 	"THE HEADMASTER": Color("#ffcc33"),
 	"THE NIGHT NURSE": Color("#7dffd0"),
 	"THE OTHER ECHO": Color("#ff4d6d"),
+	"THE CONDUCTOR": Color("#ffd23d"),
 }
 
 const DIALOG := {
@@ -136,34 +137,52 @@ const DIALOG := {
 		["MIRA", "You don't have to hate him. He's just the part of you that stayed at the server."],
 		["ECHO", "Then I'll take him with me. All the way up."],
 	],
-	# ---- Kapitel 7: die Wiese (keine Monster, nur ein Hund) ----
+	# ---- Kapitel 7: die U-Bahn (der Zug, den ECHO an dem Tag genommen hat) ----
 	"c7_intro": [
+		["ECHO", "The subway. The station under the school."],
+		["MIRA", "Two trains left at four. One to the school. One to Server 7. You were standing right here."],
+	],
+	"c7_shard": [
+		["SYSTEM", "Memory recovered: platform 4, 4:12 PM."],
+		["ECHO", "Her backpack. She left it with me that morning. I was supposed to bring it to her."],
+		["MIRA", "You held it the whole ride. In the wrong direction."],
+	],
+	"c7_boss": [
+		["THE CONDUCTOR", "Ticket. Destination: Server 7. Departure: four twelve. All aboard."],
+		["ECHO", "Not this time. I'm getting off."],
+	],
+	"c7_victory": [
+		["MIRA", "You can't change which train you took. But you can stop riding it."],
+		["ECHO", "Then let's go somewhere else. Anywhere but here."],
+	],
+	# ---- Kapitel 8: die Wiese (keine Monster, nur ein Hund) ----
+	"c8_intro": [
 		["ECHO", "...Grass. A real sky. Where is this?"],
 		["MIRA", "The only memory she never touched. The day we got Biscuit. Go on. He's waiting for you."],
 	],
-	"c7_dog": [
+	"c8_dog": [
 		["MIRA", "He waited by the door every day after. Even when nobody came home."],
 		["ECHO", "Good boy. ...Good boy. I'm home now."],
 	],
 	# ---- Kapitel 8: die Krone, das Ende ----
-	"c8_intro": [
+	"c9_intro": [
 		["MIRA", "This is the Crown. Everything she couldn't let go of is stored up here."],
 		["ECHO", "The pool. The market. The office. The school. It's all here at once."],
 		["MIRA", "She built the whole city out of the last day. Over and over."],
 	],
-	"c8_shard": [
+	"c9_shard": [
 		["SYSTEM", "Fragment 7 of 7. Memory restored: UNIT ECHO."],
 		["ECHO", "I wasn't a machine. I was her son. HALCYON uploaded me after the sirens, so she wouldn't be alone."],
 		["MIRA", "And when you couldn't stop crying, she let you erase the city. Then she erased you."],
 		["ECHO", "She woke me up again. Why?"],
 		["MIRA", "Because she's tired, Echo. She wants someone to decide for her."],
 	],
-	"c8_boss": [
+	"c9_boss": [
 		["HALCYON", "My boy. You came home late again."],
 		["HALCYON", "Stay. Forget. It doesn't hurt if you forget."],
 		["ECHO", "It's supposed to hurt, Mom."],
 	],
-	"c8_victory": [
+	"c9_victory": [
 		["HALCYON", "...You're so much older than I remember."],
 		["HALCYON", "Three doors. I can't choose. I never could."],
 		["MIRA", "Whatever you choose, Echo. I'm not afraid anymore."],
@@ -211,14 +230,20 @@ const RADIO := {
 	"c6_gate": [["MIRA", "The last door. He fights like you. Because he is you."]],
 	"c6_halfway": [["MIRA", "He's breaking. So are you. That's okay."]],
 	"c6_exit": [["MIRA", "Up. Toward the Crown. Toward her."]],
-	"c7_controls": [["MIRA", "No monsters here. Just breathe."]],
-	"c7_exit": [["MIRA", "Rest a moment. Then we go up."]],
-	"c8_controls": [["MIRA", "Careful. Up here, every room remembers something different."]],
-	"c8_scrap": [["MIRA", "All of them. Everyone from that day. They're still waiting."]],
-	"c8_drones": [["MIRA", "The ones from every place at once. Don't let them corner you."]],
-	"c8_gate": [["MIRA", "She's behind that gate. She knows every trick the others had."]],
-	"c8_halfway": [["MIRA", "She's slipping. Keep going."]],
-	"c8_exit": [["MIRA", "Choose, Echo. Walk through one of them."]],
+	"c7_controls": [["MIRA", "Stay behind the yellow line. The trains don't stop for anyone."]],
+	"c7_scrap": [["MIRA", "Commuters. Everyone who was on their way somewhere that day."]],
+	"c7_drones": [["MIRA", "The ticket inspectors. If they catch you, they punch holes in you."]],
+	"c7_gate": [["MIRA", "Platform four. He's waiting with your ticket."]],
+	"c7_halfway": [["MIRA", "The train is coming. Keep him busy."]],
+	"c7_exit": [["MIRA", "The doors are open. Get off this train, Echo."]],
+	"c8_controls": [["MIRA", "No monsters here. Just breathe."]],
+	"c8_exit": [["MIRA", "Rest a moment. Then we go up."]],
+	"c9_controls": [["MIRA", "Careful. Up here, every room remembers something different."]],
+	"c9_scrap": [["MIRA", "All of them. Everyone from that day. They're still waiting."]],
+	"c9_drones": [["MIRA", "The ones from every place at once. Don't let them corner you."]],
+	"c9_gate": [["MIRA", "She's behind that gate. She knows every trick the others had."]],
+	"c9_halfway": [["MIRA", "She's slipping. Keep going."]],
+	"c9_exit": [["MIRA", "Choose, Echo. Walk through one of them."]],
 }
 
 # Kassetten: HALCYONs Tagebuch. Eine liegt im Level, eine im Geheimraum. Reihenfolge = Kapitel.
@@ -235,6 +260,8 @@ const TAPES := {
 	"c5_b": "Attempt three kept her voice, and her laugh, and the way she says your name. Nothing else. I'm sorry, sweetheart.",
 	"c6_a": "You came home at eleven. You didn't turn on the lights. You just sat by her shoes and didn't say anything.",
 	"c6_b": "The next morning you asked me to make it stop hurting. I said I could. I lied a little.",
-	"c8_a": "I built the city again from the last day. Over and over. Every loop, I hope you get there on time.",
-	"c8_b": "I'm tired, sweetheart. When you reach me, don't forgive me. Just choose. I never could.",
+	"c7_a": "Four twelve. The station cameras show you on platform four, holding a child's backpack. You checked your watch nine times.",
+	"c7_b": "The four o'clock to the school was cancelled. You didn't know. You never would have made it anyway. I need you to hear that.",
+	"c9_a": "I built the city again from the last day. Over and over. Every loop, I hope you get there on time.",
+	"c9_b": "I'm tired, sweetheart. When you reach me, don't forgive me. Just choose. I never could.",
 }
