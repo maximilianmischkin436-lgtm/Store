@@ -55,8 +55,11 @@ function beep(freq, dur, type = "square", vol = 0.05) {
   } catch (e) {}
 }
 
+const stars = Array.from({ length: 50 }, () => ({ x: Math.random() * W, y: Math.random() * H, z: 0.3 + Math.random() }));
+
 // --- Zustand ---
 let state = "menu";                     // menu | play | over
+let nearMiss = 0, missText = 0, orbsCollected = 0;
 let paused = false, wave = 1, waveBanner = 0, musicT = 0, musicStep = 0;
 let player, enemies, orbs, powers, particles, score, combo, comboTimer, time, spawnT, orbT, powerT, shieldT, slowT, shake;
 const target = { x: W / 2, y: H * 0.75 };
@@ -67,7 +70,7 @@ function reset() {
   target.x = player.x; target.y = player.y;
   enemies = []; orbs = []; powers = []; particles = [];
   score = 0; combo = 1; comboTimer = 0; time = 0; spawnT = 0; orbT = 0; shake = 0;
-  powerT = 10; shieldT = 0; slowT = 0; wave = 1; waveBanner = 0; paused = false;
+  powerT = 10; shieldT = 0; slowT = 0; nearMiss = 0; missText = 0; orbsCollected = 0; wave = 1; waveBanner = 0; paused = false;
 }
 reset();
 
@@ -122,8 +125,10 @@ function gameOver() {
 }
 
 // --- Eingabe ---
+let touchOffset = 0;
 function setTarget(clientX, clientY) {
   const v = view(), dpr = window.devicePixelRatio || 1;
+  clientY -= touchOffset;
   target.x = Math.max(0, Math.min(W, (clientX * dpr - v.ox) / v.s));
   target.y = Math.max(0, Math.min(H, (clientY * dpr - v.oy) / v.s));
 }
@@ -134,6 +139,7 @@ function inMuteBtn(clientX, clientY) {
   return x > W - 56 && x < W && y > 36 && y < 80;
 }
 canvas.addEventListener("pointerdown", e => {
+  touchOffset = e.pointerType === "touch" ? 50 : 0;   // finger should not hide the player
   if (inMuteBtn(e.clientX, e.clientY)) { setMuted(!muted); return; }
   if (paused) { paused = false; return; }
   if (state === "menu") { startGame(); setTarget(e.clientX, e.clientY); }
@@ -179,6 +185,7 @@ function update(dt) {
   score += dt * 5 * combo;
   music(dt);
   waveBanner = Math.max(0, waveBanner - dt);
+  missText = Math.max(0, missText - dt);
   const w = 1 + Math.floor(time / 20);
   if (w > wave) { wave = w; waveBanner = 2; score += 100; beep(700, 0.3, "sine", 0.07); }
 
@@ -221,6 +228,9 @@ function update(dt) {
         e.dead = true; score += 25 * combo; burst(e.x, e.y, "#4da3ff", 18); shake = 0.12; beep(300, 0.12, "sawtooth");
       } else { gameOver(); return; }
     }
+    else if (!e.missed && e.type !== "seeker" && Math.hypot(e.x - player.x, e.y - player.y) < e.r + player.r + 22) {
+      e.missed = true; nearMiss++; missText = 0.8; score += 15 * combo; beep(900, 0.05, "square", 0.03);
+    }
     if (e.type === "seeker" && e.age > 9) e.dead = true;   // Seeker loesen sich auf
   }
   enemies = enemies.filter(e => !e.dead && e.x > -60 && e.x < W + 60 && e.y < H + 60);
@@ -241,7 +251,7 @@ function update(dt) {
     if (Math.hypot(o.x - player.x, o.y - player.y) < o.r + player.r + 4) {
       o.life = 0;
       score += 50 * combo;
-      combo = Math.min(combo + 1, 10);
+      combo = Math.min(combo + 1, 10); orbsCollected++;
       comboTimer = 3;
       burst(o.x, o.y, "#38f5c4", 12);
       beep(600 + combo * 60, 0.1, "triangle");
@@ -278,6 +288,11 @@ function draw() {
   for (let y = off; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
   for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
 
+  for (const st of stars) {
+    if (state === "play" && !paused) { st.y += st.z * 0.6; if (st.y > H) { st.y = 0; st.x = Math.random() * W; } }
+    ctx.fillStyle = "rgba(180,180,255," + (0.15 + st.z * 0.25) + ")";
+    ctx.fillRect(st.x, st.y, st.z * 2, st.z * 2);
+  }
   for (const o of orbs) {
     const pulse = 1 + Math.sin(o.life * 8) * 0.12;
     ctx.globalAlpha = Math.min(1, o.life);
@@ -310,7 +325,11 @@ function draw() {
 
   if (state === "play") {
     text(String(Math.floor(score)), W / 2, 56, 40);
-    if (combo > 1) text("x" + combo + " COMBO", W / 2, 84, 18, "#38f5c4");
+    if (combo > 1) {
+      text("x" + combo + " COMBO", W / 2, 84, 18, "#38f5c4");
+      ctx.fillStyle = "#38f5c4"; ctx.fillRect(W / 2 - 40, 92, 80 * Math.max(0, comboTimer) / 3, 3);
+    }
+    if (missText > 0) { ctx.globalAlpha = missText; text("CLOSE CALL +" + 15 * combo, W / 2, 150, 16, "#ffd23d"); ctx.globalAlpha = 1; }
     text("Best " + best, W - 14, 28, 16, "#8888aa", "right");
     text("Wave " + wave, W / 2, 110, 14, "#8888aa");
     if (waveBanner > 0) { ctx.globalAlpha = Math.min(1, waveBanner); text("WAVE " + wave + "!  +100", W / 2, 200, 30, "#ffd23d"); ctx.globalAlpha = 1; }
@@ -328,7 +347,9 @@ function draw() {
     text("GAME OVER", W / 2, 260, 48, "#ff3d6e");
     text("Score " + Math.floor(score), W / 2, 330, 32);
     text(score >= best && best > 0 ? "New high score!" : "Best " + best, W / 2, 372, 20, "#38f5c4");
-    if (overT > 0.6) text("Tap to try again", W / 2, 460, 20);
+    text("Time " + Math.floor(time) + "s   Wave " + wave, W / 2, 410, 16, "#8888aa");
+    text("Orbs " + orbsCollected + "   Close calls " + nearMiss, W / 2, 434, 16, "#8888aa");
+    if (overT > 0.6) text("Tap to try again", W / 2, 490, 20);
   }
 }
 
