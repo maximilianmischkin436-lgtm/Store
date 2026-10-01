@@ -14,7 +14,8 @@ Neon Dodge is a fast arcade game for quick sessions.
 - Move with mouse, touch or arrow keys/WASD
 - Collect green orbs and build combos up to x10
 - Dodge red balls, purple tanks and homing seekers
-- Grab the Shield (S) and Slow-mo (Z) power-ups
+- Grab the Shield (S), Slow-mo (Z) and Bomb (B) power-ups, and chase golden orbs for x4 points
+- Daily missions, a login streak and a player level keep every run worth playing
 - 10 different bosses, one every 10 waves, with a final boss at wave 100
 - Ranked ladder from Bronze to Legend: every run raises or lowers your rating
 - Skill tree with permanent upgrades (shield, combo, orb magnet, second wind...)

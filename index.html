@@ -38,7 +38,7 @@ let best = 0;
 try { best = +localStorage.getItem("neondodge_best") || 0; } catch (e) {}
 
 // --- Savegame (localStorage) ---
-let save = { orbs: 0, bosses: 0, skin: "classic", unlocked: {}, games: 0, bestWave: 0, rp: 0, sp: 0, skills: {}, won: false };
+let save = { orbs: 0, bosses: 0, skin: "classic", unlocked: {}, games: 0, bestWave: 0, rp: 0, sp: 0, skills: {}, won: false, streak: 0, lastPlay: "", xp: 0, level: 1, daily: null };
 try { Object.assign(save, JSON.parse(localStorage.getItem("neondodge_save") || "{}")); } catch (e) {}
 save.unlocked = save.unlocked || {};
 save.skills = save.skills || {};
@@ -69,6 +69,57 @@ const shieldDur = () => 5 + 0.7 * lvl("shield");
 const slowDur = () => 5 + 0.7 * lvl("slow");
 const comboDur = () => 3.5 + 0.5 * lvl("keeper");
 
+// --- Tagesmissionen (3 pro Tag, jede muss in EINEM Durchgang geschafft werden) ---
+const MISSIONS = [
+  { txt: n => "Collect " + n + " orbs in one run", vals: [25, 40, 60], val: () => orbsCollected },
+  { txt: n => "Reach wave " + n, vals: [4, 6, 8], val: () => wave },
+  { txt: n => "Get " + n + " close calls in one run", vals: [6, 10, 15], val: () => nearMiss },
+  { txt: n => "Reach a x" + n + " combo", vals: [6, 8, 10], val: () => maxCombo },
+  { txt: n => "Score " + n + " in one run", vals: [1000, 2000, 3000], val: () => score },
+  { txt: n => "Collect " + n + " power-ups in one run", vals: [3, 4, 6], val: () => powersTaken },
+  { txt: n => "Destroy " + n + " enemies with the shield", vals: [4, 6, 8], val: () => shieldKills },
+  { txt: n => "Collect " + n + " golden orbs in one run", vals: [1, 2, 3], val: () => goldTaken },
+];
+const MISSION_REWARD = [8, 12, 18], MISSION_BONUS = 10;
+const todayStr = () => new Date().toLocaleDateString("en-CA");
+function ensureDaily() {
+  const t = todayStr();
+  if (save.daily && save.daily.day === t) return;
+  let h = 0; for (const ch of t) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const rnd = () => (h = (h * 1664525 + 1013904223) >>> 0) / 4294967296;
+  const pool = MISSIONS.map((_, i) => i), picks = [];
+  while (picks.length < 3) picks.push(pool.splice(Math.floor(rnd() * pool.length), 1)[0]);
+  save.daily = { day: t, picks, done: [false, false, false], bonus: false };
+  persist();
+}
+ensureDaily();
+function dailyLogin() {
+  ensureDaily();
+  const t = todayStr();
+  if (save.lastPlay === t) return;
+  const y = new Date(Date.now() - 864e5).toLocaleDateString("en-CA");
+  save.streak = save.lastPlay === y ? save.streak + 1 : 1;
+  save.lastPlay = t;
+  const bonus = Math.min(save.streak, 7) * 2;
+  save.sp += bonus; persist();
+  banner = { text: "Daily streak x" + save.streak + ": +" + bonus + " SP", color: "#ffd23d", t: 3.5 };
+}
+function checkMissions() {
+  const d = save.daily;
+  d.picks.forEach((idx, i) => {
+    const m = MISSIONS[idx];
+    if (!d.done[i] && m.val() >= m.vals[i]) {
+      d.done[i] = true; save.sp += MISSION_REWARD[i];
+      banner = { text: "Mission complete! +" + MISSION_REWARD[i] + " SP", color: "#38f5c4", t: 3 };
+      beep(900, 0.25, "sine", 0.08);
+      if (d.done.every(Boolean) && !d.bonus) { d.bonus = true; save.sp += MISSION_BONUS; banner.text += "  (all done +" + MISSION_BONUS + ")"; }
+      persist();
+    }
+  });
+}
+const missionsLeft = () => save.daily.done.filter(x => !x).length;
+const xpNeed = l => 120 + 60 * l;
+
 // --- Ranked: jeder Durchgang zaehlt, Rating (RP) steigt oder faellt je nach erreichter Welle ---
 const RANKS = [
   { n: "Bronze", c: "#c8814a", exp: 3 }, { n: "Silver", c: "#c0c8d8", exp: 7 }, { n: "Gold", c: "#ffd23d", exp: 12 },
@@ -82,7 +133,7 @@ function rankLabel(rp) {
   const t = rp % 100;
   return RANKS[i].n + " " + (t < 34 ? "III" : t < 67 ? "II" : "I");
 }
-let lastRun = { d: 0, sp: 0, up: false, down: false }, runDone = false, runBosses = 0, revived = false;
+let lastRun = { d: 0, sp: 0, xp: 0, ups: 0, up: false, down: false }, runDone = false, runBosses = 0, revived = false;
 function finishRun() {
   if (runDone) return;
   runDone = true;
@@ -91,7 +142,10 @@ function finishRun() {
   save.rp = Math.max(0, save.rp + d);
   const sp = wave + 3 * runBosses;
   save.sp += sp; save.games++; save.bestWave = Math.max(save.bestWave, wave);
-  lastRun = { d, sp, up: rankIdx(save.rp) > before, down: rankIdx(save.rp) < before };
+  const xp = Math.floor(score / 10) + wave * 5 + runBosses * 100;
+  save.xp += xp; let ups = 0;
+  while (save.xp >= xpNeed(save.level)) { save.xp -= xpNeed(save.level); save.level++; save.sp += 3; ups++; }
+  lastRun = { d, sp, xp, ups, up: rankIdx(save.rp) > before, down: rankIdx(save.rp) < before };
   persist();
 }
 
@@ -154,8 +208,8 @@ function beep(freq, dur, type = "square", vol = 0.05) {
 const stars = Array.from({ length: 50 }, () => ({ x: Math.random() * W, y: Math.random() * H, z: 0.3 + Math.random() }));
 
 // --- Zustand ---
-let state = "menu";                     // menu | skins | tree | play | over | win
-let nearMiss = 0, missText = 0, orbsCollected = 0, maxCombo = 1;
+let state = "menu";                     // menu | skins | tree | missions | play | over | win
+let nearMiss = 0, missText = 0, orbsCollected = 0, maxCombo = 1, powersTaken = 0, shieldKills = 0, goldTaken = 0, flash = 0, pops = [];
 let boss = null, bossBanner = 0, beamT = 0;
 let paused = false, wave = 1, waveBanner = 0, musicT = 0, musicStep = 0;
 let player, enemies, orbs, powers, particles, score, combo, comboTimer, time, spawnT, orbT, powerT, shieldT, slowT, shake;
@@ -163,11 +217,11 @@ const target = { x: W / 2, y: H * 0.75 };
 const keys = {};
 
 function reset() {
-  player = { x: W / 2, y: H * 0.75, r: 12 - 0.9 * lvl("slim") };
+  player = { x: W / 2, y: H * 0.75, r: 12 - 0.9 * lvl("slim"), trail: [] };
   target.x = player.x; target.y = player.y;
   enemies = []; orbs = []; powers = []; particles = [];
   score = 0; combo = 1; comboTimer = 0; time = 0; spawnT = 1.5; orbT = 0; shake = 0;
-  runDone = false; runBosses = 0; revived = false;
+  runDone = false; runBosses = 0; revived = false; powersTaken = 0; shieldKills = 0; goldTaken = 0; flash = 0; pops = [];
   powerT = 8; shieldT = 0; slowT = 0; nearMiss = 0; missText = 0; orbsCollected = 0; maxCombo = 1; boss = null; bossBanner = 0; beamT = 0; wave = 1; waveBanner = 0; paused = false;
 }
 reset();
@@ -197,12 +251,13 @@ function spawnEnemy() {
 }
 
 function spawnOrb() {
-  orbs.push({ x: 30 + Math.random() * (W - 60), y: 160 + Math.random() * (H - 240), r: 9, life: 5 });
+  const gold = Math.random() < 0.1;               // goldener Orb: 4x Punkte, +2 Combo
+  orbs.push({ x: 30 + Math.random() * (W - 60), y: 160 + Math.random() * (H - 240), r: gold ? 11 : 9, life: gold ? 3 : 5, gold });
 }
 
 function spawnPower() {
   powers.push({ x: 40 + Math.random() * (W - 80), y: 80 + Math.random() * (H - 160), r: 12, life: 6,
-                kind: Math.random() < 0.5 ? "shield" : "slow" });
+                kind: (r => wave >= 3 && r < 0.25 ? "bomb" : r < 0.65 ? "shield" : "slow")(Math.random()) });
 }
 
 // 10 verschiedene Bosse: Welle 10, 20, ... 100 (Welle 100 = Endboss)
@@ -309,6 +364,7 @@ function damageBoss(d) {
 function startGame() {
   reset();
   newUnlocks = []; banner = null;
+  dailyLogin();
   state = "play";
   beep(520, 0.12, "triangle");
 }
@@ -349,6 +405,7 @@ const inRect = (p, x1, y1, x2, y2) => p.x > x1 && p.x < x2 && p.y > y1 && p.y < 
 const inMuteBtn = p => inRect(p, W - 56, 36, W, 80);
 const inSkinsBtn = p => inRect(p, 90, 575, 230, 620);
 const inSkillsBtn = p => inRect(p, 250, 575, 390, 620);
+const inMissionsBtn = p => inRect(p, 170, 632, 310, 677);
 const inBackBtn = p => inRect(p, 170, 664, 310, 708);
 const ROW_TOP = 92, ROW_PITCH = 46, ROW_H = 40;
 function skinsClick(p) {
@@ -377,9 +434,11 @@ canvas.addEventListener("pointerdown", e => {
   if (paused) { paused = false; return; }
   if (state === "skins") { skinsClick(p); return; }
   if (state === "tree") { treeClick(p); return; }
+  if (state === "missions") { if (inBackBtn(p)) state = "menu"; return; }
   if (state === "win") { if (overT > 1) { reset(); state = "menu"; } return; }
   if ((state === "menu" || state === "over") && inSkinsBtn(p)) { openScreen("skins"); return; }
   if ((state === "menu" || state === "over") && inSkillsBtn(p)) { openScreen("tree"); return; }
+  if ((state === "menu" || state === "over") && inMissionsBtn(p)) { openScreen("missions"); return; }
   if (state === "menu") { startGame(); setTarget(e.clientX, e.clientY); }
   else if (state === "over" && overT > 0.6) { startGame(); setTarget(e.clientX, e.clientY); }
   else if (state === "play") setTarget(e.clientX, e.clientY);
@@ -389,7 +448,7 @@ addEventListener("blur", () => { if (state === "play") paused = true; });
 document.addEventListener("visibilitychange", () => { if (document.hidden && state === "play") paused = true; });
 addEventListener("keydown", e => {
   keys[e.key.toLowerCase()] = true;
-  if (e.key === "Escape" && (state === "skins" || state === "tree")) state = "menu";
+  if (e.key === "Escape" && (state === "skins" || state === "tree" || state === "missions")) state = "menu";
   else if (e.key === "p" || e.key === "P" || e.key === "Escape") togglePause();
   if (e.key === "m" || e.key === "M") setMuted(!muted);
   if ((e.key === " " || e.key === "Enter") && state === "menu") startGame();
@@ -417,6 +476,9 @@ function update(dt) {
 
   for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; }
   particles = particles.filter(p => p.life > 0);
+  for (const q of pops) { q.y -= 40 * dt; q.t -= dt; }
+  pops = pops.filter(q => q.t > 0);
+  flash = Math.max(0, flash - dt);
 
   if (state !== "play") return;
 
@@ -444,6 +506,7 @@ function update(dt) {
   const f = 1 - Math.pow(0.0005, dt);
   player.x += (target.x - player.x) * f;
   player.y += (target.y - player.y) * f;
+  player.trail.push({ x: player.x, y: player.y }); if (player.trail.length > 10) player.trail.shift();
 
   // Spawns werden mit der Zeit haeufiger
   spawnT -= dt;
@@ -475,11 +538,11 @@ function update(dt) {
     e.x += e.vx * edt; e.y += e.vy * edt;
     if (Math.hypot(e.x - player.x, e.y - player.y) < e.r + player.r - 2) {
       if (shieldT > 0) {                        // Schild zerstoert den Gegner
-        e.dead = true; score += 25 * combo; burst(e.x, e.y, "#4da3ff", 18); shake = 0.12; beep(300, 0.12, "sawtooth");
+        e.dead = true; shieldKills++; score += 25 * combo; burst(e.x, e.y, "#4da3ff", 18); shake = 0.12; beep(300, 0.12, "sawtooth");
       } else { gameOver(); return; }
     }
     else if (!e.missed && e.type !== "seeker" && e.type !== "bullet" && Math.hypot(e.x - player.x, e.y - player.y) < e.r + player.r + 22) {
-      e.missed = true; nearMiss++; missText = 0.8; score += 15 * combo; beep(900, 0.05, "square", 0.03);
+      e.missed = true; nearMiss++; missText = 0.8; pops.push({ x: player.x, y: player.y - 20, t: 0.7, txt: "close!", c: "#ffd23d" }); score += 15 * combo; beep(900, 0.05, "square", 0.03);
     }
     if (e.type === "seeker" && e.age > 9) e.dead = true;   // Seeker loesen sich auf
   }
@@ -488,9 +551,15 @@ function update(dt) {
   for (const pw of powers) {
     pw.life -= dt;
     if (Math.hypot(pw.x - player.x, pw.y - player.y) < pw.r + player.r + 4) {
-      pw.life = 0;
-      if (pw.kind === "shield") shieldT = shieldDur(); else slowT = slowDur();
-      burst(pw.x, pw.y, pw.kind === "shield" ? "#4da3ff" : "#ffd23d", 18);
+      pw.life = 0; powersTaken++;
+      if (pw.kind === "shield") shieldT = shieldDur();
+      else if (pw.kind === "slow") slowT = slowDur();
+      else {                                      // Bombe: raeumt alles ab
+        for (const e of enemies) { score += 10 * combo; burst(e.x, e.y, "#ff4df0", 6); }
+        enemies = []; flash = 0.3; shake = 0.25; if (boss) damageBoss(4);
+        pops.push({ x: pw.x, y: pw.y, t: 1, txt: "BOOM!", c: "#ff4df0" });
+      }
+      burst(pw.x, pw.y, POWER[pw.kind].c, 18);
       beep(880, 0.2, "sine", 0.07);
     }
   }
@@ -500,22 +569,25 @@ function update(dt) {
   for (const o of orbs) {
     if (Math.hypot(o.x - player.x, o.y - player.y) < o.r + player.r + 4 + 14 * lvl("magnet")) {
       o.life = 0;
-      score += Math.round(50 * combo * (1 + 0.15 * lvl("greed")));
-      combo = Math.min(combo + 1, 10); maxCombo = Math.max(maxCombo, combo); orbsCollected++;
+      const pts = Math.round(50 * combo * (1 + 0.15 * lvl("greed")) * (o.gold ? 4 : 1));
+      score += pts; if (o.gold) goldTaken++;
+      pops.push({ x: o.x, y: o.y, t: 0.8, txt: "+" + pts, c: o.gold ? "#ffd23d" : "#38f5c4" });
+      combo = Math.min(combo + (o.gold ? 2 : 1), 10); maxCombo = Math.max(maxCombo, combo); orbsCollected++;
       save.orbs++; persist();
       if (boss) { damageBoss((combo >= 5 ? 3 : 2) + lvl("breaker")); beamT = 0.12; }
       comboTimer = comboDur();
-      burst(o.x, o.y, "#38f5c4", 12);
+      burst(o.x, o.y, o.gold ? "#ffd23d" : "#38f5c4", o.gold ? 20 : 12);
       beep(600 + combo * 60, 0.1, "triangle");
     }
   }
   orbs = orbs.filter(o => o.life > 0);
 
   if (comboTimer > 0) { comboTimer -= dt; if (comboTimer <= 0) combo = 1; }
-  if (state === "play") checkUnlocks();
+  if (state === "play") { checkUnlocks(); checkMissions(); }
 }
 
 // --- Zeichnen ---
+const POWER = { shield: { c: "#4da3ff", l: "S" }, slow: { c: "#ffd23d", l: "Z" }, bomb: { c: "#ff4df0", l: "B" } };
 function drawSkin(sk, x, y, r) {
   const c = sk.rainbow ? "hsl(" + (performance.now() / 8 % 360) + ",90%,65%)" : sk.color;
   glow(c, 22); ctx.fillStyle = c; ctx.strokeStyle = c; ctx.lineWidth = 3;
@@ -571,14 +643,13 @@ function draw() {
   for (const o of orbs) {
     const pulse = 1 + Math.sin(o.life * 8) * 0.12;
     ctx.globalAlpha = Math.min(1, o.life);
-    circle(o.x, o.y, o.r * pulse, "#38f5c4", 18);
+    circle(o.x, o.y, o.r * pulse, o.gold ? "#ffd23d" : "#38f5c4", o.gold ? 26 : 18);
   }
   ctx.globalAlpha = 1;
   for (const pw of powers) {
     ctx.globalAlpha = Math.min(1, pw.life);
-    const c = pw.kind === "shield" ? "#4da3ff" : "#ffd23d";
-    circle(pw.x, pw.y, pw.r, c, 20);
-    text(pw.kind === "shield" ? "S" : "Z", pw.x, pw.y + 6, 16, "#0a0a14");
+    circle(pw.x, pw.y, pw.r, POWER[pw.kind].c, 20);
+    text(POWER[pw.kind].l, pw.x, pw.y + 6, 16, "#0a0a14");
   }
   ctx.globalAlpha = 1;
   for (const e of enemies) {
@@ -597,6 +668,11 @@ function draw() {
   }
   for (const p of particles) { ctx.globalAlpha = Math.max(0, p.life / 0.6); circle(p.x, p.y, 3, p.color, 8); }
   ctx.globalAlpha = 1;
+  if (state === "play" && player.trail) {
+    const tc = currentSkin().rainbow ? "#ffffff" : currentSkin().color, n = player.trail.length;
+    player.trail.forEach((t, i) => { ctx.globalAlpha = i / n * 0.3; circle(t.x, t.y, player.r * i / n, tc, 0); });
+    ctx.globalAlpha = 1;
+  }
   if (state !== "over") {
     drawSkin(currentSkin(), player.x, player.y, player.r);
     if (shieldT > 0) {
@@ -606,6 +682,9 @@ function draw() {
       ctx.shadowBlur = 0; ctx.globalAlpha = 1;
     }
   }
+  for (const q of pops) { ctx.globalAlpha = Math.min(1, q.t * 2); text(q.txt, q.x, q.y, 15, q.c); }
+  ctx.globalAlpha = 1;
+  if (flash > 0) { ctx.fillStyle = "rgba(255,255,255," + flash * 1.6 + ")"; ctx.fillRect(0, 0, W, H); }
   if (state === "play" && slowT > 0) { ctx.fillStyle = "rgba(255,210,61,0.06)"; ctx.fillRect(0, 0, W, H); }
 
   if (state === "play") {
@@ -630,51 +709,75 @@ function draw() {
     text("NEON DODGE", W / 2, 240, 52, "#ffffff");
     text("Collect green orbs", W / 2, 310, 20, "#38f5c4");
     text("Dodge the red ones", W / 2, 340, 20, "#ff3d6e");
-    text("S = Shield   Z = Slow-mo", W / 2, 372, 16, "#ffd23d");
+    text("S = Shield   Z = Slow-mo   B = Bomb", W / 2, 372, 16, "#ffd23d");
     text("Tap / click to start", W / 2, 450, 22);
     text("Mouse, touch or arrows/WASD  (P = Pause)", W / 2, 472, 15, "#8888aa");
-    text(rankLabel(save.rp) + "   " + save.rp + " RP", W / 2, 512, 20, RANKS[rankIdx(save.rp)].c);
-    if (best) text("Best " + best, W / 2, 545, 18, "#8888aa");
+    text("Lv " + save.level + "   " + rankLabel(save.rp) + "   " + save.rp + " RP", W / 2, 512, 19, RANKS[rankIdx(save.rp)].c);
+    text((best ? "Best " + best + "    " : "") + "Streak " + save.streak, W / 2, 545, 16, "#8888aa");
     skinsButton();
   } else if (state === "skins") {
     drawSkinsScreen();
   } else if (state === "tree") {
     drawTreeScreen();
+  } else if (state === "missions") {
+    drawMissionsScreen();
   } else if (state === "win") {
     text("YOU WIN!", W / 2, 240, 56, "#ffd23d");
     text("The OVERLORD is defeated", W / 2, 290, 20, "#ffffff");
     text("Score " + Math.floor(score), W / 2, 350, 32);
     text("Time " + Math.floor(time) + "s   Orbs " + orbsCollected, W / 2, 392, 16, "#8888aa");
-    runSummary(440);
+    runSummary(430);
     if (newUnlocks.length) text("Unlocked: " + newUnlocks.join(", "), W / 2, 500, 16, "#ffd23d");
     if (overT > 1) text("Tap to continue", W / 2, 540, 20);
   } else {
-    text("GAME OVER", W / 2, 260, 48, "#ff3d6e");
-    text("Score " + Math.floor(score), W / 2, 330, 32);
-    text(score >= best && best > 0 ? "New high score!" : "Best " + best, W / 2, 372, 20, "#38f5c4");
-    text("Time " + Math.floor(time) + "s   Wave " + wave, W / 2, 410, 16, "#8888aa");
-    text("Orbs " + orbsCollected + "   Close calls " + nearMiss, W / 2, 434, 16, "#8888aa");
-    runSummary(462);
-    if (overT > 0.6) text("Tap to try again", W / 2, 520, 20);
+    text("GAME OVER", W / 2, 190, 48, "#ff3d6e");
+    text("Score " + Math.floor(score), W / 2, 250, 32);
+    text(score >= best && best > 0 ? "New high score!" : "Best " + best, W / 2, 286, 20, "#38f5c4");
+    text("Time " + Math.floor(time) + "s   Wave " + wave, W / 2, 318, 16, "#8888aa");
+    text("Orbs " + orbsCollected + "   Close calls " + nearMiss, W / 2, 340, 16, "#8888aa");
+    runSummary(380);
+    if (overT > 0.6) text("Tap to try again", W / 2, 532, 20);
     if (newUnlocks.length) text("Unlocked: " + newUnlocks.join(", "), W / 2, 552, 16, "#ffd23d");
     skinsButton();
   }
 }
 
 function runSummary(y) {
-  const c = RANKS[rankIdx(save.rp)].c;
-  text(rankLabel(save.rp) + "   " + (lastRun.d >= 0 ? "+" : "") + lastRun.d + " RP", W / 2, y, 18, c);
-  if (lastRun.up) text("RANK UP!", W / 2, y + 22, 14, "#38f5c4");
-  else if (lastRun.down) text("Rank down", W / 2, y + 22, 14, "#ff6b6b");
-  text("+" + lastRun.sp + " skill points", W / 2, y + (lastRun.up || lastRun.down ? 42 : 22), 14, "#ffd23d");
+  const ri = rankIdx(save.rp), L = [];
+  L.push([rankLabel(save.rp) + "   " + (lastRun.d >= 0 ? "+" : "") + lastRun.d + " RP", RANKS[ri].c, 18]);
+  if (lastRun.up) L.push(["RANK UP!", "#38f5c4", 14]); else if (lastRun.down) L.push(["Rank down", "#ff6b6b", 14]);
+  L.push(["+" + lastRun.sp + " skill points    +" + lastRun.xp + " XP", "#ffd23d", 14]);
+  if (lastRun.ups) L.push(["LEVEL UP! Lv " + save.level + "  (+" + lastRun.ups * 3 + " SP)", "#38f5c4", 14]);
+  const ready = SKILLS.find(k => skillState(k) === "ok");
+  L.push([ready ? "Skill ready to buy: " + ready.name + " (" + skillCost(ready) + " SP)"
+                : ri < 6 ? "Next rank: " + RANKS[ri + 1].n + " in " + ((ri + 1) * 100 - save.rp) + " RP" : "", "#8888aa", 13]);
+  L.forEach((l, i) => text(l[0], W / 2, y + i * 22, l[2], l[1]));
 }
-function button(x, label) {
-  ctx.strokeStyle = "#8888aa"; ctx.lineWidth = 2; ctx.strokeRect(x, 575, 140, 45);
-  text(label, x + 70, 604, 17, "#ffffff");
+function button(x, label, y = 575) {
+  ctx.strokeStyle = "#8888aa"; ctx.lineWidth = 2; ctx.strokeRect(x, y, 140, 45);
+  text(label, x + 70, y + 29, 17, "#ffffff");
 }
 function skinsButton() {
   button(90, "SKINS");
   button(250, save.sp > 0 ? "SKILLS (" + save.sp + ")" : "SKILLS");
+  button(170, missionsLeft() ? "MISSIONS (" + missionsLeft() + ")" : "MISSIONS", 632);
+}
+function drawMissionsScreen() {
+  text("DAILY MISSIONS", W / 2, 60, 30);
+  text("Streak: " + save.streak + " day" + (save.streak === 1 ? "" : "s") + "   (daily login bonus: " + Math.min(save.streak, 7) * 2 + " SP)", W / 2, 88, 14, "#ffd23d");
+  const d = save.daily;
+  d.picks.forEach((idx, i) => {
+    const m = MISSIONS[idx], y = 120 + i * 90, done = d.done[i];
+    ctx.fillStyle = "rgba(255,255,255,0.05)"; ctx.fillRect(30, y, W - 60, 76);
+    ctx.strokeStyle = done ? "#38f5c4" : "rgba(255,255,255,0.12)"; ctx.lineWidth = 2; ctx.strokeRect(30, y, W - 60, 76);
+    text(m.txt(m.vals[i]), 46, y + 34, 17, done ? "#38f5c4" : "#ffffff", "left");
+    text(["Easy", "Medium", "Hard"][i], 46, y + 58, 12, "#8888aa", "left");
+    text(done ? "DONE" : "+" + MISSION_REWARD[i] + " SP", W - 46, y + 44, 16, done ? "#38f5c4" : "#ffd23d", "right");
+  });
+  text("Complete all 3: +" + MISSION_BONUS + " SP bonus" + (d.bonus ? "  (claimed)" : ""), W / 2, 410, 15, d.bonus ? "#38f5c4" : "#ffd23d");
+  text("Each mission must be done within a single run.", W / 2, 440, 12, "#8888aa");
+  text("New missions every day. Play daily to build your streak!", W / 2, 460, 12, "#8888aa");
+  backButton();
 }
 function backButton() {
   ctx.strokeStyle = "#8888aa"; ctx.lineWidth = 2; ctx.strokeRect(170, 664, 140, 44);
