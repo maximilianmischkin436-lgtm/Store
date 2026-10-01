@@ -31,7 +31,7 @@ func _surf(mode: int, a: Color, b: Color, c: Color, sc: float) -> ShaderMaterial
 
 # Echte Texturen (generiert, nahtlos) – werden mit Weltkoordinaten (triplanar) aufgelegt
 func _tex(name: String, scale: float, tint: Color = Color.WHITE, rough: float = 0.7) -> Material:
-	var path := "res://assets/tex/%s.png" % name
+	var path := "res://assets/tex/%s.webp" % name
 	if not ResourceLoader.exists(path):
 		return null
 	var m := StandardMaterial3D.new()

@@ -17,5 +17,5 @@ while read key who; do
     "SYSTEM")      f="highpass=f=300,lowpass=f=3400,aecho=0.8:0.5:30:0.2,loudnorm=I=-16:TP=-1" ;;
     *)             f="asetrate=44100*0.82,aresample=44100,atempo=1.22,lowpass=f=5500,aecho=0.8:0.9:120|260|520|1000:0.5|0.4|0.3|0.2,loudnorm=I=-14:TP=-1" ;;
   esac
-  ffmpeg -nostdin -loglevel error -y -i "$in" -af "$f,apad=pad_dur=0.6" -c:a libvorbis -q:a 6 "assets/voice/$key.ogg"
+  ffmpeg -nostdin -loglevel error -y -i "$in" -af "$f,apad=pad_dur=0.6" -c:a libvorbis -q:a 3 "assets/voice/$key.ogg"
 done < tools/voice_speakers.txt
