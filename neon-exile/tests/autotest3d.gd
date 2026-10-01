@@ -70,6 +70,7 @@ func _process(delta: float) -> void:
 			p.pitch = 0.1
 			if t > 3.0:
 				snap("04_drones")
+				main.finish_event()
 				var sp: Vector3 = main.shard_node.position
 				p.global_position = Vector3(sp.x, 0.2, sp.z); step = 6; t = 0
 		6:

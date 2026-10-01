@@ -105,6 +105,11 @@ func set_walking(on: bool) -> void:
 	elif not on and walk.playing:
 		walk.stop()
 
+# Waffen, die ins naechste Kapitel mitgenommen werden
+var carry_slots: Array = []
+var carry_ability := false
+var carry_chapter := 0
+
 func load_save() -> void:
 	var cf := ConfigFile.new()
 	if cf.load(SAVE_PATH) != OK:
@@ -118,6 +123,9 @@ func load_save() -> void:
 	chapter = cf.get_value("progress", "chapter", 1)
 	max_chapter = cf.get_value("progress", "max_chapter", 1)
 	best_time = cf.get_value("progress", "best_time", 0.0)
+	carry_slots = cf.get_value("progress", "carry_slots", [])
+	carry_ability = cf.get_value("progress", "carry_ability", false)
+	carry_chapter = cf.get_value("progress", "carry_chapter", 0)
 
 func write_save() -> void:
 	var cf := ConfigFile.new()
@@ -131,6 +139,9 @@ func write_save() -> void:
 	max_chapter = maxi(max_chapter, chapter)
 	cf.set_value("progress", "max_chapter", max_chapter)
 	cf.set_value("progress", "best_time", best_time)
+	cf.set_value("progress", "carry_slots", carry_slots)
+	cf.set_value("progress", "carry_ability", carry_ability)
+	cf.set_value("progress", "carry_chapter", carry_chapter)
 	cf.save(SAVE_PATH)
 
 func reach_stage(s: int) -> void:

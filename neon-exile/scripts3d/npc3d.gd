@@ -19,6 +19,10 @@ var main
 var role := "passive"
 var theme := "pool"
 var hp := 3
+var variant := "normal"   # normal / runner (schnell, schwach) / brute (gross, rammt) / spitter (wirft aus der Ferne)
+var charge_t := 0.0
+var charge_dir := Vector3.ZERO
+var spit_t := 2.0
 var radius := 0.45
 var awake := false
 var visual: Node3D
@@ -48,6 +52,18 @@ func setup(m, r: String) -> void:
 	rng.seed = randi()
 	if role == "hostile":
 		hp = 4
+		# Varianten, damit nicht jeder Gegner gleich kaempft (spaetere Kapitel: mehr Abwechslung)
+		var chn: int = m.chapter
+		var r := rng.randf()
+		if r < 0.22:
+			variant = "runner"
+			hp = 2
+		elif r < 0.22 + minf(0.06 * chn, 0.2):
+			variant = "brute"
+			hp = 12
+		elif r < 0.42 + minf(0.06 * chn, 0.2) and chn >= 2:
+			variant = "spitter"
+			hp = 3
 	elif role == "special":
 		hp = 9
 
@@ -72,6 +88,15 @@ func _ready() -> void:
 	base_alpha = 1.0 if solid else (0.42 if role == "passive" else 0.55)
 	P = Figure.build(visual, o, base_alpha, 0.25 if not solid else 0.0, role == "hostile")
 	mats = P.mats
+	match variant:
+		"runner":
+			visual.scale = Vector3.ONE * 0.85
+			P.spine.rotation.x = 0.45
+		"brute":
+			visual.scale = Vector3(1.45, 1.3, 1.45)
+			cs.scale = Vector3(1.4, 1.3, 1.4)
+		"spitter":
+			P.head.scale = Vector3(1.1, 1.3, 1.1)
 	if role == "hostile":
 		tilt = rng.randf_range(0.35, 0.6) * (1 if rng.randf() < 0.5 else -1)
 		for m in mats:
@@ -127,13 +152,72 @@ func _physics_process(delta: float) -> void:
 				awake = true
 				Game.sfx("enemy_hurt", 0.4, 0.5)
 		else:
-			_chase(delta, p, to, d, 5.8)
+			match variant:
+				"runner":
+					_chase(delta, p, to, d, 9.0)
+				"brute":
+					_brute(delta, p, to, d)
+				"spitter":
+					_spitter(delta, p, to, d)
+				_:
+					_chase(delta, p, to, d, 5.8)
 	else:
 		_special(delta, p, to, d)
 	knock = knock.lerp(Vector3.ZERO, minf(1.0, delta * 8.0))
 	velocity.x += knock.x
 	velocity.z += knock.z
 	move_and_slide()
+
+# Brocken: langsam, holt aus und rammt dich (rote Linie warnt vorher)
+func _brute(delta: float, p, to: Vector3, d: float) -> void:
+	var dir := to.normalized()
+	if charge_t > 0.0:
+		charge_t -= delta
+		if charge_t > 0.6:
+			# ausholen
+			velocity.x = 0.0
+			velocity.z = 0.0
+			visual.position.x = sin(t * 60.0) * 0.04
+		else:
+			velocity.x = charge_dir.x * 15.0
+			velocity.z = charge_dir.z * 15.0
+			walk_ph += delta * 30.0
+			Figure.walk(P, walk_ph, 1.0)
+			if d < 1.8 and hit_cd <= 0.0:
+				p.hurt(2)
+				p.external += charge_dir * 14.0
+				main.shake(0.4)
+				hit_cd = 1.0
+		return
+	if d > 4.0 and d < 12.0 and hit_cd <= 0.0 and rng.randf() < delta * 0.8:
+		charge_t = 1.2
+		charge_dir = dir
+		main.add_hazard("line", global_position + dir * 6.0, Vector2(1.6, 12.0), 0.6, atan2(-dir.x, -dir.z), Color(1, 0.3, 0.2))
+		Game.sfx("enemy_attack", 0.5, 0.8)
+		return
+	_chase(delta, p, to, d, 3.2)
+
+# Spucker: haelt Abstand und wirft dunkle Kugeln
+func _spitter(delta: float, p, to: Vector3, d: float) -> void:
+	var dir := to.normalized()
+	_face(dir, delta, 8.0)
+	var want := 0.0
+	if d < 7.0:
+		want = -3.5
+	elif d > 13.0:
+		want = 4.0
+	var side := dir.cross(Vector3.UP) * sin(t * 0.8) * 2.0
+	velocity.x = dir.x * want + side.x
+	velocity.z = dir.z * want + side.z
+	walk_ph += delta * 6.0
+	Figure.walk(P, walk_ph, 0.6)
+	spit_t -= delta
+	if spit_t <= 0.0 and _sees(p):
+		spit_t = rng.randf_range(1.6, 2.4)
+		var src: Vector3 = global_position + Vector3(0, 1.6, 0)
+		P.head.rotation.x = -0.6
+		main.spawn_proj(src, (p.center() - src).normalized() * 12.0, main.ch.proj)
+		Game.sfx("enemy_shot", 1.2, 0.5)
 
 func _face(dir: Vector3, delta: float, spd: float = 6.0) -> void:
 	if dir.length() > 0.01:

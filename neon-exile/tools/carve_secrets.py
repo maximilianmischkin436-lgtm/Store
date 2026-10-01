@@ -30,5 +30,5 @@ def carve(path, seed, prefer_x):
     g[y][x]='H'; g[y0+rh//2][x0+rw//2]='X'
     open(path,'w').write('\n'.join(''.join(r) for r in g)+'\n')
     return f'Geheimraum bei {x},{y}'
-for i,px in [(1,30),(2,20),(3,55),(4,30),(5,50)]:
+for i,px in [(1,30),(2,20),(3,55),(4,30),(5,50),(6,40),(8,45)]:
     print(i, carve(f'data/chapter{i}.txt', i, px))

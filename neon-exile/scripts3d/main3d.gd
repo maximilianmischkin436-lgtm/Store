@@ -113,7 +113,13 @@ func _ready() -> void:
 		_make_door(checkpoint + Vector3(-1.0, 0, 0))
 		player.global_position = checkpoint + Vector3(-3.5, 0.1, 0)
 	# Ausruestung je nach Kapitel: Kapitel 1 startet ohne Waffe (sie liegt vor dir)
-	if chapter == 1:
+	if chapter > 1 and Game.carry_chapter == chapter and not Game.carry_slots.is_empty():
+		# Waffen aus dem letzten Kapitel mitnehmen
+		for wid in Game.carry_slots:
+			player.give_weapon(int(wid))
+		player.select_weapon(int(Game.carry_slots[0]))
+		player.ability_unlocked = Game.carry_ability
+	elif chapter == 1:
 		var fwd := Vector3(1, 0, 0)
 		spawn_pickup("weapon", 0, checkpoint + fwd * 2.2)
 		_make_tears()
@@ -139,6 +145,7 @@ func _ready() -> void:
 
 # ---------- Geheimraeume, Kassetten, Easter Eggs ----------
 const PropHit = preload("res://scripts3d/prop_hit.gd")
+const FigureLib = preload("res://scripts3d/figure.gd")
 var secret_pos := Vector3.INF
 var secret_found := false
 var interactables: Array = []     # [{pos, text, cb}]
@@ -314,6 +321,7 @@ func _update_secrets(delta: float) -> void:
 			pickup_hint = it.text
 			if Input.is_action_just_pressed("interact"):
 				it.cb.call()
+				return
 
 # Geheimcode: E-C-H-O tippen = grosse Koepfe fuer alle Geister
 func _unhandled_key_input(e: InputEvent) -> void:
@@ -444,6 +452,196 @@ func pet_dog() -> void:
 	say(sid("dog"), func():
 		state = "play"
 		_open_exit())
+
+# ---------- Mini-Mission pro Kapitel (Raum 3): erst danach erscheint der Splitter ----------
+const EVENTS := {
+	1: {"type": "survive", "title": "THE WATER IS RISING - HOLD ON", "time": 30.0},
+	2: {"type": "collect", "title": "FIND HER 3 LOST TOYS", "label": "LOST TOY", "col": Color("#ff8fd0")},
+	3: {"type": "collect", "title": "THE POWER IS OUT - FIND 3 SWITCHES", "label": "SWITCH", "col": Color("#ffd23d"), "dark": true},
+	4: {"type": "collect", "title": "HIDE AND SEEK - FIND 3 CRYING CHILDREN", "label": "CRYING CHILD", "col": Color("#9fd8ff"), "child": true},
+	5: {"type": "collect", "title": "STAY QUIET - FIND 3 PATIENT FILES", "label": "PATIENT FILE", "col": Color("#7dffd0")},
+	6: {"type": "doors", "title": "WHICH DOOR IS YOURS?"},
+	8: {"type": "survive", "title": "EVERYONE IS HERE - SURVIVE", "time": 30.0},
+}
+var event := {}
+var event_left := 0
+var event_t := 0.0
+var event_spawn_t := 0.0
+var event_nodes: Array = []
+var water: MeshInstance3D
+
+func _room3_cells() -> Array:
+	var out: Array = []
+	if door_cols.size() < 2:
+		return out
+	for c in level._floor_cells():
+		if c.x > door_cols[1] + 3 and c.x < gate_col - 2 and (c.y < 12 or c.y > 17) and level.grid[c.y][c.x] == ".":
+			out.append(c)
+	out.shuffle()
+	return out
+
+func start_event() -> void:
+	if not EVENTS.has(chapter) or not shard_node:
+		return
+	event = EVENTS[chapter]
+	shard_node.visible = false
+	banner(event.title, Color("#ffd23d"))
+	objective = event.title
+	var cells := _room3_cells()
+	match event.type:
+		"survive":
+			event_t = event.time
+			if chapter == 1:
+				water = MeshInstance3D.new()
+				var bm := BoxMesh.new()
+				bm.size = Vector3((gate_col - door_cols[1]) * level.T, 0.02, level.h * level.T)
+				water.mesh = bm
+				var wm := StandardMaterial3D.new()
+				wm.albedo_color = Color(0.3, 0.6, 0.85, 0.45)
+				wm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+				wm.metallic = 0.6
+				wm.roughness = 0.05
+				water.material_override = wm
+				water.position = Vector3((door_cols[1] + gate_col) / 2.0 * level.T, 0.0, level.h * level.T / 2.0)
+				add_child(water)
+		"collect":
+			event_left = 3
+			if event.get("dark", false):
+				blackout(999.0)
+			for i in 3:
+				if i >= cells.size():
+					break
+				var pos: Vector3 = level.cell_center(cells[i])
+				var n: Node3D
+				if event.get("child", false):
+					n = Node3D.new()
+					n.position = pos
+					add_child(n)
+					var rng := RandomNumberGenerator.new()
+					rng.randomize()
+					var o := FigureLib.outfit("student", rng)
+					o.height = 0.7
+					var P := FigureLib.build(n, o, 0.5, 0.4, false)
+					P.hips.position.y = 0.45
+					P.spine.rotation.x = 0.9
+					P.head.rotation.x = 0.5
+				else:
+					n = Node3D.new()
+					n.position = pos
+					add_child(n)
+					var mi := MeshInstance3D.new()
+					var bm := BoxMesh.new()
+					bm.size = Vector3(0.4, 0.4, 0.4) if chapter != 3 else Vector3(0.5, 0.8, 0.25)
+					mi.mesh = bm
+					mi.material_override = _mat(event.col, 1.6)
+					mi.position.y = 0.6
+					n.add_child(mi)
+				var l := OmniLight3D.new()
+				l.light_color = event.col
+				l.light_energy = 1.4
+				l.omni_range = 5.0
+				l.position.y = 1.2
+				n.add_child(l)
+				event_nodes.append(n)
+				interactables.append({"pos": pos, "text": "[E]  " + event.label, "node": n, "cb": _event_item.bind(n)})
+		"doors":
+			event_left = 1
+			var good := randi() % 4
+			for i in 4:
+				if i >= cells.size():
+					break
+				var pos: Vector3 = level.cell_center(cells[i])
+				var d := _exit_door(pos, Color(1, 0.7, 0.4), "440")
+				event_nodes.append(d)
+				interactables.append({"pos": pos, "text": "[E]  KNOCK", "node": d, "cb": _event_door.bind(d, i == good)})
+
+func _event_item(n: Node3D) -> void:
+	if not is_instance_valid(n):
+		return
+	_drop_interactable(n)
+	burst(n.position + Vector3(0, 1, 0), event.col, 30)
+	Game.sfx("swap", 1.5, 0.8)
+	if event.get("child", false):
+		banner("...thank you", Color("#9fd8ff"))
+	n.queue_free()
+	event_left -= 1
+	objective = "%s  (%d left)" % [event.title, event_left]
+	# jedes gefundene Teil weckt ein paar Geister
+	for i in 2:
+		spawn_npc("hostile", n.position + Vector3(randf_range(-5, 5), 0, randf_range(-5, 5))).awake = true
+	if event_left <= 0:
+		_finish_event()
+
+func _event_door(d: Node3D, good: bool) -> void:
+	if not is_instance_valid(d):
+		return
+	_drop_interactable(d)
+	Game.sfx("land", 0.6, 1.0)
+	if good:
+		banner("...welcome home", Color(1, 0.8, 0.5))
+		for n in event_nodes:
+			if is_instance_valid(n) and n != d:
+				_drop_interactable(n)
+				n.queue_free()
+		d.queue_free()
+		_finish_event()
+	else:
+		banner("NOT YOUR DOOR", Color("#ff4d6d"))
+		shake(0.3)
+		for i in 3:
+			spawn_npc("hostile", d.position + Vector3(randf_range(-3, 3), 0, randf_range(-3, 3))).awake = true
+		d.queue_free()
+
+func _drop_interactable(n: Node3D) -> void:
+	interactables = interactables.filter(func(it): return it.get("node") != n)
+
+func finish_event() -> void:
+	# fuer Tests: Mission sofort abschliessen
+	if not event.is_empty():
+		for n in event_nodes:
+			if is_instance_valid(n):
+				_drop_interactable(n)
+				n.queue_free()
+		_finish_event()
+
+func _finish_event() -> void:
+	if event.is_empty():
+		return
+	event = {}
+	blackout_t = 0.0
+	if water:
+		var tw := water.create_tween()
+		tw.tween_property(water, "position:y", -0.2, 2.0)
+		tw.tween_callback(water.queue_free)
+		water = null
+	if shard_node:
+		shard_node.visible = true
+		burst(shard_node.position, Color("#c77dff"), 60)
+	banner("A FRAGMENT APPEARS", Color("#c77dff"))
+	objective = ch.objectives[2]
+
+func _update_event(delta: float) -> void:
+	if event.is_empty() or event.type != "survive":
+		return
+	event_t -= delta
+	objective = "%s  %ds" % [event.title, int(ceil(event_t))]
+	if water:
+		water.position.y = lerpf(0.0, 0.55, 1.0 - event_t / float(event.time))
+	event_spawn_t -= delta
+	if event_spawn_t <= 0.0:
+		event_spawn_t = 2.2
+		var cells := _room3_cells()
+		if cells.size() > 0:
+			var pos: Vector3 = level.cell_center(cells[0])
+			if pos.distance_to(player.global_position) > 6.0:
+				spawn_npc("hostile", pos).awake = true
+	if event_t <= 0.0:
+		_finish_event()
+
+func _carry_weapons(next_ch: int) -> void:
+	Game.carry_slots = player.slots.duplicate()
+	Game.carry_ability = player.ability_unlocked
+	Game.carry_chapter = next_ch
 
 # naechste freie Bodenzelle um eine Wunsch-Zelle
 func _free_spot(c: Vector2i) -> Vector3:
@@ -1300,6 +1498,7 @@ func _process(delta: float) -> void:
 			state = "play"
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	if state == "end" and Input.is_action_just_pressed("interact"):
+		_carry_weapons(mini(chapter + 1, Chapters.CHAPTERS.size()))
 		Game.chapter = mini(chapter + 1, Chapters.CHAPTERS.size())
 		Game.progress = 0
 		Game.continue_game = false
@@ -1326,6 +1525,7 @@ func _process(delta: float) -> void:
 	if state == "play":
 		_update_secrets(delta)
 		_update_dog(delta)
+		_update_event(delta)
 	killmark_t = maxf(0.0, killmark_t - delta)
 	crit_t = maxf(0.0, crit_t - delta)
 	_update_lights(delta)
@@ -1394,6 +1594,7 @@ func _check_triggers() -> void:
 		"3":
 			radio(sid("drones"))
 			objective = ch.objectives[2]
+			start_event()
 		"4":
 			checkpoint = player.global_position
 			radio(sid("gate"))
@@ -1426,7 +1627,7 @@ func _check_doors() -> void:
 		checkpoint = player.global_position
 
 func _check_shard() -> void:
-	if shard_node and player.global_position.distance_to(Vector3(shard_node.position.x, 0, shard_node.position.z)) < 1.6:
+	if shard_node and shard_node.visible and player.global_position.distance_to(Vector3(shard_node.position.x, 0, shard_node.position.z)) < 1.6:
 		burst(shard_node.position, Color("#c77dff"), 50)
 		shard_node.queue_free()
 		shard_node = null
@@ -1682,6 +1883,7 @@ func _update_transition(delta: float) -> void:
 	var total := 2.0 + trans_lines.size() * 2.6
 	if trans_t >= total:
 		if chapter < Chapters.CHAPTERS.size():
+			_carry_weapons(chapter + 1)
 			Game.chapter = chapter + 1
 			Game.progress = 0
 			Game.continue_game = false
