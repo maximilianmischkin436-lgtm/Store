@@ -31,12 +31,13 @@ const DIALOG := {
 	"victory": [
 		["WARDEN-07", "ERROR... SHE... TRUSTED... YOU..."],
 		["HALCYON", "So the safeguard wakes. Climb, little machine. I'll be waiting at the top."],
-		["NOVA", "It knows you. Next stop: the Neon Market."],
+		["NOVA", "It knows you. There's a door behind where the Warden stood. Go through."],
 	],
 	# ---- Kapitel 2: The Neon Market ----
 	"c2_intro": [
-		["NOVA", "The lift dropped us in the old mall. It closed the night of the Reset... but the lights never went off."],
-		["ECHO", "Why does it feel like I've been here before?"],
+		["NOVA", "ECHO? You blacked out on the stairs. I lost your signal for a minute."],
+		["ECHO", "This is a mall. Why is there a mall under the pools?"],
+		["NOVA", "It's not really there. HALCYON stores what people forgot as places. You're walking through the city's lost memories."],
 	],
 	"c2_shard": [
 		["SYSTEM", "Memory shard 2/5 recovered."],
@@ -49,13 +50,13 @@ const DIALOG := {
 	],
 	"c2_victory": [
 		["MAMMON", "THANK YOU... FOR... SHOPPING..."],
-		["NOVA", "The service stairs go up to the Archive. That's where HALCYON files everything it took."],
+		["NOVA", "There's a staff door behind it. Keep going down."],
 	],
 	# ---- Kapitel 3: The Archive ----
 	"c3_intro": [
-		["NOVA", "Welcome to the Archive. Every erased memory in the city is stored in here. Miles of it."],
+		["NOVA", "You're deeper now. This is where HALCYON files everything it erased. The Archive."],
 		["ECHO", "Every room looks the same."],
-		["NOVA", "That's the point. Don't get lost."],
+		["NOVA", "Forgotten things lose their details. Don't get lost in here."],
 	],
 	"c3_shard": [
 		["SYSTEM", "Memory shard 3/5 recovered."],
@@ -66,12 +67,12 @@ const DIALOG := {
 		["MNEMOS", "I AM EVERYTHING YOU FORGOT. AND YOU WILL FORGET AGAIN."],
 	],
 	"c3_victory": [
-		["NOVA", "One more level before the Crown. The old school. Lyra's last record came from there."],
+		["NOVA", "One more layer. Lyra's last record came from somewhere below. A school."],
 	],
 	# ---- Kapitel 4: After School ----
 	"c4_intro": [
-		["NOVA", "It's always sunset here. HALCYON keeps this place exactly as it was."],
-		["ECHO", "This was her school. Mira's."],
+		["NOVA", "The deeper you go, the older the memories. This one is a childhood."],
+		["ECHO", "This was her school. Mira's. It's always sunset here."],
 	],
 	"c4_shard": [
 		["SYSTEM", "Memory shard 4/5 recovered."],
@@ -94,7 +95,7 @@ const RADIO := {
 	"controls": [["NOVA", "WASD to move, SPACE to jump, SHIFT to dash. Mouse to aim, hold LEFT CLICK to shoot."]],
 	"scrap": [["NOVA", "Scrap crawlers. They recycle anything that moves. Dash through them, you're untouchable while dashing."]],
 	"pickup_hint": [["NOVA", "See that rifle on the floor in front of you? Pick it up. Walk to it and press E."]],
-	"got_pulse": [["NOVA", "Good. WASD to move, SPACE to jump, SHIFT to dash. Hold LEFT CLICK to shoot."]],
+	"got_pulse": [["NOVA", "Good. WASD to move, SPACE to jump (twice in the air), SHIFT to dash, CTRL to slide. Hold LEFT CLICK to shoot."]],
 	"scatter": [["SYSTEM", "SCATTER GUN acquired. Press 2 to swap."], ["NOVA", "The Warden's own shotgun. Brutal up close."]],
 	"drop": [["NOVA", "It dropped something. Grab it!"]],
 	"got_overload": [["SYSTEM", "OVERLOAD CORE installed. Press Q."], ["NOVA", "A shockwave that blasts everything around you away. Use it when you're surrounded."]],
@@ -102,6 +103,8 @@ const RADIO := {
 	"rail": [["SYSTEM", "RAIL CANNON acquired. Press 3."], ["NOVA", "It pierces through everything in a line. Slow, but devastating."]],
 	"gate": [["NOVA", "That's the Warden. Nobody gets past it. It sends shockwaves along the floor. JUMP over them!"]],
 	"death": [["NOVA", "Got you back to the last checkpoint. Again!"]],
+	"exit": [["NOVA", "A door just opened. I don't know where it leads. Go."]],
+	"c4_exit": [["NOVA", "That door... it leads up. To the Crown. To HALCYON."]],
 	"c2_controls": [["NOVA", "Stay sharp. Pulse on 1, Scatter on 2."]],
 	"c2_scrap": [["NOVA", "Those aren't mannequins. They're HALCYON's shoppers. Don't let them touch you."]],
 	"c2_drones": [["NOVA", "Security drones around the fountain. Your shard signal is coming from right there. And... something else. A weapon signature."]],

@@ -10,6 +10,7 @@ const Dialog = preload("res://scripts/dialog.gd")
 const Chapters = preload("res://scripts3d/chapters.gd")
 var ch: Dictionary
 var chapter := 1
+var boss_spawn := Vector3.ZERO
 var pickups: Array = []      # [{n: Node3D, kind: "weapon"/"ability", idx: int, cb: Callable}]
 var pickup_hint := ""
 var end_after_pickup := false
@@ -74,6 +75,7 @@ func _ready() -> void:
 				boss = Boss.new()
 				boss.main = self
 				boss.cfg = ch.boss
+				boss_spawn = s.pos
 				boss.position = s.pos
 				add_child(boss)
 	player = Player.new()
@@ -92,12 +94,9 @@ func _ready() -> void:
 	objective = ch.objectives[0]
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	Game.play_music(ch.music)
-	if chapter == 1:
-		state = "wake"
-		wake_t = 0.0
-	else:
-		state = "play"
-		title_t = 6.0
+	state = "wake"
+	wake_t = 0.0
+	wake_len = 7.0 if chapter == 1 else 4.5
 	# Ausruestung je nach Kapitel: Kapitel 1 startet ohne Waffe (sie liegt vor dir)
 	if chapter == 1:
 		var fwd := Vector3(1, 0, 0)
@@ -241,7 +240,7 @@ func _setup_input() -> void:
 	var keys := {
 		"up": [KEY_W, KEY_UP], "down": [KEY_S, KEY_DOWN], "left": [KEY_A, KEY_LEFT], "right": [KEY_D, KEY_RIGHT],
 		"jump": [KEY_SPACE], "dash": [KEY_SHIFT], "shoot": [KEY_J], "interact": [KEY_E, KEY_ENTER],
-		"menu": [KEY_M], "weapon1": [KEY_1], "weapon2": [KEY_2], "weapon3": [KEY_3], "ability": [KEY_Q],
+		"menu": [KEY_M], "slide": [KEY_CTRL, KEY_C], "weapon1": [KEY_1], "weapon2": [KEY_2], "weapon3": [KEY_3], "ability": [KEY_Q],
 	}
 	for action in keys:
 		if not InputMap.has_action(action):
@@ -258,21 +257,22 @@ var dream_rect: ColorRect
 var dream_mat: ShaderMaterial
 var glitch_t := 0.0
 var wake_t := 0.0
-const WAKE_LEN := 7.0
+var wake_len := 7.0
 
 # Aufwachen: liegend, Blick nach oben ins Dachfenster, Augen blinzeln, langsam aufrichten
 func _update_wake(delta: float) -> void:
 	wake_t += delta
-	var k := clampf((wake_t - 3.0) / 3.5, 0.0, 1.0)
+	var st := 3.0 if chapter == 1 else 1.2
+	var k := clampf((wake_t - st) / (wake_len - st - 0.5), 0.0, 1.0)
 	var e := k * k * (3.0 - 2.0 * k)
 	player.head.position.y = lerpf(0.25, 1.6, e)
 	player.pitch = lerpf(1.25, 0.0, e)
 	player.cam.rotation.z = lerpf(0.5, 0.0, e) + sin(wake_t * 1.3) * 0.03 * (1.0 - e)
-	player.gun.visible = wake_t > 5.5
+	player.gun.visible = wake_t > wake_len - 1.5 and player.has_gun()
 	glitch_t = maxf(glitch_t, 0.35 * (1.0 - clampf(wake_t / 4.0, 0.0, 1.0)))
 	if wake_t > 1.2 and wake_t < 1.3:
 		Game.sfx("land", 0.5, 0.5)
-	if wake_t >= WAKE_LEN:
+	if wake_t >= wake_len:
 		player.cam.rotation.z = 0.0
 		state = "play"
 		title_t = 6.0
@@ -282,6 +282,8 @@ func eyelid() -> float:
 	if state != "wake":
 		return 1.0
 	var t := wake_t
+	if chapter > 1:
+		return clampf((t - 0.5) / 1.0, 0.0, 1.0) if t < 1.6 or t > 2.0 else 0.4
 	if t < 1.0: return 0.0
 	if t < 1.6: return (t - 1.0) / 0.6 * 0.35
 	if t < 2.0: return 0.35 - (t - 1.6) / 0.4 * 0.35
@@ -430,14 +432,16 @@ func spawn_enemy(kind: String, pos: Vector3) -> void:
 	e.position = Vector3(pos.x, 0.1, pos.z)
 	add_child(e)
 
-func spawn_proj(pos: Vector3, vel: Vector3, col: Color) -> void:
+func spawn_proj(pos: Vector3, vel: Vector3, col: Color, homing: bool = false) -> void:
 	var mi := MeshInstance3D.new()
 	mi.mesh = proj_mesh
 	mi.material_override = _mat(col, 0.6)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mi.position = pos
 	add_child(mi)
-	projs.append({"n": mi, "v": vel, "life": 6.0})
+	if homing:
+		mi.scale = Vector3.ONE * 1.6
+	projs.append({"n": mi, "v": vel, "life": 6.0, "homing": homing})
 
 func clear_projectiles() -> void:
 	for p in projs:
@@ -584,6 +588,12 @@ func _process(delta: float) -> void:
 		say(sid("intro"), func(): radio("pickup_hint" if chapter == 1 else sid("controls")))
 	_update_radio(delta)
 	_update_pickups(delta)
+	_update_gibs(delta)
+	if state == "play":
+		_update_health(delta)
+		_update_exit(delta)
+	if state == "transition":
+		_update_transition(delta)
 	dream_time += delta
 	level.dream_update(delta, player.global_position, dream_time)
 	# seltene kurze Traum-Stoerung (Glitch), staerker bei Erinnerungen
@@ -610,6 +620,9 @@ func _process(delta: float) -> void:
 func _update_projs(delta: float) -> void:
 	var pc: Vector3 = player.center()
 	for p in projs:
+		if p.homing:
+			var want: Vector3 = (pc - p.n.position).normalized() * p.v.length()
+			p.v = p.v.lerp(want, minf(1.0, delta * 1.2))
 		p.n.position += p.v * delta
 		p.life -= delta
 		var pos: Vector3 = p.n.position
@@ -713,8 +726,80 @@ func _respawn() -> void:
 				e.queue_free()
 	radio("death")
 
-func on_enemy_killed(_e) -> void:
-	shake(0.1)
+func on_enemy_killed(e) -> void:
+	shake(0.15)
+	hitstop(0.07)
+	if randf() < 0.35:
+		_spawn_health(e.global_position)
+
+# ---------- Treffer-Gefuehl ----------
+var gibs: Array = []
+var health_orbs: Array = []
+
+func hitstop(dur: float) -> void:
+	Engine.time_scale = 0.05
+	get_tree().create_timer(dur, true, false, true).timeout.connect(func(): Engine.time_scale = 1.0)
+
+func gibs_from(visual: Node3D, dir: Vector3) -> void:
+	# Einzelteile des Gegners fliegen auseinander und bleiben kurz liegen
+	var meshes: Array = []
+	_collect_meshes(visual, meshes)
+	for m in meshes:
+		var xf: Transform3D = m.global_transform
+		m.get_parent().remove_child(m)
+		add_child(m)
+		m.global_transform = xf
+		var v := Vector3(randf_range(-1, 1), randf_range(0.5, 1.5), randf_range(-1, 1)) * 5.0 + dir.normalized() * 6.0
+		gibs.append({"n": m, "v": v, "spin": Vector3(randf_range(-8, 8), randf_range(-8, 8), randf_range(-8, 8)), "life": 2.5})
+
+func _collect_meshes(n: Node, out: Array) -> void:
+	for c in n.get_children():
+		if c is MeshInstance3D:
+			out.append(c)
+		_collect_meshes(c, out)
+
+func _update_gibs(delta: float) -> void:
+	for g in gibs:
+		g.life -= delta
+		var n: Node3D = g.n
+		g.v.y -= 18.0 * delta
+		n.position += g.v * delta
+		if n.position.y < 0.08:
+			n.position.y = 0.08
+			g.v *= 0.5
+			g.v.y = absf(g.v.y) * 0.3
+			g.spin *= 0.6
+		n.rotation += g.spin * delta
+		if g.life < 0.5:
+			n.scale = n.scale.lerp(Vector3.ZERO, delta * 8.0)
+	for g in gibs:
+		if g.life <= 0.0:
+			g.n.queue_free()
+	gibs = gibs.filter(func(g): return g.life > 0.0)
+
+func _spawn_health(pos: Vector3) -> void:
+	var mi := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 0.22
+	sm.height = 0.44
+	mi.mesh = sm
+	mi.material_override = _mat(Color("#38f5c4"), 2.5)
+	mi.position = Vector3(pos.x, 0.6, pos.z)
+	add_child(mi)
+	health_orbs.append(mi)
+
+func _update_health(delta: float) -> void:
+	for o in health_orbs.duplicate():
+		o.position.y = 0.6 + sin(play_time * 4.0 + o.get_instance_id()) * 0.12
+		var d: float = o.position.distance_to(player.center())
+		if d < 6.0:
+			o.position = o.position.move_toward(player.center(), delta * (14.0 - d * 1.5))
+		if d < 1.0:
+			health_orbs.erase(o)
+			o.queue_free()
+			if player.hp < player.max_hp:
+				player.hp += 1
+			Game.sfx("swap", 1.6, 0.6)
 
 func on_boss_killed(b) -> void:
 	burst(b.global_position, Color("#dfe9ec"), 150)
@@ -734,13 +819,74 @@ func on_boss_killed(b) -> void:
 	var drop_pos: Vector3 = b.global_position
 	var drop := {1: ["weapon", 1], 2: ["ability", 0]}
 	say(sid("victory"), func():
+		state = "play"
 		if drop.has(chapter):
-			state = "play"
 			objective = "Pick up what %s dropped" % ch.boss.name
 			radio("drop")
-			spawn_pickup(drop[chapter][0], drop[chapter][1], Vector3(drop_pos.x, 0, drop_pos.z), func():
-				state = "end"
-				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE)
+			spawn_pickup(drop[chapter][0], drop[chapter][1], Vector3(drop_pos.x, 0, drop_pos.z), func(): _open_exit())
 			return
-		state = "end"
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE)
+		_open_exit())
+
+# ---------- Ausgang und Uebergang ins naechste Kapitel ----------
+var exit_node: Node3D
+var trans_t := 0.0
+var trans_lines: Array = []
+
+func _open_exit() -> void:
+	objective = "Go through the door"
+	var c: Vector2i = level.cell_of(boss_spawn)
+	var pos: Vector3 = level.cell_center(Vector2i(mini(c.x + 6, level.w - 3), c.y))
+	exit_node = Node3D.new()
+	exit_node.position = pos
+	add_child(exit_node)
+	var white := _mat(Color(1, 0.97, 0.9), 4.0)
+	for part in [[Vector3(-0.9, 1.4, 0), Vector3(0.15, 2.8, 0.15)], [Vector3(0.9, 1.4, 0), Vector3(0.15, 2.8, 0.15)], [Vector3(0, 2.8, 0), Vector3(1.95, 0.15, 0.15)]]:
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = part[1]
+		mi.mesh = bm
+		mi.material_override = white
+		mi.position = part[0]
+		exit_node.add_child(mi)
+	var glow := MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(1.7, 2.7)
+	glow.mesh = qm
+	var gm := _mat(Color(1, 0.95, 0.85), 2.0)
+	gm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	glow.material_override = gm
+	glow.position.y = 1.4
+	glow.rotation.y = PI / 2.0
+	exit_node.add_child(glow)
+	exit_node.rotation.y = PI / 2.0
+	var l := OmniLight3D.new()
+	l.light_color = Color(1, 0.95, 0.85)
+	l.light_energy = 3.0
+	l.omni_range = 10.0
+	l.position.y = 1.5
+	exit_node.add_child(l)
+	radio(sid("exit"))
+
+func _update_exit(_delta: float) -> void:
+	if exit_node and player.global_position.distance_to(exit_node.position) < 1.6:
+		exit_node.queue_free()
+		exit_node = null
+		state = "transition"
+		trans_t = 0.0
+		trans_lines = ch.transition
+		Game.sfx("land", 0.3, 1.0)
+
+func _update_transition(delta: float) -> void:
+	trans_t += delta
+	glitch_t = 0.4 if trans_t < 1.5 else 0.0
+	var total := 2.0 + trans_lines.size() * 2.6
+	if trans_t >= total:
+		if chapter < Chapters.CHAPTERS.size():
+			Game.chapter = chapter + 1
+			Game.progress = 0
+			Game.continue_game = false
+			Game.write_save()
+			get_tree().reload_current_scene()
+		else:
+			state = "end"
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE

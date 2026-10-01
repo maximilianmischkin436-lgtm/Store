@@ -612,29 +612,37 @@ const PROPS := {
 	"school": [["SheenChair", 3, 1.0], ["ToyCar", 3, 0.35], ["BoomBox", 2, 0.45]],
 }
 
-func _aabb(n: Node, xf: Transform3D) -> AABB:
+func _aabb_world(n: Node) -> AABB:
 	var box := AABB()
 	var first := true
-	if n is MeshInstance3D and n.mesh:
-		box = xf * n.transform * n.mesh.get_aabb()
-		first = false
-	for c in n.get_children():
-		if c is Node3D:
-			var b := _aabb(c, xf * (n.transform if n is Node3D else Transform3D.IDENTITY))
-			if b.size != Vector3.ZERO:
-				box = b if first else box.merge(b)
-				first = false
+	var stack: Array = [n]
+	while stack.size() > 0:
+		var c = stack.pop_back()
+		if c is MeshInstance3D and c.mesh:
+			var b: AABB = c.global_transform * c.mesh.get_aabb()
+			box = b if first else box.merge(b)
+			first = false
+		stack.append_array(c.get_children())
 	return box
+
+# Manche Modelle bringen eigene Kameras/Lichter mit: entfernen
+func _strip(n: Node) -> void:
+	for c in n.get_children():
+		if c is Camera3D or c is Light3D:
+			c.free()
+		else:
+			_strip(c)
 
 func prop(name: String, pos: Vector3, height: float, rot: float) -> Node3D:
 	var sc: PackedScene = load("res://assets/khronos/%s.glb" % name)
 	var n: Node3D = sc.instantiate()
-	var bb := _aabb(n, Transform3D.IDENTITY)
+	_strip(n)
+	add_child(n)
+	var bb := _aabb_world(n)
 	var s: float = height / maxf(bb.size.y, 0.001)
 	n.scale = Vector3.ONE * s
 	n.rotation.y = rot
 	n.position = pos - Vector3(0, bb.position.y * s, 0)
-	add_child(n)
 	return n
 
 func _place_props() -> void:

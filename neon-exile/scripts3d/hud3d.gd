@@ -34,6 +34,31 @@ func _draw() -> void:
 				draw_circle(Vector2(xx, yy), tr.w * (0.4 + 0.6 * f), Color(0.8, 0.9, 1.0, 0.07 * fade))
 			draw_circle(Vector2(x, y1), tr.w * 1.3, Color(0.85, 0.95, 1.0, 0.18 * fade))
 			draw_circle(Vector2(x - tr.w * 0.3, y1 - tr.w * 0.3), tr.w * 0.4, Color(1, 1, 1, 0.35 * fade))
+	# Uebergang: VHS-Zurueckspulen, dann schwarz mit Text
+	if main.state == "transition":
+		var tt: float = main.trans_t
+		var a := clampf(tt / 1.5, 0.0, 1.0)
+		draw_rect(Rect2(Vector2.ZERO, sz), Color(0, 0, 0, a))
+		if tt < 1.6:
+			for i in 14:
+				var y := fmod(i * 61.0 + tt * 900.0, sz.y)
+				draw_rect(Rect2(0, y, sz.x, 3 + (i % 3) * 4), Color(1, 1, 1, 0.25 * (1.0 - a * 0.5)))
+			draw_string(font, Vector2(40, 60), "<< REW", HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Color(1, 1, 1, 0.8))
+		var lines: Array = main.trans_lines
+		for i in lines.size():
+			var la := clampf((tt - 1.8 - i * 2.6) / 0.8, 0.0, 1.0) * clampf((2.0 + lines.size() * 2.6 - tt) / 0.8, 0.0, 1.0)
+			draw_string(font, Vector2(0, sz.y * 0.42 + i * 44), lines[i], HORIZONTAL_ALIGNMENT_CENTER, sz.x, 26, Color(0.9, 0.9, 0.95, la))
+		return
+	# wenig Leben: pulsierender dunkler Rand
+	if main.player.hp <= 2 and main.state == "play":
+		var beat := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 1000.0 * 7.0)
+		for i in 8:
+			var g := 30.0 + i * 22.0
+			var c2 := Color(0.3, 0, 0.05, 0.08 * beat)
+			draw_rect(Rect2(0, 0, sz.x, g), c2)
+			draw_rect(Rect2(0, sz.y - g, sz.x, g), c2)
+			draw_rect(Rect2(0, 0, g, sz.y), c2)
+			draw_rect(Rect2(sz.x - g, 0, g, sz.y), c2)
 	# Augenlider beim Aufwachen
 	var lid: float = main.eyelid()
 	if lid < 1.0:
@@ -140,8 +165,8 @@ func _draw() -> void:
 	if main.state == "end":
 		draw_string(font, Vector2(0, sz.y * 0.4 + 130), "Press M for main menu", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 16, Color(1, 1, 1, 0.5))
 		draw_rect(Rect2(Vector2.ZERO, sz), Color(0, 0, 0, 0.8))
-		draw_string(font, Vector2(0, sz.y * 0.4), "CHAPTER %d COMPLETE" % main.chapter, HORIZONTAL_ALIGNMENT_CENTER, sz.x, 48, Color("#ffd23d"))
-		draw_string(font, Vector2(0, sz.y * 0.4 + 50), ("Press E for " + main.ch.next) if main.chapter < 4 else ("To be continued in " + main.ch.next), HORIZONTAL_ALIGNMENT_CENTER, sz.x, 20, Color.WHITE)
+		draw_string(font, Vector2(0, sz.y * 0.4), "END OF PART ONE", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 48, Color("#ffd23d"))
+		draw_string(font, Vector2(0, sz.y * 0.4 + 50), "To be continued in " + main.ch.next, HORIZONTAL_ALIGNMENT_CENTER, sz.x, 20, Color.WHITE)
 		draw_string(font, Vector2(0, sz.y * 0.4 + 90), "Time: %ds   Deaths: %d" % [int(main.play_time), main.deaths], HORIZONTAL_ALIGNMENT_CENTER, sz.x, 18, Color(1, 1, 1, 0.6))
 	if main.state == "play" and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		draw_string(font, Vector2(0, sz.y * 0.62), "Click to control the camera", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 18, Color(1, 1, 1, 0.7))

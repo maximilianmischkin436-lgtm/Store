@@ -139,29 +139,78 @@ func select_weapon(n: int) -> void:
 	gun.visible = true
 	Game.sfx("swap")
 
+var jumps := 1
+var slide_t := 0.0
+var slide_dir := Vector3.ZERO
+var land_dip := 0.0
+var kick := 0.0
+var tilt := 0.0
+var flash_light: OmniLight3D
+var flash_t := 0.0
+
 func _physics_process(delta: float) -> void:
 	inv = maxf(0.0, inv - delta)
 	dash_cd = maxf(0.0, dash_cd - delta)
 	shoot_cd = maxf(0.0, shoot_cd - delta)
 	rotation.y = yaw
-	head.rotation.x = pitch
+	kick = lerpf(kick, 0.0, minf(1.0, delta * 9.0))
+	head.rotation.x = pitch + kick
 	recoil = lerpf(recoil, 0.0, minf(1.0, delta * 14.0))
+	land_dip = lerpf(land_dip, 0.0, minf(1.0, delta * 8.0))
+	flash_t = maxf(0.0, flash_t - delta)
+	if flash_light == null:
+		flash_light = OmniLight3D.new()
+		flash_light.light_color = Color(1, 0.95, 0.8)
+		flash_light.omni_range = 9.0
+		muzzle.add_child(flash_light)
+	flash_light.light_energy = 4.0 if flash_t > 0.0 else 0.0
 	if not is_on_floor():
 		velocity.y -= GRAV * delta
 	if not main.can_control():
 		Game.set_walking(false)
 		velocity.x = 0.0
 		velocity.z = 0.0
+		slide_t = 0.0
 		move_and_slide()
 		return
 	var inp := Input.get_vector("left", "right", "up", "down")
 	var dir := (transform.basis * Vector3(inp.x, 0, inp.y)).normalized()
 	var acc := ACCEL if is_on_floor() else AIR_ACCEL
-	velocity.x = move_toward(velocity.x, dir.x * SPEED, acc * delta)
-	velocity.z = move_toward(velocity.z, dir.z * SPEED, acc * delta)
-	if is_on_floor() and Input.is_action_just_pressed("jump"):
-		velocity.y = JUMP
-		Game.sfx("jump", 1.0, 0.6)
+	var hspeed := Vector2(velocity.x, velocity.z).length()
+	# Rutschen: Strg/C beim Laufen, schnell und tief, Sprung aus dem Rutschen behaelt den Schwung
+	if Input.is_action_just_pressed("slide") and is_on_floor() and slide_t <= 0.0 and dir != Vector3.ZERO:
+		slide_t = 0.75
+		slide_dir = dir
+		Game.sfx("land", 0.7, 0.5)
+	if slide_t > 0.0:
+		slide_t -= delta
+		var sp := lerpf(SPEED, 17.0, slide_t / 0.75)
+		velocity.x = slide_dir.x * sp
+		velocity.z = slide_dir.z * sp
+		if not is_on_floor():
+			slide_t = 0.0
+	elif is_on_floor() or hspeed <= SPEED + 0.5 or dir.dot(Vector3(velocity.x, 0, velocity.z).normalized()) < 0.3:
+		velocity.x = move_toward(velocity.x, dir.x * SPEED, acc * delta)
+		velocity.z = move_toward(velocity.z, dir.z * SPEED, acc * delta)
+	else:
+		# in der Luft mit viel Schwung: nur lenken, nicht abbremsen
+		var v2 := Vector2(velocity.x, velocity.z)
+		v2 = v2.rotated(clampf(Vector2(dir.x, dir.z).angle_to(v2) * -1.0, -1.5, 1.5) * delta * 2.0) if dir != Vector3.ZERO else v2
+		v2 = v2.move_toward(v2.normalized() * SPEED, 4.0 * delta)
+		velocity.x = v2.x
+		velocity.z = v2.y
+	if is_on_floor():
+		jumps = 1
+	if Input.is_action_just_pressed("jump"):
+		if is_on_floor() or slide_t > 0.0:
+			velocity.y = JUMP
+			slide_t = 0.0
+			Game.sfx("jump", 1.0, 0.6)
+		elif jumps > 0:
+			jumps -= 1
+			velocity.y = JUMP * 0.9
+			main.burst(global_position, Color(0.8, 0.9, 1.0), 8)
+			Game.sfx("jump", 1.3, 0.5)
 	if Input.is_action_just_pressed("dash") and dash_cd <= 0.0:
 		dash_dir = dir if dir != Vector3.ZERO else -transform.basis.z
 		dash_t = 0.18
@@ -170,16 +219,22 @@ func _physics_process(delta: float) -> void:
 		dash_t -= delta
 		velocity.x = dash_dir.x * 24.0
 		velocity.z = dash_dir.z * 24.0
+	var fall := velocity.y
 	move_and_slide()
 	if is_on_floor() and not was_on_floor:
 		Game.sfx("land", 1.0, 0.6)
+		land_dip = clampf(-fall * 0.02, 0.03, 0.25)
 	was_on_floor = is_on_floor()
-	Game.set_walking(is_on_floor() and Vector2(velocity.x, velocity.z).length() > 2.0 and dash_t <= 0.0)
-	cam.fov = lerpf(cam.fov, 98.0 if dash_t > 0.0 else 85.0, minf(1.0, delta * 10.0))
-	var moving := Vector2(velocity.x, velocity.z).length() > 1.0 and is_on_floor()
+	Game.set_walking(is_on_floor() and Vector2(velocity.x, velocity.z).length() > 2.0 and dash_t <= 0.0 and slide_t <= 0.0)
+	hspeed = Vector2(velocity.x, velocity.z).length()
+	cam.fov = lerpf(cam.fov, 85.0 + clampf(hspeed - SPEED, 0.0, 12.0) * 1.2 + (8.0 if dash_t > 0.0 else 0.0), minf(1.0, delta * 8.0))
+	tilt = lerpf(tilt, -inp.x * 0.035 + (0.08 if slide_t > 0.0 else 0.0), minf(1.0, delta * 8.0))
+	cam.rotation.z = tilt
+	var moving := hspeed > 1.0 and is_on_floor() and slide_t <= 0.0
 	if moving:
-		bob += delta * 11.0
-	head.position.y = lerpf(head.position.y, 1.6 + (sin(bob) * 0.05 if moving else 0.0), minf(1.0, delta * 12.0))
+		bob += delta * (11.0 + hspeed * 0.3)
+	var target_h := 0.85 if slide_t > 0.0 else 1.6
+	head.position.y = lerpf(head.position.y, target_h + (sin(bob) * 0.06 if moving else 0.0) - land_dip, minf(1.0, delta * 14.0))
 	swap_t = maxf(0.0, swap_t - delta)
 	ability_cd = maxf(0.0, ability_cd - delta)
 	for i in 3:
@@ -188,8 +243,9 @@ func _physics_process(delta: float) -> void:
 	if ability_unlocked and Input.is_action_just_pressed("ability") and ability_cd <= 0.0:
 		ability_cd = ABILITY_CD
 		main.overload(global_position)
-	gun.position = gun_base + Vector3(sin(bob * 0.5) * 0.012, abs(sin(bob * 0.5)) * -0.012 - swap_t * 0.6, recoil * 0.07)
-	gun.rotation.x = recoil * 0.12
+	gun.position = gun_base + Vector3(sin(bob * 0.5) * 0.015, abs(sin(bob * 0.5)) * -0.015 - swap_t * 0.6 - land_dip * 0.2, recoil * 0.08)
+	gun.rotation.x = recoil * 0.15
+	gun.rotation.z = -tilt * 2.0
 	gun.visible = has_gun() and gun.visible
 	if not has_gun() or weapon < 0:
 		return
@@ -199,13 +255,16 @@ func _physics_process(delta: float) -> void:
 		shoot_cd = wd.rate
 		Game.sfx(["pulse", "scatter", "rail"][weapon], [1.25, 0.85, 0.5][weapon], [0.5, 0.9, 1.0][weapon])
 		recoil = 1.0 if weapon == 0 else 2.2
+		kick += [0.012, 0.05, 0.08][weapon]
+		flash_t = 0.05
+		flash_light.light_color = wd.col.lerp(Color.WHITE, 0.5)
 		for i in wd.pellets:
 			var spread: Vector3 = Vector3(randf_range(-1, 1), randf_range(-1, 1), 0) * float(wd.spread)
 			var fwd: Vector3 = (-cam.global_basis.z + cam.global_basis * spread).normalized()
 			main.player_shoot(cam.global_position, fwd, muzzle.global_position, wd)
 		if weapon > 0:
-			main.shake(0.12 if weapon == 1 else 0.2)
-			velocity -= -cam.global_basis.z * (3.0 if weapon == 1 else 5.0)
+			main.shake(0.15 if weapon == 1 else 0.25)
+			velocity -= -cam.global_basis.z * (4.0 if weapon == 1 else 6.0)
 
 func center() -> Vector3:
 	return global_position + Vector3(0, 0.9, 0)

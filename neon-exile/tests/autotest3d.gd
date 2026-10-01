@@ -110,8 +110,14 @@ func _process(delta: float) -> void:
 			if main.pickups.size() > 0 and t > 0.3:
 				print("boss drop: ", main.pickups[0].kind, " ", main.pickups[0].idx)
 				main._take(main.pickups[0])
-			if t > 0.8 and main.pickups.is_empty():
-				print("final state: ", main.state)
-				snap("09_end"); step = 13; t = 0
+			if t > 0.8 and main.pickups.is_empty() and main.state == "play" and main.exit_node:
+				print("exit open: ", main.objective)
+				main.player.global_position = main.exit_node.position + Vector3(0, 0.2, 0)
+				step = 13; t = 0
 		13:
-			if t > 0.5: print("AUTOTEST3D done"); get_tree().quit()
+			if main.state == "transition" and t > 3.5 and t < 3.6: snap("09_transition")
+			if t > 4.0:
+				print("final state: ", main.state, " next chapter: ", Game.chapter)
+				step = 14; t = 0
+		14:
+			print("AUTOTEST3D done"); get_tree().quit()

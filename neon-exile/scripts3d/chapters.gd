@@ -10,6 +10,7 @@ const CHAPTERS := [
 		"enemy": Color("#d9e6ea"), "drone": Color("#bcd3dc"), "proj": Color("#0e2a44"),
 		"boss": {"name": "WARDEN-07", "body": Color("#dfe9ec"), "eye": Color("#38c9ff"), "proj": Color("#0e2a44"), "hp": 160},
 		"next": "Chapter 2: The Neon Market",
+		"transition": ["Behind the door, the stairs only go down.", "The water follows you, step by step.", "Somewhere below, music starts playing."],
 		"memories": ["do you remember this place?", "you learned to swim here", "SHE was waiting by the edge", "it's always 4 PM here", "the water is warm", "don't run near the pool", "MIRA", "nobody comes here anymore", "wake up, ECHO"],
 	},
 	{
@@ -20,6 +21,7 @@ const CHAPTERS := [
 		"enemy": Color("#e8d6c8"), "drone": Color("#d9c2e0"), "proj": Color("#ff4fa3"),
 		"boss": {"name": "MAMMON", "body": Color("#ffd27a"), "eye": Color("#ff4fa3"), "proj": Color("#ff4fa3"), "hp": 210},
 		"next": "Chapter 3: The Archive",
+		"transition": ["The staff door opens onto an office.", "Then another. Then another.", "The mall music fades into a hum."],
 		"memories": ["the mall closed at 9", "we used to come here on Saturdays", "SHE bought you a balloon", "lost child, please come to the info desk", "everything is 50% off forever", "do you hear the fountain?", "MIRA, don't run on the escalator", "the music never stops"],
 	},
 	{
@@ -30,6 +32,7 @@ const CHAPTERS := [
 		"enemy": Color("#c9bf8f"), "drone": Color("#b8ad7a"), "proj": Color("#3a2e10"),
 		"boss": {"name": "MNEMOS", "body": Color("#d8cc90"), "eye": Color("#ff3030"), "proj": Color("#3a2e10"), "hp": 250},
 		"next": "Chapter 4: After School",
+		"transition": ["At the end of the last corridor, a school bell rings.", "The light turns orange.", "You've been here before. You were smaller then."],
 		"memories": ["FILE 00412: SATURDAY AT THE PARK (ERASED)", "this room again", "you've been walking for hours", "did you hear that?", "FILE 88120: FIRST DAY OF SCHOOL (ERASED)", "the lights are humming your name", "no exit", "FILE 10001: MOM (ERASED)"],
 	},
 	{
@@ -40,6 +43,7 @@ const CHAPTERS := [
 		"enemy": Color("#e6d2b0"), "drone": Color("#d6c0a0"), "proj": Color("#5a1e2e"),
 		"boss": {"name": "THE HEADMASTER", "body": Color("#c8b49a"), "eye": Color("#ffcc33"), "proj": Color("#5a1e2e"), "hp": 290},
 		"next": "Chapter 5: The Crown",
+		"transition": ["The stairs only go up now.", "Toward the Crown.", "Toward her."],
 		"memories": ["it's always sunset here", "Mira sat by the window", "the bell never rings anymore", "who is picking you up today?", "DON'T FORGET YOUR HOMEWORK", "she drew you in art class", "everyone went home", "you were her best friend"],
 	},
 ]

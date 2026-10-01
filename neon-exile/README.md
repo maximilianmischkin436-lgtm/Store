@@ -16,7 +16,10 @@ Aktueller Stand: **Kapitel 1–4** sind spielbar (Poolrooms, 90er-Mall, Backroom
 | Maus | Umschauen / Zielen |
 | Linksklick (oder J) halten | Schießen |
 | Leertaste | Springen (über die Schockwellen des Bosses!) |
+| Leertaste (in der Luft) | Doppelsprung |
 | Shift | Dash (kurz unverwundbar) |
+| Strg / C beim Laufen | Rutschen (Sprung aus dem Rutschen behält den Schwung) |
+| E | Waffen und Gegenstände aufheben |
 | E / Enter / Klick | Dialog weiter, nach dem Tod neu starten |
 | 1 / 2 / 3 oder Mausrad | Waffe wechseln (Pulse, Scatter, Rail) |
 | Q | Fähigkeit OVERLOAD (Schockwelle) |
@@ -41,6 +44,8 @@ Aktueller Stand: **Kapitel 1–4** sind spielbar (Poolrooms, 90er-Mall, Backroom
 
 ## Credits
 - 3D-Modelle (Waffen, Drohne) und Soundeffekte: **Kenney – Starter Kit FPS** (MIT-Lizenz, siehe `assets/kenney/LICENSE-Kenney-Starter-Kit-FPS.md`).
+- Weitere Modelle (Ghettoblaster, Spielzeugauto, Sessel, Sofa): Khronos glTF Sample Assets, siehe `assets/khronos/CREDITS.md`.
+- Gegner (HOLLOW, WATCHER) und Bosse sind selbst aus Grundformen gebaut.
 - Musik: selbst erzeugt mit `tools/gen_music.py`.
 
 ## Kapitel
