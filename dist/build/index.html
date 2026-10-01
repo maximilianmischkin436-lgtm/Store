@@ -410,41 +410,6 @@ function gameOver() {
   }
 }
 
-//DEV_START
-let devGod = false;
-const DEV_BTN = [14, 14, 134, 48];
-function startDevBoss(i) {
-  reset(); newUnlocks = []; banner = null;
-  devRun = true; state = "play"; wave = (i + 1) * 10; time = (wave - 1) * 15; orbT = 0;
-  startBoss();
-}
-function devClick(p) {
-  if (inBackBtn(p)) { state = "menu"; return; }
-  if (inRect(p, 30, 560, W - 30, 600)) { devGod = !devGod; beep(500, 0.06, "triangle"); return; }
-  const i = Math.floor((p.y - ROW_TOP) / ROW_PITCH);
-  if (i >= 0 && i < BOSSES.length && (p.y - ROW_TOP) % ROW_PITCH < ROW_H && p.x > 30 && p.x < W - 30) startDevBoss(i);
-}
-function drawDevScreen() {
-  text("BOSS TEST", W / 2, 50, 32, "#ff4d6d");
-  text("Dev only: no progress, rank or unlocks", W / 2, 72, 13, "#8888aa");
-  BOSSES.forEach((d, i) => {
-    const y = ROW_TOP + i * ROW_PITCH;
-    ctx.fillStyle = "rgba(255,255,255,0.05)"; ctx.fillRect(30, y, W - 60, ROW_H);
-    ctx.strokeStyle = d.color; ctx.lineWidth = 2; ctx.strokeRect(30, y, W - 60, ROW_H);
-    circle(60, y + 20, 9, d.color, 10);
-    text("Wave " + (i + 1) * 10 + "  " + d.name, 86, y + 17, 15, "#ffffff", "left");
-    text(d.patterns.join(", "), 86, y + 32, 11, "#8888aa", "left");
-    text(d.hp + " HP", W - 44, y + 24, 12, "#8888aa", "right");
-  });
-  ctx.strokeStyle = devGod ? "#38f5c4" : "#8888aa"; ctx.lineWidth = 2; ctx.strokeRect(30, 560, W - 60, 40);
-  text("God mode (permanent shield): " + (devGod ? "ON" : "OFF"), W / 2, 586, 15, devGod ? "#38f5c4" : "#ffffff");
-  backButton();
-}
-function devButton() {
-  ctx.strokeStyle = "#ff4d6d"; ctx.lineWidth = 2; ctx.strokeRect(DEV_BTN[0], DEV_BTN[1], 120, 34);
-  text("BOSS TEST", 74, 37, 14, "#ff4d6d");
-}
-//DEV_END
 
 // --- Eingabe ---
 let touchOffset = 0;
@@ -489,8 +454,6 @@ canvas.addEventListener("pointerdown", e => {
   touchOffset = e.pointerType === "touch" ? 50 : 0;   // finger should not hide the player
   const p = toLogical(e);
   if ((state === "play" || state === "menu") && inMuteBtn(p)) { setMuted(!muted); return; }
-  if (state === "menu" && inRect(p, 14, 14, 134, 48)) { openScreen("devboss"); return; } //DEV
-  if (state === "devboss") { devClick(p); return; } //DEV
   if (paused) { paused = false; return; }
   if (state === "skins") { skinsClick(p); return; }
   if (state === "tree") { treeClick(p); return; }
@@ -514,7 +477,6 @@ addEventListener("blur", () => { if (state === "play") paused = true; });
 document.addEventListener("visibilitychange", () => { if (document.hidden && state === "play") paused = true; });
 addEventListener("keydown", e => {
   keys[e.key.toLowerCase()] = true;
-  if (e.key === "Escape" && state === "devboss") state = "menu"; //DEV
   if (e.key === "Escape" && (state === "skins" || state === "tree" || state === "missions")) state = "menu";
   else if (e.key === "p" || e.key === "P" || e.key === "Escape") togglePause();
   if (e.key === "m" || e.key === "M") setMuted(!muted);
@@ -588,7 +550,6 @@ function update(dt) {
   if (powerT <= 0) { spawnPower(); powerT = (9 + Math.random() * 4) * (1 - 0.12 * lvl("luck")); }
   shieldT = Math.max(0, shieldT - dt);
   slowT = Math.max(0, slowT - dt);
-  if (devRun && devGod) shieldT = shieldDur(); //DEV
   const edt = slowT > 0 ? dt * 0.4 : dt;       // Zeitlupe wirkt nur auf Gegner
 
   if (boss) {
@@ -795,14 +756,12 @@ function draw() {
     text("Lv " + save.level + "   " + rankLabel(save.rp) + "   " + save.rp + " RP", W / 2, 512, 19, RANKS[rankIdx(save.rp)].c);
     text((best ? "Best " + best + "    " : "") + "Streak " + save.streak, W / 2, 545, 16, "#8888aa");
     skinsButton();
-    devButton(); //DEV
   } else if (state === "skins") {
     drawSkinsScreen();
   } else if (state === "tree") {
     drawTreeScreen();
   } else if (state === "missions") {
     drawMissionsScreen();
-  } else if (state === "devboss") { drawDevScreen(); //DEV
   } else if (state === "win") {
     text("YOU WIN!", W / 2, 240, 56, "#ffd23d");
     text("The OVERLORD is defeated", W / 2, 290, 20, "#ffffff");
