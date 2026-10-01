@@ -249,7 +249,7 @@ func _setup_input() -> void:
 	var keys := {
 		"up": [KEY_W, KEY_UP], "down": [KEY_S, KEY_DOWN], "left": [KEY_A, KEY_LEFT], "right": [KEY_D, KEY_RIGHT],
 		"jump": [KEY_SPACE], "dash": [KEY_SHIFT], "shoot": [KEY_J], "interact": [KEY_E, KEY_ENTER],
-		"menu": [KEY_M], "slide": [KEY_CTRL, KEY_C], "weapon1": [KEY_1], "weapon2": [KEY_2], "weapon3": [KEY_3], "ability": [KEY_Q],
+		"menu": [KEY_M], "slide": [KEY_CTRL, KEY_C], "weapon1": [KEY_1], "weapon2": [KEY_2], "weapon3": [KEY_3], "ability": [KEY_Q], "reload": [KEY_R],
 	}
 	for action in keys:
 		if not InputMap.has_action(action):
@@ -599,7 +599,7 @@ func clear_projectiles() -> void:
 		p.n.queue_free()
 	projs.clear()
 
-func player_shoot(origin: Vector3, dir: Vector3, muzzle: Vector3, wd: Dictionary) -> void:
+func player_shoot(origin: Vector3, dir: Vector3, muzzle: Vector3, wd: Dictionary) -> Vector3:
 	var rng: float = wd.range
 	var end := origin + dir * rng
 	var exclude: Array[RID] = []
@@ -625,6 +625,28 @@ func player_shoot(origin: Vector3, dir: Vector3, muzzle: Vector3, wd: Dictionary
 	if wd.pierce:
 		end = end if end.distance_to(origin) < rng - 0.1 else origin + dir * rng
 	_tracer(muzzle, end, wd.col, 0.05 if wd.pierce else 0.012, 0.25 if wd.pierce else 0.06)
+	return end
+
+# Explosion (Railgun-Aufschlag, letzte Schrot-Patrone): Flaechenschaden + Wegschleudern
+func explode(pos: Vector3, radius: float, dmg: int, col: Color) -> void:
+	shake(0.3)
+	burst(pos, col, 40)
+	burst(pos, Color.WHITE, 12)
+	var ball := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 0.5
+	sm.height = 1.0
+	ball.mesh = sm
+	ball.material_override = _mat(col, 3.0)
+	ball.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(ball)
+	ball.global_position = pos
+	var tw := create_tween()
+	tw.tween_property(ball, "scale", Vector3.ONE * radius * 2.0, 0.18)
+	tw.tween_callback(ball.queue_free)
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if is_instance_valid(e) and e.global_position.distance_to(pos) < radius + 0.6:
+			e.hit(dmg, e.global_position - pos)
 
 func overload(pos: Vector3) -> void:
 	# Faehigkeit: Schockwelle um ECHO, schadet, schleudert weg, loescht Projektile

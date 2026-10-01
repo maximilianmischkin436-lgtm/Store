@@ -25,11 +25,25 @@ var bob := 0.0
 var recoil := 0.0
 var gun_base := Vector3(0.17, -0.15, -0.3)
 # Waffen: Name, Farbe, Feuerrate, Schaden, Kugeln pro Schuss, Streuung, Reichweite, durchschlagend, automatisch
+# mag = Magazin, reload = Nachladezeit (kurz!). Besonderheiten:
+#  PULSE: dreht beim Dauerfeuer hoch (schneller), die letzten 5 Schuss sind "Overdrive" (2 Schaden)
+#  SCATTER: im Rutschen/Dash doppelter Schaden, letzte Patrone = Brandladung mit Explosion
+#  RAIL: Schuss gedrueckt halten zum Aufladen (bis 3x Schaden + Explosion beim Einschlag)
+# Aktives Nachladen: nochmal R im leuchtenden Fenster = sofort fertig + naechstes Magazin +1 Schaden
 const WEAPONS := [
-	{"name": "PULSE RIFLE", "col": Color("#38f5c4"), "rate": 0.13, "dmg": 1, "pellets": 1, "spread": 0.008, "range": 90.0, "pierce": false, "auto": true},
-	{"name": "SCATTER GUN", "col": Color("#ff9f3d"), "rate": 0.62, "dmg": 1, "pellets": 9, "spread": 0.075, "range": 26.0, "pierce": false, "auto": false},
-	{"name": "RAIL CANNON", "col": Color("#c77dff"), "rate": 1.0, "dmg": 7, "pellets": 1, "spread": 0.0, "range": 120.0, "pierce": true, "auto": false},
+	{"name": "PULSE RIFLE", "col": Color("#38f5c4"), "rate": 0.12, "dmg": 1, "pellets": 1, "spread": 0.008, "range": 90.0, "pierce": false, "auto": true, "mag": 32, "reload": 0.9},
+	{"name": "SCATTER GUN", "col": Color("#ff9f3d"), "rate": 0.5, "dmg": 1, "pellets": 9, "spread": 0.075, "range": 26.0, "pierce": false, "auto": false, "mag": 6, "reload": 1.0},
+	{"name": "RAIL CANNON", "col": Color("#c77dff"), "rate": 0.55, "dmg": 6, "pellets": 1, "spread": 0.0, "range": 120.0, "pierce": true, "auto": false, "mag": 4, "reload": 1.1},
 ]
+var ammo := [32, 6, 4]
+var reload_t := 0.0          # >0 waehrend des Nachladens
+var reload_len := 1.0
+var reload_tried := false    # aktives Nachladen nur ein Versuch
+var perfect := [false, false, false]   # Bonus-Magazin nach perfektem Nachladen
+var spin := 0.0              # PULSE: Hochdrehen 0..1
+var charge := 0.0            # RAIL: Aufladung 0..1
+const SWEET_A := 0.45        # Anteil des Nachladebalkens, in dem "perfekt" moeglich ist
+const SWEET_B := 0.62
 var unlocked := [false, false, false]
 var weapon := 0
 var ability_unlocked := false
@@ -132,6 +146,9 @@ func select_weapon(n: int) -> void:
 	if not unlocked[n] or n == weapon:
 		return
 	weapon = n
+	reload_t = 0.0
+	charge = 0.0
+	spin = 0.0
 	swap_t = 0.25
 	shoot_cd = maxf(shoot_cd, 0.2)
 	for i in 3:
@@ -258,30 +275,117 @@ func _physics_process(delta: float) -> void:
 	if ability_unlocked and Input.is_action_just_pressed("ability") and ability_cd <= 0.0:
 		ability_cd = ABILITY_CD
 		main.overload(global_position)
-	gun.position = gun_base + Vector3(sin(bob * 0.5) * 0.015, abs(sin(bob * 0.5)) * -0.015 - swap_t * 0.6 - land_dip * 0.2, recoil * 0.08)
-	gun.rotation.x = recoil * 0.15
-	gun.rotation.z = -tilt * 2.0
+	# Nachlade-Animation: Waffe kippt weg und dreht sich, schnappt zurueck
+	var rl := 0.0
+	if reload_t > 0.0:
+		rl = sin((1.0 - reload_t / reload_len) * PI)
+	var shake_c := charge * 0.006 * sin(Time.get_ticks_msec() * 0.08)
+	gun.position = gun_base + Vector3(sin(bob * 0.5) * 0.015 + shake_c, abs(sin(bob * 0.5)) * -0.015 - swap_t * 0.6 - land_dip * 0.2 - rl * 0.12, recoil * 0.08 + charge * 0.03)
+	gun.rotation.x = recoil * 0.15 + rl * 0.7
+	gun.rotation.z = -tilt * 2.0 + rl * 0.9
 	gun.visible = has_gun() and gun.visible
 	if not has_gun() or weapon < 0:
 		return
 	var wd: Dictionary = WEAPONS[weapon]
-	var trigger := Input.is_action_pressed("shoot") if wd.auto else Input.is_action_just_pressed("shoot")
+	_update_reload(delta, wd)
+	if reload_t > 0.0:
+		return
 	if freeze_t > 0.0:
-		trigger = false
+		charge = 0.0
+		return
+	if weapon == 2:
+		# RAIL: halten = aufladen, loslassen = feuern
+		if Input.is_action_pressed("shoot") and shoot_cd <= 0.0:
+			if charge == 0.0:
+				Game.sfx("swap", 0.6, 0.4)
+			charge = minf(1.0, charge + delta * 1.4)
+			if charge >= 1.0 and int(Time.get_ticks_msec() / 120) % 2 == 0:
+				main.burst(muzzle.global_position, wd.col, 1)
+		elif charge > 0.0:
+			_fire(wd)
+			charge = 0.0
+		return
+	var trigger := Input.is_action_pressed("shoot") if wd.auto else Input.is_action_just_pressed("shoot")
+	if weapon == 0:
+		spin = minf(1.0, spin + delta * 0.8) if trigger else maxf(0.0, spin - delta * 2.0)
 	if trigger and shoot_cd <= 0.0:
-		shoot_cd = wd.rate
-		Game.sfx(["pulse", "scatter", "rail"][weapon], [1.25, 0.85, 0.5][weapon], [0.5, 0.9, 1.0][weapon])
-		recoil = 1.0 if weapon == 0 else 2.2
-		kick += [0.012, 0.05, 0.08][weapon]
-		flash_t = 0.05
-		flash_light.light_color = wd.col.lerp(Color.WHITE, 0.5)
-		for i in wd.pellets:
-			var spread: Vector3 = Vector3(randf_range(-1, 1), randf_range(-1, 1), 0) * float(wd.spread)
-			var fwd: Vector3 = (-cam.global_basis.z + cam.global_basis * spread).normalized()
-			main.player_shoot(cam.global_position, fwd, muzzle.global_position, wd)
-		if weapon > 0:
-			main.shake(0.15 if weapon == 1 else 0.25)
-			velocity -= -cam.global_basis.z * (4.0 if weapon == 1 else 6.0)
+		_fire(wd)
+
+func _update_reload(delta: float, wd: Dictionary) -> void:
+	if reload_t > 0.0:
+		var prog := 1.0 - reload_t / reload_len
+		if Input.is_action_just_pressed("reload") and not reload_tried:
+			reload_tried = true
+			if prog >= SWEET_A and prog <= SWEET_B:
+				perfect[weapon] = true
+				reload_t = 0.0
+				_finish_reload(wd)
+				main.burst(muzzle.global_position, Color.WHITE, 14)
+				Game.sfx("swap", 1.6, 0.9)
+				return
+			else:
+				reload_t += 0.35   # verpatzt: etwas laenger
+				reload_len += 0.35
+				Game.sfx("land", 0.5, 0.5)
+		reload_t -= delta
+		if reload_t <= 0.0:
+			reload_t = 0.0
+			_finish_reload(wd)
+		return
+	var empty: bool = ammo[weapon] <= 0
+	if (Input.is_action_just_pressed("reload") and ammo[weapon] < wd.mag) or (empty and shoot_cd <= 0.0):
+		reload_len = wd.reload
+		reload_t = reload_len
+		reload_tried = false
+		perfect[weapon] = false
+		charge = 0.0
+		spin = 0.0
+		Game.sfx("swap", 0.75, 0.7)
+
+func _finish_reload(wd: Dictionary) -> void:
+	ammo[weapon] = wd.mag
+	Game.sfx("land", 1.6, 0.6)
+	recoil = 0.6
+
+func reload_progress() -> float:
+	return 0.0 if reload_t <= 0.0 else 1.0 - reload_t / reload_len
+
+func _fire(wd: Dictionary) -> void:
+	var w := weapon
+	var shot := wd.duplicate()
+	var bonus := 1 if perfect[w] else 0
+	var last: bool = ammo[w] == 1
+	ammo[w] -= 1
+	shoot_cd = wd.rate
+	if w == 0:
+		shoot_cd = lerpf(wd.rate, 0.065, spin)
+		shot.dmg = (2 if ammo[w] < 5 else 1) + bonus
+		shot.spread = wd.spread + spin * 0.012
+		if ammo[w] < 5:
+			shot.col = Color("#eaffff")
+	elif w == 1:
+		shot.dmg = (2 if slide_t > 0.0 or dash_t > 0.0 else 1) + bonus
+		if last:
+			shot.pellets = 14
+			shot.col = Color("#ff4d2e")
+	else:
+		shot.dmg = int(round(wd.dmg * lerpf(0.6, 3.0, charge))) + bonus * 2
+	Game.sfx(["pulse", "scatter", "rail"][w], [1.25 + spin * 0.25, 0.85 if not last else 0.6, 0.7 - charge * 0.25][w], [0.5, 0.9, 1.0][w])
+	recoil = [1.0, 2.2, 1.5 + charge * 1.5][w]
+	kick += [0.012 + spin * 0.006, 0.05, 0.04 + charge * 0.06][w]
+	flash_t = 0.05
+	flash_light.light_color = shot.col.lerp(Color.WHITE, 0.5)
+	for i in shot.pellets:
+		var spread: Vector3 = Vector3(randf_range(-1, 1), randf_range(-1, 1), 0) * float(shot.spread)
+		var fwd: Vector3 = (-cam.global_basis.z + cam.global_basis * spread).normalized()
+		var end: Vector3 = main.player_shoot(cam.global_position, fwd, muzzle.global_position, shot)
+		if w == 1 and last and i == 0:
+			main.explode(end, 3.0, 3, shot.col)
+		if w == 2 and charge >= 0.95:
+			main.explode(end, 3.5, 4, wd.col)
+	if w > 0:
+		main.shake(0.15 if w == 1 else 0.15 + charge * 0.25)
+		velocity -= -cam.global_basis.z * (5.0 if w == 1 else 2.0 + charge * 8.0)
 
 func center() -> Vector3:
 	return global_position + Vector3(0, 0.9, 0)

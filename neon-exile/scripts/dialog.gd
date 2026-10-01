@@ -7,10 +7,16 @@ var idx := 0
 var shown := 0.0
 var on_done: Callable
 var active := false
+var dlg_id := ""
+var voice: AudioStreamPlayer
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	voice = AudioStreamPlayer.new()
+	voice.volume_db = 2.0
+	voice.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(voice)
 
 func start(id: String, done: Callable = Callable()) -> void:
 	lines = Story.DIALOG[id]
@@ -19,6 +25,8 @@ func start(id: String, done: Callable = Callable()) -> void:
 	on_done = done
 	active = true
 	visible = true
+	dlg_id = id
+	_play_voice()
 
 func _process(delta: float) -> void:
 	if not active:
@@ -31,6 +39,9 @@ func _process(delta: float) -> void:
 		else:
 			idx += 1
 			shown = 0.0
+			voice.stop()
+			if idx < lines.size():
+				_play_voice()
 			if idx >= lines.size():
 				active = false
 				visible = false
@@ -61,7 +72,15 @@ func _draw() -> void:
 func skip() -> void:
 	if not active:
 		return
+	voice.stop()
 	active = false
 	visible = false
 	if on_done.is_valid():
 		on_done.call()
+
+# Vertonte Zeile abspielen (assets/voice/<dialog>_<index>.mp3), falls vorhanden
+func _play_voice() -> void:
+	var path := "res://assets/voice/%s_%d.mp3" % [dlg_id, idx]
+	if ResourceLoader.exists(path):
+		voice.stream = load(path)
+		voice.play()

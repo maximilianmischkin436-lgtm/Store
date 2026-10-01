@@ -121,6 +121,28 @@ func _draw() -> void:
 		draw_rect(r, wd.col if on else Color(1, 1, 1, 0.15 if ok else 0.05), false, 2.0)
 		draw_string(font, r.position + Vector2(6, 16), str(i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.6))
 		draw_string(font, r.position + Vector2(6, 33), wd.name.split(" ")[0] if ok else "LOCKED", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, wd.col if ok else Color(1, 1, 1, 0.25))
+	# Munition + Nachladen
+	if p.has_gun() and p.weapon >= 0:
+		var wdc: Dictionary = p.WEAPONS[p.weapon]
+		var am: int = p.ammo[p.weapon]
+		var low: bool = am <= int(wdc.mag) / 4
+		var acol: Color = Color("#ff4d6d") if low and int(Time.get_ticks_msec() / 250) % 2 == 0 else wdc.col
+		draw_string(font, Vector2(sz.x - 330, sz.y - 128), "%d / %d" % [am, wdc.mag], HORIZONTAL_ALIGNMENT_LEFT, -1, 30, acol)
+		if p.perfect[p.weapon]:
+			draw_string(font, Vector2(sz.x - 210, sz.y - 128), "PERFECT +DMG", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
+		if p.reload_t > 0.0:
+			var c := sz / 2.0
+			var bw := 160.0
+			var br := Rect2(c.x - bw / 2, c.y + 40, bw, 8)
+			draw_rect(br, Color(0, 0, 0, 0.5))
+			draw_rect(Rect2(br.position.x + bw * p.SWEET_A, br.position.y, bw * (p.SWEET_B - p.SWEET_A), 8), Color(1, 1, 1, 0.35 if p.reload_tried else 0.8))
+			draw_rect(Rect2(br.position.x + bw * p.reload_progress() - 2, br.position.y - 3, 4, 14), wdc.col)
+			draw_string(font, Vector2(0, c.y + 70), "RELOAD  [R] im weissen Feld = PERFEKT", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 13, Color(1, 1, 1, 0.7))
+		elif am <= 0:
+			draw_string(font, Vector2(0, sz.y / 2.0 + 60), "[R] RELOAD", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 16, Color("#ff4d6d"))
+		if p.charge > 0.0:
+			var c2 := sz / 2.0
+			draw_arc(c2, 26, -PI / 2, -PI / 2 + TAU * p.charge, 40, wdc.col if p.charge < 1.0 else Color.WHITE, 3.0)
 	if p.ability_unlocked:
 		var ar := Rect2(sz.x - 330, sz.y - 112, 292, 30)
 		var ready: bool = p.ability_cd <= 0.0
