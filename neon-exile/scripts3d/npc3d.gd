@@ -54,14 +54,14 @@ func setup(m, r: String) -> void:
 		hp = 4
 		# Varianten, damit nicht jeder Gegner gleich kaempft (spaetere Kapitel: mehr Abwechslung)
 		var chn: int = m.chapter
-		var r := rng.randf()
-		if r < 0.22:
+		var rv := rng.randf()
+		if rv < 0.22:
 			variant = "runner"
 			hp = 2
-		elif r < 0.22 + minf(0.06 * chn, 0.2):
+		elif rv < 0.22 + minf(0.06 * chn, 0.2):
 			variant = "brute"
 			hp = 12
-		elif r < 0.42 + minf(0.06 * chn, 0.2) and chn >= 2:
+		elif rv < 0.42 + minf(0.06 * chn, 0.2) and chn >= 2:
 			variant = "spitter"
 			hp = 3
 	elif role == "special":
