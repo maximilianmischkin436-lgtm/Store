@@ -9,7 +9,7 @@ var font := ThemeDB.fallback_font
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	Game.play_music("explore")
+	Game.play_music("dream")
 	main_box = _box()
 	if Game.progress > 0 and Game.progress < 3:
 		_button(main_box, "CONTINUE", func(): _start(true))

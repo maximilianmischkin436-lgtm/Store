@@ -77,4 +77,40 @@ def render(path, bpm, chords, bars, lead_pat, dark=False):
 pat = [1,0,0,1, 0,0,1,0, 1,0,0,0, 1,0,1,0]
 render("assets/music/explore.wav", 100, [57, 53, 48, 55], 8, pat)          # Am F C G
 render("assets/music/boss.wav", 138, [52, 52, 48, 50], 8, [1,0,1,0]*4, dark=True)   # Em Em C D
+
+def ambient(path, secs, chords):
+    # Langsame, schwebende Akkordflaechen mit Glockentoenen und kuenstlichem Hall
+    total = int(SR * secs)
+    out = [0.0] * total
+    seg = total // len(chords)
+    rnd = random.Random(3)
+    for ci, ch in enumerate(chords):
+        t0 = ci * seg
+        for i in range(seg + SR * 2):
+            if t0 + i >= total: break
+            env = min(1, i / (SR * 2.5)) * min(1, max(0, (seg + SR * 2 - i)) / (SR * 2.5))
+            v = 0.0
+            for n in ch:
+                f = note(n)
+                v += math.sin(2 * math.pi * f * i / SR + 0.3 * math.sin(i / SR * 0.7)) * 0.5
+                v += math.sin(2 * math.pi * f * 2.003 * i / SR) * 0.12
+            out[t0 + i] += 0.05 * env * v
+        # Glocken
+        for k in range(6):
+            tb = t0 + rnd.randint(0, seg - 1)
+            f = note(rnd.choice(ch) + 24)
+            for i in range(int(SR * 3)):
+                if tb + i >= total: break
+                out[tb + i] += 0.06 * math.exp(-i / (SR * 0.9)) * math.sin(2 * math.pi * f * i / SR)
+    # einfacher Hall (mehrere Echos)
+    for d, g in [(0.13, 0.35), (0.29, 0.25), (0.47, 0.18), (0.71, 0.12)]:
+        ds = int(SR * d)
+        for i in range(total - 1, ds, -1):
+            out[i] += out[i - ds] * g
+    peak = max(abs(x) for x in out) or 1
+    with wave.open(path, "w") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR)
+        w.writeframes(b"".join(struct.pack("<h", int(x / peak * 0.8 * 32767)) for x in out))
+
+ambient("assets/music/dream.wav", 48, [[57, 60, 64, 71], [53, 57, 60, 67], [48, 55, 59, 64], [55, 59, 62, 66]])
 print("ok")

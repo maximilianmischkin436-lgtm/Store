@@ -61,6 +61,7 @@ func _ready() -> void:
 	player.position = checkpoint + Vector3(0, 0.1, 0)
 	player.yaw = -PI / 2.0      # Blick nach Osten
 	add_child(player)
+	_dust()
 	var ui := CanvasLayer.new()
 	add_child(ui)
 	hud = Hud.new()
@@ -71,7 +72,7 @@ func _ready() -> void:
 	title_t = 6.0
 	objective = "Find a way out of the Sump"
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	Game.play_music("explore")
+	Game.play_music("dream")
 	if Game.continue_game:
 		_apply_progress(Game.progress)
 
@@ -124,29 +125,89 @@ func _setup_input() -> void:
 	m.button_index = MOUSE_BUTTON_LEFT
 	InputMap.action_add_event("shoot", m)
 
+var dream_rect: ColorRect
+var dream_mat: ShaderMaterial
+var glitch_t := 0.0
+var dream_time := 0.0
+
 func _setup_world() -> void:
+	# Traumhimmel: violett oben, rosa Dunst am Horizont
+	var sky_mat := ProceduralSkyMaterial.new()
+	sky_mat.sky_top_color = Color(0.07, 0.04, 0.16)
+	sky_mat.sky_horizon_color = Color(0.55, 0.32, 0.55)
+	sky_mat.ground_horizon_color = Color(0.4, 0.25, 0.45)
+	sky_mat.ground_bottom_color = Color(0.03, 0.02, 0.06)
+	sky_mat.sun_angle_max = 0.0
+	var sky := Sky.new()
+	sky.sky_material = sky_mat
 	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.01, 0.008, 0.03)
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.35, 0.3, 0.55)
-	env.ambient_light_energy = 0.9
+	env.background_mode = Environment.BG_SKY
+	env.sky = sky
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	env.ambient_light_energy = 0.7
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	env.tonemap_exposure = 1.05
 	env.glow_enabled = true
-	env.glow_intensity = 0.8
-	env.glow_bloom = 0.15
-	env.glow_hdr_threshold = 1.0
+	env.glow_intensity = 0.9
+	env.glow_bloom = 0.25
+	env.glow_hdr_threshold = 0.9
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.06, 0.03, 0.14)
-	env.fog_density = 0.012
+	env.fog_light_color = Color(0.42, 0.28, 0.5)
+	env.fog_density = 0.018
+	env.fog_sky_affect = 0.6
+	env.fog_height = 2.0
+	env.fog_height_density = 0.05
+	env.adjustment_enabled = true
+	env.adjustment_saturation = 0.9
+	env.adjustment_contrast = 0.95
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 	var sun := DirectionalLight3D.new()
-	sun.light_color = Color(0.55, 0.45, 1.0)
-	sun.light_energy = 0.35
-	sun.rotation = Vector3(-1.0, 0.6, 0)
+	sun.light_color = Color(1.0, 0.75, 0.9)
+	sun.light_energy = 0.3
+	sun.rotation = Vector3(-0.5, 0.8, 0)
 	add_child(sun)
+	# Traum-Filter ueber dem ganzen Bild
+	var post := CanvasLayer.new()
+	post.layer = 0
+	add_child(post)
+	dream_rect = ColorRect.new()
+	dream_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dream_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dream_mat = ShaderMaterial.new()
+	dream_mat.shader = load("res://scripts3d/dream.gdshader")
+	dream_rect.material = dream_mat
+	post.add_child(dream_rect)
+
+func _dust() -> void:
+	# langsam schwebende Lichtpartikel rund um den Spieler
+	var p := CPUParticles3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(0.05, 0.05)
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_color = Color(1, 0.9, 1, 0.7)
+	m.emission_enabled = true
+	m.emission = Color(1, 0.85, 1)
+	m.emission_energy_multiplier = 2.0
+	qm.material = m
+	p.mesh = qm
+	p.amount = 160
+	p.lifetime = 9.0
+	p.preprocess = 9.0
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	p.emission_box_extents = Vector3(16, 6, 16)
+	p.direction = Vector3(0, 1, 0)
+	p.spread = 180.0
+	p.initial_velocity_min = 0.05
+	p.initial_velocity_max = 0.3
+	p.gravity = Vector3(0, 0.03, 0)
+	p.local_coords = false
+	p.position = Vector3(0, 3, 0)
+	player.add_child(p)
 
 func can_control() -> bool:
 	return state == "play"
@@ -349,6 +410,13 @@ func _process(delta: float) -> void:
 		seen["intro"] = true
 		say("intro", func(): radio("controls"))
 	_update_radio(delta)
+	dream_time += delta
+	level.dream_update(delta, player.global_position, dream_time)
+	# seltene kurze Traum-Stoerung (Glitch), staerker bei Erinnerungen
+	glitch_t = maxf(0.0, glitch_t - delta)
+	if randf() < delta * 0.03:
+		glitch_t = 0.25
+	dream_mat.set_shader_parameter("glitch", glitch_t * 2.0)
 	if state == "dead" and Input.is_action_just_pressed("interact"):
 		_respawn()
 	if state == "play":
@@ -437,6 +505,7 @@ func _check_shard() -> void:
 		shards += 1
 		checkpoint = player.global_position
 		player.hp = player.max_hp
+		glitch_t = 1.2
 		Game.reach_stage(2)
 		say("shard", func():
 			player.unlocked[2] = true
@@ -483,7 +552,7 @@ func on_boss_killed(b) -> void:
 	clear_projectiles()
 	for e in get_tree().get_nodes_in_group("enemies"):
 		e.queue_free()
-	Game.play_music("explore")
+	Game.play_music("dream")
 	Game.sfx("enemy_die", 0.5, 1.0)
 	if Game.best_time <= 0.0 or play_time < Game.best_time:
 		Game.best_time = play_time
