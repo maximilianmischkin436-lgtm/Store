@@ -10,6 +10,10 @@ const Dialog = preload("res://scripts/dialog.gd")
 const Chapters = preload("res://scripts3d/chapters.gd")
 var ch: Dictionary
 var chapter := 1
+var pickups: Array = []      # [{n: Node3D, kind: "weapon"/"ability", idx: int, cb: Callable}]
+var pickup_hint := ""
+var end_after_pickup := false
+var tears: Array = []
 var door_cols: Array = []     # x-Spalten der beiden Tueren D
 var gate_col := 0
 
@@ -94,11 +98,98 @@ func _ready() -> void:
 	else:
 		state = "play"
 		title_t = 6.0
-		player.unlocked = [true, true, true]
+	# Ausruestung je nach Kapitel: Kapitel 1 startet ohne Waffe (sie liegt vor dir)
+	if chapter == 1:
+		var fwd := Vector3(1, 0, 0)
+		spawn_pickup("weapon", 0, checkpoint + fwd * 2.2)
+		_make_tears()
+	elif chapter == 2:
+		player.give_weapon(1); player.give_weapon(0)
+		player.unlocked[1] = true
+	else:
+		for i in [2, 1, 0]:
+			player.give_weapon(i)
 		player.ability_unlocked = true
 	if Game.continue_game and Game.progress > 0:
 		state = "play"
 		_apply_progress(Game.progress)
+
+# ---------- Gegenstaende zum Aufheben ----------
+func spawn_pickup(kind: String, idx: int, pos: Vector3, cb: Callable = Callable()) -> void:
+	var root := Node3D.new()
+	root.position = Vector3(pos.x, 0.0, pos.z)
+	add_child(root)
+	var holder := Node3D.new()
+	holder.position.y = 0.6
+	root.add_child(holder)
+	if kind == "weapon":
+		var m: Node3D = load(player.GUN_MODELS[idx]).instantiate()
+		m.scale = Vector3.ONE * (0.55 if idx < 2 else 0.5)
+		holder.add_child(m)
+		if idx == 2:
+			player._tint(m, Color("#c77dff"))
+	else:
+		var core := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.3
+		sm.height = 0.6
+		core.mesh = sm
+		core.material_override = _mat(Color("#c77dff"), 3.0)
+		holder.add_child(core)
+	var light := OmniLight3D.new()
+	light.light_color = player.WEAPONS[idx].col if kind == "weapon" else Color("#c77dff")
+	light.light_energy = 1.5
+	light.omni_range = 4.0
+	light.position.y = 1.0
+	root.add_child(light)
+	var ring := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 0.75
+	tm.outer_radius = 0.8
+	ring.mesh = tm
+	ring.material_override = _mat(light.light_color, 1.5)
+	ring.position.y = 0.05
+	root.add_child(ring)
+	pickups.append({"n": root, "h": holder, "kind": kind, "idx": idx, "cb": cb})
+
+func _update_pickups(delta: float) -> void:
+	pickup_hint = ""
+	for pk in pickups:
+		pk.h.rotation.y += delta * 1.5
+		pk.h.position.y = 0.6 + sin(play_time * 2.5) * 0.08
+	if state != "play":
+		return
+	for pk in pickups:
+		var d: float = Vector2(pk.n.position.x - player.global_position.x, pk.n.position.z - player.global_position.z).length()
+		if d < 2.2:
+			var nm: String = player.WEAPONS[pk.idx].name if pk.kind == "weapon" else "OVERLOAD CORE"
+			pickup_hint = "[E]  PICK UP  " + nm
+			if Input.is_action_just_pressed("interact"):
+				_take(pk)
+				return
+
+func _take(pk: Dictionary) -> void:
+	pickups.erase(pk)
+	pk.n.queue_free()
+	burst(pk.n.position + Vector3(0, 0.6, 0), Color.WHITE, 30)
+	Game.sfx("swap", 0.8, 1.0)
+	if pk.kind == "weapon":
+		player.give_weapon(pk.idx)
+		radio(["got_pulse", "scatter", "rail"][pk.idx])
+	else:
+		player.ability_unlocked = true
+		radio("got_overload")
+	if pk.cb.is_valid():
+		pk.cb.call()
+
+# Traenen / Wasser, das beim Aufwachen ueber das Bild laeuft
+func _make_tears() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	for i in 14:
+		var side := -1.0 if i % 2 == 0 else 1.0
+		tears.append({"x": 0.5 + side * rng.randf_range(0.08, 0.3), "y": rng.randf_range(0.3, 0.45), "v": rng.randf_range(0.025, 0.07),
+			"delay": rng.randf_range(1.0, 5.5), "w": rng.randf_range(3.0, 9.0), "wob": rng.randf() * 6.0})
 
 # Story-ID fuer das aktuelle Kapitel (Kapitel 2+ haben eigene Texte mit Praefix)
 func sid(id: String) -> String:
@@ -117,7 +208,11 @@ func _apply_progress(stage: int) -> void:
 	if stage >= 1:
 		seen["2"] = true
 		level.open_doors("D")
-		player.unlocked[1] = true
+		if not player.has_gun():
+			player.give_weapon(0)
+		for pk in pickups.duplicate():
+			if pk.kind == "weapon" and pk.idx == 0:
+				pickups.erase(pk); pk.n.queue_free()
 		for e in get_tree().get_nodes_in_group("enemies"):
 			if e != boss and e.position.x < door_cols[1] * T:
 				e.queue_free()
@@ -132,12 +227,14 @@ func _apply_progress(stage: int) -> void:
 			shard_node.queue_free()
 			shard_node = null
 		shards = chapter
-		player.unlocked[2] = true
-		player.ability_unlocked = true
+		if chapter == 2:
+			player.give_weapon(2)
 		level.open_doors("G")
 		checkpoint = Vector3((gate_col + 2.5) * T, 0, 14.5 * T)
 		objective = ch.objectives[3]
 	player.position = checkpoint + Vector3(0, 0.2, 0)
+	if chapter == 1 and not player.has_gun():
+		pass
 	radio("death")
 
 func _setup_input() -> void:
@@ -484,8 +581,9 @@ func _process(delta: float) -> void:
 		_update_wake(delta)
 	if state == "play" and title_t > 0.0 and title_t < 4.5 and not seen.has("intro"):
 		seen["intro"] = true
-		say(sid("intro"), func(): radio(sid("controls")))
+		say(sid("intro"), func(): radio("pickup_hint" if chapter == 1 else sid("controls")))
 	_update_radio(delta)
+	_update_pickups(delta)
 	dream_time += delta
 	level.dream_update(delta, player.global_position, dream_time)
 	# seltene kurze Traum-Stoerung (Glitch), staerker bei Erinnerungen
@@ -571,9 +669,6 @@ func _check_doors() -> void:
 		banner("DOOR UNLOCKED", Color("#38f5c4"))
 		Game.reach_stage(1)
 		checkpoint = player.global_position
-		if not player.unlocked[1]:
-			player.unlocked[1] = true
-			radio("scatter")
 
 func _check_shard() -> void:
 	if shard_node and player.global_position.distance_to(Vector3(shard_node.position.x, 0, shard_node.position.z)) < 1.6:
@@ -585,12 +680,10 @@ func _check_shard() -> void:
 		player.hp = player.max_hp
 		glitch_t = 1.2
 		Game.reach_stage(2)
-		var first_time: bool = not player.unlocked[2]
+		var spos: Vector3 = shard_node.position if shard_node else player.global_position
 		say(sid("shard"), func():
-			player.unlocked[2] = true
-			player.ability_unlocked = true
-			if first_time:
-				radio("rail")
+			if chapter == 2 and not player.unlocked[2]:
+				spawn_pickup("weapon", 2, player.global_position + Vector3(2.0, 0, 0))
 			level.open_doors("G")
 			objective = ch.objectives[3]
 			banner("GATE OPEN", Color("#ffd23d")))
@@ -638,6 +731,16 @@ func on_boss_killed(b) -> void:
 		Game.best_time = play_time
 	Game.reach_stage(3)
 	Game.write_save()
+	var drop_pos: Vector3 = b.global_position
+	var drop := {1: ["weapon", 1], 2: ["ability", 0]}
 	say(sid("victory"), func():
+		if drop.has(chapter):
+			state = "play"
+			objective = "Pick up what %s dropped" % ch.boss.name
+			radio("drop")
+			spawn_pickup(drop[chapter][0], drop[chapter][1], Vector3(drop_pos.x, 0, drop_pos.z), func():
+				state = "end"
+				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE)
+			return
 		state = "end"
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE)

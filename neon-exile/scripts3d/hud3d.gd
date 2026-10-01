@@ -15,6 +15,25 @@ func _draw() -> void:
 	var sz := get_viewport_rect().size
 	var c := sz / 2.0
 	var p = main.player
+	# Wasser/Traenen laufen ueber das Bild (nur beim Aufwachen)
+	if main.chapter == 1 and main.play_time < 12.0:
+		var tt: float = main.wake_t if main.state == "wake" else main.play_time
+		var fade := clampf((12.0 - tt) / 4.0, 0.0, 1.0)
+		for tr in main.tears:
+			var age: float = tt - tr.delay
+			if age < 0.0:
+				continue
+			var x: float = tr.x * sz.x + sin(age * 2.0 + tr.wob) * 6.0
+			var y0: float = tr.y * sz.y
+			var y1: float = y0 + age * tr.v * sz.y * 3.0
+			var steps := 18
+			for k in steps:
+				var f := float(k) / steps
+				var yy := lerpf(y0, y1, f)
+				var xx: float = x + sin(f * 6.0 + tr.wob) * 3.0
+				draw_circle(Vector2(xx, yy), tr.w * (0.4 + 0.6 * f), Color(0.8, 0.9, 1.0, 0.07 * fade))
+			draw_circle(Vector2(x, y1), tr.w * 1.3, Color(0.85, 0.95, 1.0, 0.18 * fade))
+			draw_circle(Vector2(x - tr.w * 0.3, y1 - tr.w * 0.3), tr.w * 0.4, Color(1, 1, 1, 0.35 * fade))
 	# Augenlider beim Aufwachen
 	var lid: float = main.eyelid()
 	if lid < 1.0:
@@ -80,6 +99,8 @@ func _draw() -> void:
 		draw_rect(Rect2(ar.position, Vector2(ar.size.x * (1.0 - p.ability_cd / p.ABILITY_CD), ar.size.y)), Color(0.78, 0.49, 1, 0.35 if ready else 0.15))
 		draw_rect(ar, Color("#c77dff"), false, 2.0)
 		draw_string(font, ar.position + Vector2(8, 21), "[Q] OVERLOAD" + ("  READY" if ready else ""), HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("#c77dff"))
+	if main.pickup_hint != "":
+		draw_string(font, Vector2(0, sz.y * 0.62), main.pickup_hint, HORIZONTAL_ALIGNMENT_CENTER, sz.x, 22, Color.WHITE)
 	# Funk
 	if main.radio_line.size() > 0:
 		var who: String = main.radio_line[0]

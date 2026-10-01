@@ -45,7 +45,9 @@ func _process(delta: float) -> void:
 			if main.dialog.active and t > 1.5: snap("02_dialog"); main.dialog.skip(); step = 2; t = 0
 		2:
 			if t > 0.5:
-				print("doors D after intro: ", main.level.doors_of("D").size())
+				print("doors D after intro: ", main.level.doors_of("D").size(), " gun before: ", p.has_gun())
+				if main.pickups.size() > 0: main._take(main.pickups[0])
+				print("gun after pickup: ", p.unlocked)
 				tp(main.door_cols[0] + 10, 14.5, -PI / 2); step = 3; t = 0
 		3:
 			p.inv = 99
@@ -105,7 +107,10 @@ func _process(delta: float) -> void:
 			Input.action_release("shoot")
 			if main.dialog.active and t > 0.4: snap("08_victory"); main.dialog.skip(); step = 12; t = 0
 		12:
-			if t > 0.8:
+			if main.pickups.size() > 0 and t > 0.3:
+				print("boss drop: ", main.pickups[0].kind, " ", main.pickups[0].idx)
+				main._take(main.pickups[0])
+			if t > 0.8 and main.pickups.is_empty():
 				print("final state: ", main.state)
 				snap("09_end"); step = 13; t = 0
 		13:

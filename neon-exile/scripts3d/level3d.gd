@@ -257,6 +257,7 @@ func _decorate() -> void:
 		"office": _deco_office()
 		"school": _deco_school()
 		_: _deco_pool()
+	_place_props()
 	_memory_text(Color(0.15, 0.3, 0.45) if theme == "pool" else (Color(1, 0.8, 0.95) if theme == "mall" else Color(0.25, 0.2, 0.1)))
 
 func _deco_pool() -> void:
@@ -602,3 +603,50 @@ func dream_update(delta: float, player_pos: Vector3, t: float) -> void:
 		lab.modulate.a = lerpf(lab.modulate.a, a * 0.7, minf(1.0, delta * 2.0))
 	for m in flicker:
 		m.emission_energy_multiplier = 0.0 if fmod(t * 7.3 + m.get_instance_id() * 0.37, 5.0) < 0.35 else 2.5
+
+# ---------- echte 3D-Modelle (Khronos glTF Sample Assets) ----------
+const PROPS := {
+	"pool": [["ToyCar", 3, 0.35], ["BoomBox", 1, 0.45]],
+	"mall": [["GlamVelvetSofa", 5, 0.9], ["BoomBox", 2, 0.45]],
+	"office": [["SheenChair", 9, 1.0], ["BoomBox", 1, 0.45]],
+	"school": [["SheenChair", 3, 1.0], ["ToyCar", 3, 0.35], ["BoomBox", 2, 0.45]],
+}
+
+func _aabb(n: Node, xf: Transform3D) -> AABB:
+	var box := AABB()
+	var first := true
+	if n is MeshInstance3D and n.mesh:
+		box = xf * n.transform * n.mesh.get_aabb()
+		first = false
+	for c in n.get_children():
+		if c is Node3D:
+			var b := _aabb(c, xf * (n.transform if n is Node3D else Transform3D.IDENTITY))
+			if b.size != Vector3.ZERO:
+				box = b if first else box.merge(b)
+				first = false
+	return box
+
+func prop(name: String, pos: Vector3, height: float, rot: float) -> Node3D:
+	var sc: PackedScene = load("res://assets/khronos/%s.glb" % name)
+	var n: Node3D = sc.instantiate()
+	var bb := _aabb(n, Transform3D.IDENTITY)
+	var s: float = height / maxf(bb.size.y, 0.001)
+	n.scale = Vector3.ONE * s
+	n.rotation.y = rot
+	n.position = pos - Vector3(0, bb.position.y * s, 0)
+	add_child(n)
+	return n
+
+func _place_props() -> void:
+	var walls := _wall_cells()
+	if walls.is_empty():
+		return
+	for entry in PROPS.get(theme, []):
+		for i in entry[1]:
+			var wc = walls[rng.randi() % walls.size()]
+			var c: Vector2i = wc[0]
+			var d: Vector2i = wc[1]
+			var p := cell_center(c) + Vector3(d.x, 0, d.y) * (T / 2.0 - 0.9)
+			if theme == "pool":
+				p.y = 0.0
+			prop(entry[0], p, entry[2], atan2(-d.x, -d.y) + PI)

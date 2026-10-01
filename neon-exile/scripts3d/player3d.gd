@@ -30,7 +30,7 @@ const WEAPONS := [
 	{"name": "SCATTER GUN", "col": Color("#ff9f3d"), "rate": 0.62, "dmg": 1, "pellets": 9, "spread": 0.075, "range": 26.0, "pierce": false, "auto": false},
 	{"name": "RAIL CANNON", "col": Color("#c77dff"), "rate": 1.0, "dmg": 7, "pellets": 1, "spread": 0.0, "range": 120.0, "pierce": true, "auto": false},
 ]
-var unlocked := [true, false, false]
+var unlocked := [false, false, false]
 var weapon := 0
 var ability_unlocked := false
 var ability_cd := 0.0
@@ -118,6 +118,16 @@ func _unhandled_input(e: InputEvent) -> void:
 				select_weapon(n)
 				break
 
+func give_weapon(n: int) -> void:
+	var first := not unlocked.has(true)
+	unlocked[n] = true
+	if first:
+		weapon = -1
+	select_weapon(n)
+
+func has_gun() -> bool:
+	return unlocked.has(true)
+
 func select_weapon(n: int) -> void:
 	if not unlocked[n] or n == weapon:
 		return
@@ -126,6 +136,7 @@ func select_weapon(n: int) -> void:
 	shoot_cd = maxf(shoot_cd, 0.2)
 	for i in 3:
 		models[i].visible = i == n
+	gun.visible = true
 	Game.sfx("swap")
 
 func _physics_process(delta: float) -> void:
@@ -179,6 +190,9 @@ func _physics_process(delta: float) -> void:
 		main.overload(global_position)
 	gun.position = gun_base + Vector3(sin(bob * 0.5) * 0.012, abs(sin(bob * 0.5)) * -0.012 - swap_t * 0.6, recoil * 0.07)
 	gun.rotation.x = recoil * 0.12
+	gun.visible = has_gun() and gun.visible
+	if not has_gun() or weapon < 0:
+		return
 	var wd: Dictionary = WEAPONS[weapon]
 	var trigger := Input.is_action_pressed("shoot") if wd.auto else Input.is_action_just_pressed("shoot")
 	if trigger and shoot_cd <= 0.0:
