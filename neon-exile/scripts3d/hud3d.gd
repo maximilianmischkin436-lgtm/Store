@@ -38,7 +38,8 @@ func _draw() -> void:
 	if main.state == "transition":
 		var tt: float = main.trans_t
 		var a := clampf(tt / 1.5, 0.0, 1.0)
-		draw_rect(Rect2(Vector2.ZERO, sz), Color(0, 0, 0, a))
+		var fin: float = clampf((tt - (main.trans_lines.size() * 2.6 + 1.2)) / 0.8, 0.0, 1.0)
+		draw_rect(Rect2(Vector2.ZERO, sz), Color(0, 0, 0, a).lerp(Color(1, 0.98, 0.94, 1), fin))
 		if tt < 1.6:
 			for i in 14:
 				var y := fmod(i * 61.0 + tt * 900.0, sz.y)
@@ -69,6 +70,9 @@ func _draw() -> void:
 			var a := 0.12 * (1.0 - i / 8.0)
 			draw_rect(Rect2(0, hh + 30 + i * 12, sz.x, 12), Color(0, 0, 0, a * 4.0 * (1.0 - lid)))
 			draw_rect(Rect2(0, sz.y - hh - 42 - i * 12, sz.x, 12), Color(0, 0, 0, a * 4.0 * (1.0 - lid)))
+	if main.state == "arrive":
+		draw_rect(Rect2(Vector2.ZERO, sz), Color(1, 0.98, 0.94, clampf(1.0 - main.arrive_t / 1.4, 0.0, 1.0)))
+		return
 	if main.state == "wake":
 		return
 	# VHS-Anzeige wie auf alter Kassette

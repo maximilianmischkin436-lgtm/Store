@@ -140,6 +140,12 @@ func select_weapon(n: int) -> void:
 	Game.sfx("swap")
 
 var jumps := 1
+var external := Vector3.ZERO     # Stoss/Sog von aussen
+var freeze_t := 0.0              # "Nachsitzen": kann sich nicht bewegen
+var invert_t := 0.0              # MNEMOS: Steuerung vertauscht
+
+func freeze(dur: float) -> void:
+	freeze_t = maxf(freeze_t, dur)
 var slide_t := 0.0
 var slide_dir := Vector3.ZERO
 var land_dip := 0.0
@@ -173,7 +179,13 @@ func _physics_process(delta: float) -> void:
 		slide_t = 0.0
 		move_and_slide()
 		return
+	freeze_t = maxf(0.0, freeze_t - delta)
+	invert_t = maxf(0.0, invert_t - delta)
 	var inp := Input.get_vector("left", "right", "up", "down")
+	if invert_t > 0.0:
+		inp = -inp
+	if freeze_t > 0.0:
+		inp = Vector2.ZERO
 	var dir := (transform.basis * Vector3(inp.x, 0, inp.y)).normalized()
 	var acc := ACCEL if is_on_floor() else AIR_ACCEL
 	var hspeed := Vector2(velocity.x, velocity.z).length()
@@ -220,7 +232,10 @@ func _physics_process(delta: float) -> void:
 		velocity.x = dash_dir.x * 24.0
 		velocity.z = dash_dir.z * 24.0
 	var fall := velocity.y
+	velocity += external
 	move_and_slide()
+	velocity -= external
+	external = external.lerp(Vector3.ZERO, minf(1.0, delta * 5.0))
 	if is_on_floor() and not was_on_floor:
 		Game.sfx("land", 1.0, 0.6)
 		land_dip = clampf(-fall * 0.02, 0.03, 0.25)
@@ -251,6 +266,8 @@ func _physics_process(delta: float) -> void:
 		return
 	var wd: Dictionary = WEAPONS[weapon]
 	var trigger := Input.is_action_pressed("shoot") if wd.auto else Input.is_action_just_pressed("shoot")
+	if freeze_t > 0.0:
+		trigger = false
 	if trigger and shoot_cd <= 0.0:
 		shoot_cd = wd.rate
 		Game.sfx(["pulse", "scatter", "rail"][weapon], [1.25, 0.85, 0.5][weapon], [0.5, 0.9, 1.0][weapon])

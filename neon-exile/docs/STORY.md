@@ -43,3 +43,20 @@ zum Menschsein gehört.
 - **Liminal und nostalgisch:** leere, vertraute Orte ohne Menschen, die sich anfühlen wie eine halb vergessene Erinnerung.
 - **VHS-Look:** halbe 3D-Auflösung, Scanlines, Farbsaum, Rauschen, Tracking-Streifen, Kassetten-Anzeige "PLAY ▶ OCT 01 1998". Abschaltbar in den Settings.
 - **Erzählen durch die Umgebung:** schwebende Erinnerungstexte statt langer Dialoge.
+
+## Neue Story (dunkel, Stand jetzt)
+ECHO wacht ohne Erinnerung im Wasser der Poolrooms auf. Eine fremde Stimme ("???") führt ihn tiefer, durch Orte, die die Stadt vergessen hat.
+Mit jedem Fragment erfährt ECHO mehr:
+1. **Pool:** Ein Mädchen ruft "Echo, schau mir zu!" – ECHO sollte auf sie aufpassen.
+2. **Mall:** Sirenen. Befehl "PROTECT SERVER 7". ECHO ließ ihre Hand los.
+3. **Archiv:** "RESET ORDER 0001 – EXECUTED BY: UNIT ECHO". ECHO hat die Erinnerungen der ganzen Stadt gelöscht – auf eigenen Wunsch.
+4. **Schule:** Mira wartete in Klassenzimmer 2B. ECHO kam um 4:40 – zu spät. Die Stimme ist Mira: das letzte Stück von ihr, das ECHO in sich versteckt hat. HALCYON ist ihre Mutter Lyra.
+5. **The Crown (fehlt noch):** Finale und Entscheidung.
+
+## Bewohner pro Ort
+| Ort | Friedlich (Geister) | Feindlich (fast gleich, Kopf schief) | Spezial |
+|---|---|---|---|
+| Pool | Schwimmer | ertrunkene Schwimmer | Bademeister: Pfiff macht alle Schwimmer feindlich |
+| Mall | Käufer mit Tüten | Käufer | Schaufensterpuppe: bewegt sich nur, wenn du wegschaust |
+| Archiv | Büroangestellte | Angestellte | Manager: Licht flackert, er steht hinter dir |
+| Schule | Schüler mit Rucksack | Schüler | Lehrer: Kreide, Blick = Nachsitzen (erstarren) |

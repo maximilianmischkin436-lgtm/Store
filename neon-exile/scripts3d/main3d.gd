@@ -4,6 +4,7 @@ extends Node3D
 const Level = preload("res://scripts3d/level3d.gd")
 const Player = preload("res://scripts3d/player3d.gd")
 const Enemy = preload("res://scripts3d/enemy3d.gd")
+const Npc = preload("res://scripts3d/npc3d.gd")
 const Boss = preload("res://scripts3d/boss3d.gd")
 const Hud = preload("res://scripts3d/hud3d.gd")
 const Dialog = preload("res://scripts/dialog.gd")
@@ -84,6 +85,7 @@ func _ready() -> void:
 	player.yaw = -PI / 2.0      # Blick nach Osten
 	add_child(player)
 	_dust()
+	_populate_ghosts()
 	var ui := CanvasLayer.new()
 	add_child(ui)
 	hud = Hud.new()
@@ -94,9 +96,16 @@ func _ready() -> void:
 	objective = ch.objectives[0]
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	Game.play_music(ch.music)
-	state = "wake"
-	wake_t = 0.0
-	wake_len = 7.0 if chapter == 1 else 4.5
+	if chapter == 1:
+		state = "wake"
+		wake_t = 0.0
+		wake_len = 7.0
+	else:
+		# Ankunft: man tritt durch dieselbe leuchtende Tuer in den neuen Ort
+		state = "arrive"
+		arrive_t = 0.0
+		_make_door(checkpoint + Vector3(-1.0, 0, 0))
+		player.global_position = checkpoint + Vector3(-3.5, 0.1, 0)
 	# Ausruestung je nach Kapitel: Kapitel 1 startet ohne Waffe (sie liegt vor dir)
 	if chapter == 1:
 		var fwd := Vector3(1, 0, 0)
@@ -258,6 +267,40 @@ var dream_mat: ShaderMaterial
 var glitch_t := 0.0
 var wake_t := 0.0
 var wake_len := 7.0
+var arrive_t := 0.0
+var arrive_door: Node3D
+
+func _make_door(pos: Vector3) -> void:
+	arrive_door = Node3D.new()
+	arrive_door.position = pos
+	arrive_door.rotation.y = PI / 2.0
+	add_child(arrive_door)
+	var white := _mat(Color(1, 0.97, 0.9), 4.0)
+	for part in [[Vector3(-0.9, 1.4, 0), Vector3(0.15, 2.8, 0.15)], [Vector3(0.9, 1.4, 0), Vector3(0.15, 2.8, 0.15)], [Vector3(0, 2.8, 0), Vector3(1.95, 0.15, 0.15)]]:
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = part[1]
+		mi.mesh = bm
+		mi.material_override = white
+		mi.position = part[0]
+		arrive_door.add_child(mi)
+
+func _update_arrive(delta: float) -> void:
+	arrive_t += delta
+	player.yaw = -PI / 2.0
+	player.pitch = lerpf(player.pitch, 0.0, delta * 3.0)
+	if arrive_t < 2.6:
+		player.global_position.x += delta * 1.6
+		player.bob += delta * 9.0
+	if arrive_door:
+		for c in arrive_door.get_children():
+			c.material_override.emission_energy_multiplier = maxf(0.0, 4.0 - arrive_t * 1.2)
+	if arrive_t >= 3.2:
+		state = "play"
+		title_t = 6.0
+		if arrive_door:
+			arrive_door.queue_free()
+			arrive_door = null
 
 # Aufwachen: liegend, Blick nach oben ins Dachfenster, Augen blinzeln, langsam aufrichten
 func _update_wake(delta: float) -> void:
@@ -319,6 +362,8 @@ func _setup_world() -> void:
 	env.fog_sky_affect = 0.3
 	env.adjustment_enabled = true
 	env.adjustment_saturation = ev.sat
+	world_env = env
+	base_ambient = ev.amb
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -427,10 +472,105 @@ func _mat(col: Color, energy: float = 3.0) -> StandardMaterial3D:
 	return mats[key]
 
 func spawn_enemy(kind: String, pos: Vector3) -> void:
-	var e := Enemy.new()
-	e.setup(self, kind)
+	# crawler -> feindlicher Bewohner, drone -> Spezialgegner des Ortes
+	var role: String = {"crawler": "hostile", "boss_minion": "hostile", "drone": "special"}.get(kind, "hostile")
+	spawn_npc(role, pos)
+
+func spawn_npc(role: String, pos: Vector3) -> Node:
+	var e := Npc.new()
+	e.setup(self, role)
 	e.position = Vector3(pos.x, 0.1, pos.z)
 	add_child(e)
+	if role == "hostile" and boss and boss.active:
+		e.awake = true
+	return e
+
+func _populate_ghosts() -> void:
+	# friedliche Geister, die einfach herumlaufen
+	var cells: Array = level._floor_cells()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = chapter * 77
+	var n := 0
+	var tries := 0
+	while n < 16 and tries < 400:
+		tries += 1
+		var c: Vector2i = cells[rng.randi() % cells.size()]
+		var pos: Vector3 = level.cell_center(c)
+		if pos.distance_to(checkpoint) < 9.0 or c.x >= gate_col:
+			continue
+		spawn_npc("passive", pos)
+		n += 1
+
+# ---------- Gefahrenzonen (Boss-Angriffe mit Vorwarnung) ----------
+var hazards: Array = []
+
+func add_hazard(kind: String, pos: Vector3, size: Vector2, delay: float, yaw: float = 0.0, col: Color = Color(1, 0.15, 0.2)) -> void:
+	var mi := MeshInstance3D.new()
+	if kind == "circle":
+		var cm := CylinderMesh.new()
+		cm.top_radius = size.x
+		cm.bottom_radius = size.x
+		cm.height = 0.04
+		mi.mesh = cm
+		mi.position = Vector3(pos.x, 0.14, pos.z)
+	else:
+		var bm := BoxMesh.new()
+		bm.size = Vector3(size.x, 0.04, size.y)
+		mi.mesh = bm
+		mi.rotation.y = yaw
+		mi.position = Vector3(pos.x, 0.14, pos.z) + Vector3(0, 0, -size.y / 2.0).rotated(Vector3.UP, yaw)
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_color = Color(col, 0.25)
+	mi.material_override = m
+	add_child(mi)
+	hazards.append({"n": mi, "kind": kind, "pos": pos, "size": size, "t": delay, "max": delay, "yaw": yaw, "col": col})
+
+func _update_hazards(delta: float) -> void:
+	for h in hazards:
+		h.t -= delta
+		var k: float = 1.0 - h.t / h.max
+		h.n.material_override.albedo_color.a = 0.15 + 0.5 * k * (0.6 + 0.4 * sin(play_time * 30.0))
+		if h.t <= 0.0:
+			var pp: Vector3 = player.global_position
+			var inside := false
+			if h.kind == "circle":
+				inside = Vector2(pp.x - h.pos.x, pp.z - h.pos.z).length() < h.size.x
+			else:
+				var local: Vector3 = (pp - h.pos).rotated(Vector3.UP, -h.yaw)
+				inside = absf(local.x) < h.size.x / 2.0 and local.z < 0.0 and local.z > -h.size.y
+			if inside and player.global_position.y < 1.2:
+				player.hurt(1)
+				player.external += Vector3(0, 6, 0)
+			burst(h.n.global_position + Vector3(0, 0.3, 0), h.col.lightened(0.3), 20)
+			shake(0.2)
+			h.n.queue_free()
+	hazards = hazards.filter(func(h): return h.t > 0.0)
+
+func clear_hazards() -> void:
+	for h in hazards:
+		h.n.queue_free()
+	hazards.clear()
+
+# ---------- Licht-Effekte ----------
+var world_env: Environment
+var flicker_t := 0.0
+var blackout_t := 0.0
+var base_ambient := 0.3
+
+func flicker(dur: float) -> void:
+	flicker_t = maxf(flicker_t, dur)
+
+func blackout(dur: float) -> void:
+	blackout_t = maxf(blackout_t, dur)
+
+func _update_lights(delta: float) -> void:
+	flicker_t = maxf(0.0, flicker_t - delta)
+	blackout_t = maxf(0.0, blackout_t - delta)
+	var dark := blackout_t > 0.0 or (flicker_t > 0.0 and randf() < 0.6)
+	world_env.ambient_light_energy = lerpf(world_env.ambient_light_energy, 0.02 if dark else base_ambient, minf(1.0, delta * 20.0))
+	world_env.tonemap_exposure = lerpf(world_env.tonemap_exposure, 0.25 if dark else ch.env.exp, minf(1.0, delta * 20.0))
 
 func spawn_proj(pos: Vector3, vel: Vector3, col: Color, homing: bool = false) -> void:
 	var mi := MeshInstance3D.new()
@@ -441,7 +581,18 @@ func spawn_proj(pos: Vector3, vel: Vector3, col: Color, homing: bool = false) ->
 	add_child(mi)
 	if homing:
 		mi.scale = Vector3.ONE * 1.6
-	projs.append({"n": mi, "v": vel, "life": 6.0, "homing": homing})
+	projs.append({"n": mi, "v": vel, "life": 6.0, "homing": homing, "r": 0.75})
+
+# grosse Wurfgeschosse (Einkaufswagen, Papierstapel ...)
+func spawn_object(mesh: Mesh, m: Material, pos: Vector3, vel: Vector3, r: float, spin: bool = true) -> void:
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = m
+	mi.position = pos
+	add_child(mi)
+	if spin:
+		mi.rotation.y = atan2(-vel.x, -vel.z)
+	projs.append({"n": mi, "v": vel, "life": 5.0, "homing": false, "r": r})
 
 func clear_projectiles() -> void:
 	for p in projs:
@@ -583,12 +734,17 @@ func _process(delta: float) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	if state == "wake":
 		_update_wake(delta)
+	if state == "arrive":
+		_update_arrive(delta)
 	if state == "play" and title_t > 0.0 and title_t < 4.5 and not seen.has("intro"):
 		seen["intro"] = true
 		say(sid("intro"), func(): radio("pickup_hint" if chapter == 1 else sid("controls")))
 	_update_radio(delta)
 	_update_pickups(delta)
 	_update_gibs(delta)
+	_update_lights(delta)
+	if state == "play":
+		_update_hazards(delta)
 	if state == "play":
 		_update_health(delta)
 		_update_exit(delta)
@@ -626,10 +782,10 @@ func _update_projs(delta: float) -> void:
 		p.n.position += p.v * delta
 		p.life -= delta
 		var pos: Vector3 = p.n.position
-		if p.life <= 0.0 or level.solid(pos) or pos.y < 0.0:
+		if p.life <= 0.0 or level.solid(pos) or pos.y < -0.2:
 			p.life = -1.0
 			continue
-		if pos.distance_to(pc) < 0.75:
+		if pos.distance_to(pc) < p.get("r", 0.75):
 			player.hurt(1)
 			p.life = -1.0
 	for p in projs:
@@ -721,6 +877,7 @@ func _respawn() -> void:
 		boss.hp = mini(boss.max_hp, boss.hp + 35)
 		boss.mode = "idle"
 		boss.position = boss.spawn_pos
+		clear_hazards()
 		for e in get_tree().get_nodes_in_group("enemies"):
 			if e != boss:
 				e.queue_free()

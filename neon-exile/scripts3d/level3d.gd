@@ -258,6 +258,7 @@ func _decorate() -> void:
 		"school": _deco_school()
 		_: _deco_pool()
 	_place_props()
+	_extra_deco()
 	_memory_text(Color(0.15, 0.3, 0.45) if theme == "pool" else (Color(1, 0.8, 0.95) if theme == "mall" else Color(0.25, 0.2, 0.1)))
 
 func _deco_pool() -> void:
@@ -658,3 +659,168 @@ func _place_props() -> void:
 			if theme == "pool":
 				p.y = 0.0
 			prop(entry[0], p, entry[2], atan2(-d.x, -d.y) + PI)
+
+# ---------- zusaetzliche Details pro Ort ----------
+const FigureLib = preload("res://scripts3d/figure.gd")
+
+func _bx(pos: Vector3, size: Vector3, col: Color, rough: float = 0.6, metal: float = 0.0, collide: bool = false, rot: float = 0.0) -> Node3D:
+	var n := _box(pos, size, _plain(col, rough, metal), collide)
+	n.rotation.y = rot
+	return n
+
+func _label(text: String, pos: Vector3, rot: float, col: Color, size: int, emissive: bool = false) -> void:
+	var lab := Label3D.new()
+	lab.text = text
+	lab.font_size = size
+	lab.pixel_size = 0.008
+	lab.modulate = col
+	lab.position = pos
+	lab.rotation.y = rot
+	lab.shaded = not emissive
+	add_child(lab)
+
+func _on_wall(count: int, fn: Callable) -> void:
+	var walls := _wall_cells()
+	walls.shuffle()
+	for i in mini(count, walls.size()):
+		var c: Vector2i = walls[i][0]
+		var d: Vector2i = walls[i][1]
+		var p := cell_center(c) + Vector3(d.x, 0, d.y) * (T / 2.0 - 0.04)
+		fn.call(p, atan2(-d.x, -d.y), Vector3(d.x, 0, d.y))
+
+func _random_floor(count: int, fn: Callable, avoid_path: bool = true) -> void:
+	var cells := _floor_cells()
+	for i in count:
+		var c: Vector2i = cells[rng.randi() % cells.size()]
+		if avoid_path and c.y >= 13 and c.y <= 16:
+			continue
+		fn.call(cell_center(c), rng.randf() * TAU)
+
+func _static_figure(kind: String, pos: Vector3, rot: float, solid: bool) -> void:
+	var root := Node3D.new()
+	root.position = pos
+	root.rotation.y = rot
+	add_child(root)
+	var o := FigureLib.outfit(kind, rng)
+	var P := FigureLib.build(root, o, 1.0 if solid else 0.3, 0.0 if solid else 0.3, false)
+	P.head.rotation = Vector3(rng.randf_range(-0.3, 0.2), rng.randf_range(-0.5, 0.5), rng.randf_range(-0.3, 0.3))
+	for sd in [-1, 1]:
+		P["sh%d" % sd].rotation.x = rng.randf_range(-0.6, 0.3)
+
+func _extra_deco() -> void:
+	match theme:
+		"pool":
+			# Liegestuehle, Rettungsringe, Schilder, Badeenten, Bademeister-Hochsitze
+			_random_floor(14, func(p, r):
+				_bx(p + Vector3(0, 0.35, 0), Vector3(0.7, 0.06, 1.9), Color(0.95, 0.95, 0.95), 0.4, 0.0, true, r)
+				var back := _bx(p + Vector3(0, 0.65, 0), Vector3(0.7, 0.06, 0.7), Color(0.95, 0.95, 0.95), 0.4, 0.0, false, r)
+				back.translate_object_local(Vector3(0, 0, 0.85))
+				back.rotate_object_local(Vector3.RIGHT, 0.9))
+			_on_wall(10, func(p, r, d):
+				var tm := TorusMesh.new()
+				tm.inner_radius = 0.25
+				tm.outer_radius = 0.42
+				var mi := MeshInstance3D.new()
+				mi.mesh = tm
+				mi.material_override = _plain(Color(0.95, 0.35, 0.2), 0.5)
+				mi.position = p + Vector3(0, 2.0, 0) - d * 0.1
+				mi.rotation = Vector3(PI / 2.0, r, 0)
+				add_child(mi))
+			_on_wall(8, func(p, r, d):
+				_bx(p + Vector3(0, 2.7, 0) - d * 0.03, Vector3(1.4, 0.45, 0.02), Color(0.95, 0.95, 0.92), 0.5, 0.0, false, r)
+				_label(["NO DIVING", "NO RUNNING", "DEEP END", "SHALLOW", "SHOWER BEFORE SWIMMING", "LIFEGUARD ON DUTY"][rng.randi() % 6], p + Vector3(0, 2.7, 0) - d * 0.05, r, Color(0.7, 0.1, 0.1), 40))
+			var duck := _plain(Color(1, 0.85, 0.1), 0.3)
+			_random_floor(12, func(p, r):
+				var b := MeshInstance3D.new()
+				b.mesh = FigureLib.sph(0.12)
+				b.material_override = duck
+				b.position = p + Vector3(rng.randf_range(-1, 1), 0.2, rng.randf_range(-1, 1))
+				add_child(b)
+				var h := MeshInstance3D.new()
+				h.mesh = FigureLib.sph(0.07)
+				h.material_override = duck
+				h.position = b.position + Vector3(0.08, 0.12, 0)
+				add_child(h), false)
+			_random_floor(4, func(p, r):
+				for lx in [-0.5, 0.5]:
+					for lz in [-0.5, 0.5]:
+						_bx(p + Vector3(lx, 1.2, lz), Vector3(0.08, 2.4, 0.08), Color(0.95, 0.95, 0.95), 0.4, 0.0, false)
+				_bx(p + Vector3(0, 2.4, 0), Vector3(1.2, 0.1, 1.2), Color(0.85, 0.2, 0.15), 0.6, 0.0, true)
+				_bx(p + Vector3(0, 2.8, 0.5), Vector3(1.2, 0.8, 0.1), Color(0.85, 0.2, 0.15), 0.6))
+			# Rutsche ins Nichts
+			_random_floor(2, func(p, r):
+				for k in 8:
+					_bx(p + Vector3(0, 0.4 + k * 0.45, k * 0.6).rotated(Vector3.UP, r), Vector3(1.2, 0.1, 0.8), Color(0.2, 0.55, 0.9), 0.2, 0.0, false, r))
+		"mall":
+			# Kioske, Muelleimer, Rolltreppe, Schaufensterpuppen, Banner
+			_random_floor(6, func(p, r):
+				_bx(p + Vector3(0, 0.55, 0), Vector3(2.2, 1.1, 1.2), Color(0.85, 0.75, 0.6), 0.5, 0.0, true, r)
+				_bx(p + Vector3(0, 2.4, 0), Vector3(2.4, 0.15, 1.4), Color(0.9, 0.3, 0.55), 0.5, 0.0, false, r)
+				for lx in [-1.1, 1.1]:
+					_bx(p + Vector3(lx, 1.7, 0).rotated(Vector3.UP, r), Vector3(0.08, 1.3, 0.08), Color(0.8, 0.8, 0.8), 0.3, 0.8)
+				_label(["PRETZELS", "PHONE CASES", "SUNGLASSES", "CALENDARS 1998"][rng.randi() % 4], p + Vector3(0, 2.6, 0), r, Color(1, 1, 1), 48, true))
+			_random_floor(10, func(p, r):
+				var m := MeshInstance3D.new()
+				m.mesh = FigureLib.cyl(0.28, 0.25, 0.9)
+				m.material_override = _plain(Color(0.3, 0.3, 0.32), 0.4, 0.7)
+				m.position = p + Vector3(0, 0.45, 0)
+				add_child(m))
+			_random_floor(6, func(p, r):
+				_static_figure("mannequin", p, r, true), true)
+			_random_floor(2, func(p, r):
+				var esc := _bx(p + Vector3(0, 2.0, 0), Vector3(1.6, 0.3, 8.0), Color(0.6, 0.6, 0.62), 0.3, 0.8, false, r)
+				esc.rotate_object_local(Vector3.RIGHT, 0.5)
+				_bx(p + Vector3(0, 2.6, 0), Vector3(1.8, 0.05, 8.2), Color(0.1, 0.1, 0.1), 0.2, 0.0, false, r).rotate_object_local(Vector3.RIGHT, 0.5))
+			_on_wall(6, func(p, r, d):
+				_label(["SALE", "50% OFF", "CLOSING DOWN", "EVERYTHING MUST GO"][rng.randi() % 4], p + Vector3(0, 4.6, 0) - d * 0.05, r, Color(1, 0.3, 0.5), 120, true))
+		"office":
+			# Grossraumbuero: Schreibtische mit Roehrenmonitoren, Trennwaende, Wasserspender
+			var desk_c := Color(0.55, 0.5, 0.42)
+			_random_floor(26, func(p, r):
+				_bx(p + Vector3(0, 0.74, 0), Vector3(1.4, 0.05, 0.75), desk_c, 0.6, 0.0, true, r)
+				for lx in [-0.65, 0.65]:
+					_bx(p + Vector3(lx, 0.37, 0).rotated(Vector3.UP, r), Vector3(0.05, 0.74, 0.7), desk_c.darkened(0.3), 0.6)
+				var mon := _bx(p + Vector3(0, 1.0, 0.1).rotated(Vector3.UP, r), Vector3(0.45, 0.4, 0.4), Color(0.75, 0.73, 0.65), 0.5, 0.0, false, r)
+				var scr := MeshInstance3D.new()
+				var qm := QuadMesh.new()
+				qm.size = Vector2(0.36, 0.28)
+				scr.mesh = qm
+				scr.material_override = _emit(Color(0.4, 0.9, 0.5) if rng.randf() < 0.6 else Color(0.2, 0.3, 0.9), 0.9)
+				scr.position = Vector3(0, 0.02, -0.205)
+				scr.rotation.y = PI
+				mon.add_child(scr)
+				_bx(p + Vector3(0, 1.1, 0.75).rotated(Vector3.UP, r), Vector3(1.6, 1.4, 0.06), Color(0.45, 0.48, 0.5), 0.9, 0.0, true, r))
+			_random_floor(5, func(p, r):
+				_bx(p + Vector3(0, 0.5, 0), Vector3(0.4, 1.0, 0.4), Color(0.9, 0.9, 0.88), 0.4, 0.0, true)
+				var jug := MeshInstance3D.new()
+				jug.mesh = FigureLib.cyl(0.15, 0.15, 0.45)
+				var jm := _plain(Color(0.5, 0.75, 1.0, 0.5), 0.1)
+				jm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+				jug.material_override = jm
+				jug.position = p + Vector3(0, 1.25, 0)
+				add_child(jug))
+			_on_wall(8, func(p, r, d):
+				_label(["MEMO: ALL FILES MUST BE DELETED", "DO NOT REMEMBER", "QUOTA: 10,000 / DAY", "EMPLOYEE OF THE MONTH: ECHO", "EXIT ->", "ROOM 404"][rng.randi() % 6], p + Vector3(0, 1.8, 0) - d * 0.05, r, Color(0.15, 0.12, 0.05), 40))
+		"school":
+			# Rucksaecke auf dem Boden, Vitrine, Uhren, Kinderzeichnungen
+			_random_floor(14, func(p, r):
+				_bx(p + Vector3(rng.randf_range(-1, 1), 0.18, rng.randf_range(-1, 1)), Vector3(0.32, 0.36, 0.16), [Color(0.7, 0.2, 0.2), Color(0.2, 0.35, 0.65), Color(0.85, 0.65, 0.15)][rng.randi() % 3], 0.85, 0.0, false, r), false)
+			_on_wall(6, func(p, r, d):
+				var clk := MeshInstance3D.new()
+				clk.mesh = FigureLib.cyl(0.3, 0.3, 0.05)
+				clk.material_override = _plain(Color(0.95, 0.95, 0.9), 0.4)
+				clk.position = p + Vector3(0, 3.1, 0) - d * 0.03
+				clk.rotation = Vector3(PI / 2.0, r, 0)
+				add_child(clk)
+				_label("4:40", p + Vector3(0, 3.1, 0) - d * 0.07, r, Color(0.1, 0.1, 0.1), 40))
+			_on_wall(12, func(p, r, d):
+				var pic := _bx(p + Vector3(rng.randf_range(-0.6, 0.6), rng.randf_range(1.4, 2.2), 0) - d * 0.02, Vector3(0.5, 0.4, 0.01), Color(0.95, 0.93, 0.85), 0.9, 0.0, false, r)
+				_label(["me + Echo", "my family", "Echo is my robot", "MOM", "summer", "wait for me"][rng.randi() % 6], pic.position - d * 0.02, r, Color(0.2, 0.3, 0.8), 28))
+			_random_floor(2, func(p, r):
+				_bx(p + Vector3(0, 1.0, 0), Vector3(2.0, 2.0, 0.6), Color(0.45, 0.3, 0.2), 0.6, 0.0, true, r)
+				for k in 3:
+					var tr := MeshInstance3D.new()
+					tr.mesh = FigureLib.cyl(0.05, 0.12, 0.35)
+					tr.material_override = _plain(Color(0.85, 0.7, 0.2), 0.2, 0.9)
+					tr.position = p + Vector3(-0.6 + k * 0.6, 2.2, 0).rotated(Vector3.UP, r)
+					add_child(tr))
