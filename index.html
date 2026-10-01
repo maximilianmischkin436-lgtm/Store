@@ -39,7 +39,11 @@ try { best = +localStorage.getItem("neondodge_best") || 0; } catch (e) {}
 
 // --- Audio (kleine Beeps, kein Asset noetig) ---
 let actx = null;
+let muted = false;
+try { muted = localStorage.getItem("neondodge_muted") === "1"; } catch (e) {}
+function setMuted(m) { muted = m; try { localStorage.setItem("neondodge_muted", m ? "1" : "0"); } catch (e) {} }
 function beep(freq, dur, type = "square", vol = 0.05) {
+  if (muted) return;
   try {
     actx = actx || new (window.AudioContext || window.webkitAudioContext)();
     const o = actx.createOscillator(), g = actx.createGain();
@@ -53,6 +57,7 @@ function beep(freq, dur, type = "square", vol = 0.05) {
 
 // --- Zustand ---
 let state = "menu";                     // menu | play | over
+let paused = false, wave = 1, waveBanner = 0, musicT = 0, musicStep = 0;
 let player, enemies, orbs, powers, particles, score, combo, comboTimer, time, spawnT, orbT, powerT, shieldT, slowT, shake;
 const target = { x: W / 2, y: H * 0.75 };
 const keys = {};
@@ -62,7 +67,7 @@ function reset() {
   target.x = player.x; target.y = player.y;
   enemies = []; orbs = []; powers = []; particles = [];
   score = 0; combo = 1; comboTimer = 0; time = 0; spawnT = 0; orbT = 0; shake = 0;
-  powerT = 10; shieldT = 0; slowT = 0;
+  powerT = 10; shieldT = 0; slowT = 0; wave = 1; waveBanner = 0; paused = false;
 }
 reset();
 
@@ -123,13 +128,25 @@ function setTarget(clientX, clientY) {
   target.y = Math.max(0, Math.min(H, (clientY * dpr - v.oy) / v.s));
 }
 canvas.addEventListener("pointermove", e => { if (state === "play") setTarget(e.clientX, e.clientY); });
+function inMuteBtn(clientX, clientY) {
+  const v = view(), dpr = window.devicePixelRatio || 1;
+  const x = (clientX * dpr - v.ox) / v.s, y = (clientY * dpr - v.oy) / v.s;
+  return x > W - 56 && x < W && y > 36 && y < 80;
+}
 canvas.addEventListener("pointerdown", e => {
+  if (inMuteBtn(e.clientX, e.clientY)) { setMuted(!muted); return; }
+  if (paused) { paused = false; return; }
   if (state === "menu") { startGame(); setTarget(e.clientX, e.clientY); }
   else if (state === "over" && overT > 0.6) { startGame(); setTarget(e.clientX, e.clientY); }
   else if (state === "play") setTarget(e.clientX, e.clientY);
 });
+function togglePause() { if (state === "play") paused = !paused; }
+addEventListener("blur", () => { if (state === "play") paused = true; });
+document.addEventListener("visibilitychange", () => { if (document.hidden && state === "play") paused = true; });
 addEventListener("keydown", e => {
   keys[e.key.toLowerCase()] = true;
+  if (e.key === "p" || e.key === "P" || e.key === "Escape") togglePause();
+  if (e.key === "m" || e.key === "M") setMuted(!muted);
   if ((e.key === " " || e.key === "Enter") && state === "menu") startGame();
   else if ((e.key === " " || e.key === "Enter") && state === "over" && overT > 0.6) startGame();
 });
@@ -137,7 +154,19 @@ addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
 
 // --- Update ---
 let overT = 0;
+function music(dt) {
+  if (muted || state !== "play") return;
+  musicT -= dt;
+  if (musicT > 0) return;
+  musicT = Math.max(0.12, 0.22 - time * 0.0012);        // wird mit der Zeit schneller
+  const scale = [110, 130.8, 146.8, 164.8, 196, 220];
+  const notes = [0, 2, 4, 2, 0, 3, 5, 3];
+  beep(scale[notes[musicStep % 8]] * (musicStep % 16 < 8 ? 1 : 1.5), 0.2, "triangle", 0.025);
+  musicStep++;
+}
+
 function update(dt) {
+  if (paused) return;
   if (state === "over") overT += dt; else overT = 0;
   shake = Math.max(0, shake - dt);
 
@@ -148,6 +177,10 @@ function update(dt) {
 
   time += dt;
   score += dt * 5 * combo;
+  music(dt);
+  waveBanner = Math.max(0, waveBanner - dt);
+  const w = 1 + Math.floor(time / 20);
+  if (w > wave) { wave = w; waveBanner = 2; score += 100; beep(700, 0.3, "sine", 0.07); }
 
   // Tastatursteuerung bewegt das Ziel
   const k = 340 * dt;
@@ -279,6 +312,8 @@ function draw() {
     text(String(Math.floor(score)), W / 2, 56, 40);
     if (combo > 1) text("x" + combo + " COMBO", W / 2, 84, 18, "#38f5c4");
     text("Best " + best, W - 14, 28, 16, "#8888aa", "right");
+    text("Welle " + wave, W / 2, 110, 14, "#8888aa");
+    if (waveBanner > 0) { ctx.globalAlpha = Math.min(1, waveBanner); text("WELLE " + wave + "!  +100", W / 2, 200, 30, "#ffd23d"); ctx.globalAlpha = 1; }
     if (shieldT > 0) { ctx.fillStyle = "#4da3ff"; ctx.fillRect(14, 20, 80 * shieldT / 5, 6); text("Schild", 14, 44, 12, "#4da3ff", "left"); }
     if (slowT > 0) { ctx.fillStyle = "#ffd23d"; ctx.fillRect(14, 58, 80 * slowT / 5, 6); text("Zeitlupe", 14, 82, 12, "#ffd23d", "left"); }
   } else if (state === "menu") {
@@ -287,13 +322,22 @@ function draw() {
     text("Weiche den roten aus", W / 2, 340, 20, "#ff3d6e");
     text("S = Schild   Z = Zeitlupe", W / 2, 372, 16, "#ffd23d");
     text("Tippen / Klicken zum Starten", W / 2, 450, 22);
-    text("Maus, Touch oder Pfeiltasten/WASD", W / 2, 472, 15, "#8888aa");
+    text("Maus, Touch oder Pfeiltasten/WASD  (P = Pause)", W / 2, 472, 15, "#8888aa");
     if (best) text("Best " + best, W / 2, 540, 22, "#8888aa");
   } else {
     text("GAME OVER", W / 2, 260, 48, "#ff3d6e");
     text("Score " + Math.floor(score), W / 2, 330, 32);
     text(score >= best && best > 0 ? "Neuer Highscore!" : "Best " + best, W / 2, 372, 20, "#38f5c4");
     if (overT > 0.6) text("Tippen fuer neuen Versuch", W / 2, 460, 20);
+  }
+}
+
+function drawOverlay() {
+  if (state !== "over") text(muted ? "Ton aus (M)" : "Ton an (M)", W - 14, 62, 13, "#8888aa", "right");
+  if (paused) {
+    ctx.fillStyle = "rgba(10,10,20,0.75)"; ctx.fillRect(0, 0, W, H);
+    text("PAUSE", W / 2, 330, 48);
+    text("Tippen oder P zum Weiterspielen", W / 2, 380, 18, "#8888aa");
   }
 }
 
@@ -304,6 +348,7 @@ function frame(now) {
   last = now;
   update(dt);
   draw();
+  drawOverlay();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
