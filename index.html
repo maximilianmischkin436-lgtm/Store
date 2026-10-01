@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
@@ -13,8 +13,8 @@
 <canvas id="c"></canvas>
 <script>
 "use strict";
-// Neon Dodge: weiche Gegnern aus, sammle Orbs, baue Combos auf.
-// Steuerung: Maus / Touch bewegt den Spieler, Pfeiltasten/WASD gehen auch.
+// Neon Dodge: dodge enemies, collect orbs, build combos.
+// Controls: mouse / touch moves the player, arrow keys/WASD work too.
 
 const W = 480, H = 720;                 // logische Spielgroesse
 const canvas = document.getElementById("c");
@@ -312,32 +312,32 @@ function draw() {
     text(String(Math.floor(score)), W / 2, 56, 40);
     if (combo > 1) text("x" + combo + " COMBO", W / 2, 84, 18, "#38f5c4");
     text("Best " + best, W - 14, 28, 16, "#8888aa", "right");
-    text("Welle " + wave, W / 2, 110, 14, "#8888aa");
-    if (waveBanner > 0) { ctx.globalAlpha = Math.min(1, waveBanner); text("WELLE " + wave + "!  +100", W / 2, 200, 30, "#ffd23d"); ctx.globalAlpha = 1; }
-    if (shieldT > 0) { ctx.fillStyle = "#4da3ff"; ctx.fillRect(14, 20, 80 * shieldT / 5, 6); text("Schild", 14, 44, 12, "#4da3ff", "left"); }
-    if (slowT > 0) { ctx.fillStyle = "#ffd23d"; ctx.fillRect(14, 58, 80 * slowT / 5, 6); text("Zeitlupe", 14, 82, 12, "#ffd23d", "left"); }
+    text("Wave " + wave, W / 2, 110, 14, "#8888aa");
+    if (waveBanner > 0) { ctx.globalAlpha = Math.min(1, waveBanner); text("WAVE " + wave + "!  +100", W / 2, 200, 30, "#ffd23d"); ctx.globalAlpha = 1; }
+    if (shieldT > 0) { ctx.fillStyle = "#4da3ff"; ctx.fillRect(14, 20, 80 * shieldT / 5, 6); text("Shield", 14, 44, 12, "#4da3ff", "left"); }
+    if (slowT > 0) { ctx.fillStyle = "#ffd23d"; ctx.fillRect(14, 58, 80 * slowT / 5, 6); text("Slow-mo", 14, 82, 12, "#ffd23d", "left"); }
   } else if (state === "menu") {
     text("NEON DODGE", W / 2, 240, 52, "#ffffff");
-    text("Sammle gruene Orbs", W / 2, 310, 20, "#38f5c4");
-    text("Weiche den roten aus", W / 2, 340, 20, "#ff3d6e");
-    text("S = Schild   Z = Zeitlupe", W / 2, 372, 16, "#ffd23d");
-    text("Tippen / Klicken zum Starten", W / 2, 450, 22);
-    text("Maus, Touch oder Pfeiltasten/WASD  (P = Pause)", W / 2, 472, 15, "#8888aa");
+    text("Collect green orbs", W / 2, 310, 20, "#38f5c4");
+    text("Dodge the red ones", W / 2, 340, 20, "#ff3d6e");
+    text("S = Shield   Z = Slow-mo", W / 2, 372, 16, "#ffd23d");
+    text("Tap / click to start", W / 2, 450, 22);
+    text("Mouse, touch or arrows/WASD  (P = Pause)", W / 2, 472, 15, "#8888aa");
     if (best) text("Best " + best, W / 2, 540, 22, "#8888aa");
   } else {
     text("GAME OVER", W / 2, 260, 48, "#ff3d6e");
     text("Score " + Math.floor(score), W / 2, 330, 32);
-    text(score >= best && best > 0 ? "Neuer Highscore!" : "Best " + best, W / 2, 372, 20, "#38f5c4");
-    if (overT > 0.6) text("Tippen fuer neuen Versuch", W / 2, 460, 20);
+    text(score >= best && best > 0 ? "New high score!" : "Best " + best, W / 2, 372, 20, "#38f5c4");
+    if (overT > 0.6) text("Tap to try again", W / 2, 460, 20);
   }
 }
 
 function drawOverlay() {
-  if (state !== "over") text(muted ? "Ton aus (M)" : "Ton an (M)", W - 14, 62, 13, "#8888aa", "right");
+  if (state !== "over") text(muted ? "Sound off (M)" : "Sound on (M)", W - 14, 62, 13, "#8888aa", "right");
   if (paused) {
     ctx.fillStyle = "rgba(10,10,20,0.75)"; ctx.fillRect(0, 0, W, H);
     text("PAUSE", W / 2, 330, 48);
-    text("Tippen oder P zum Weiterspielen", W / 2, 380, 18, "#8888aa");
+    text("Tap or press P to resume", W / 2, 380, 18, "#8888aa");
   }
 }
 
