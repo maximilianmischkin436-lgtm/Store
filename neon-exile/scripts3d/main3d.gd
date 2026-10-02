@@ -1973,6 +1973,8 @@ func _process(delta: float) -> void:
 		_update_transition(delta)
 	dream_time += delta
 	_update_amb_shots(delta)
+	if level.trains.size() >= 2:
+		_update_train(delta)
 	if state == "play" and player.global_position.y < -2.5:
 		instakill("YOU SANK INTO THE DEEP END")
 	if not level.swing.is_empty():
@@ -2508,3 +2510,123 @@ func _puzzle_press(k: int, bx: MeshInstance3D) -> void:
 		banner("UNLOCKED", Color("#38f5c4"))
 		Game.sfx("rail", 1.4, 0.8)
 		objective = ch.objectives[1]
+
+# ---------------- die U-Bahn faehrt: Abfahrt in B, Fahrt durch den Tunnel, Ankunft in C ----------------
+var ride := "wait"      # wait -> board -> ride -> done
+var ride_t := 0.0
+var tunnel: Node3D
+var tunnel_parts: Array = []
+var ride_block: Array = []
+func _in_train(r: Rect2) -> bool:
+	var p: Vector3 = player.global_position
+	return p.x > r.position.x + 0.4 and p.x < r.end.x - 0.4 and p.z > r.position.y and p.z < r.end.y
+
+func _update_train(delta: float) -> void:
+	var ra: Rect2 = level.trains[0]
+	var rb: Rect2 = level.trains[1]
+	match ride:
+		"wait":
+			if state == "play" and door_cols.size() > 1 and level.doors_of("D").filter(func(c): return c.x == door_cols[1]).is_empty():
+				# Abschnitt B ist geschafft: jetzt faehrt der Zug
+				if objective != "Board the train":
+					objective = "Board the train"
+				if _in_train(ra):
+					ride_t += delta
+					if ride_t > 1.2:
+						_start_ride(ra)
+				else:
+					ride_t = 0.0
+		"ride":
+			ride_t += delta
+			var spd := clampf(ride_t * 8.0, 0.0, 28.0) if ride_t < 8.0 else clampf((10.0 - ride_t) * 14.0, 0.0, 28.0)
+			for tp in tunnel_parts:
+				tp.position.x -= spd * delta
+				if tp.position.x < ra.position.x - 30.0:
+					tp.position.x += ra.size.x + 60.0
+			shake_t = maxf(shake_t, 0.04 + spd * 0.004)
+			if int(ride_t * 2.0) != int((ride_t - delta) * 2.0) and spd > 5.0:
+				Game.sfx("land", 0.25 + randf() * 0.1, 0.35)
+			if ride_t >= 10.0:
+				_end_ride(ra, rb)
+
+func _start_ride(ra: Rect2) -> void:
+	ride = "ride"
+	ride_t = 0.0
+	banner("DOORS CLOSING", Color("#ffd23d"))
+	Game.sfx("rail", 0.5, 0.8)
+	radio_queue.push_back(["MIRA", "This is the line we took that day. Don't look out the window too long."])
+	# Ausgaenge zu
+	var y_mid := 1.5
+	for b in [[Vector3(ra.position.x - 0.1, y_mid, ra.get_center().y), Vector3(0.3, 3.0, ra.size.y + 1.0)], [Vector3(ra.end.x + 0.1, y_mid, ra.get_center().y), Vector3(0.3, 3.0, ra.size.y + 1.0)],
+			[Vector3(ra.get_center().x, y_mid, ra.position.y - 0.05), Vector3(ra.size.x + 1.0, 3.0, 0.2)], [Vector3(ra.get_center().x, y_mid, ra.end.y + 0.05), Vector3(ra.size.x + 1.0, 3.0, 0.2)]]:
+		var sb := StaticBody3D.new()
+		var cs := CollisionShape3D.new()
+		var bs := BoxShape3D.new()
+		bs.size = b[1]
+		cs.shape = bs
+		sb.add_child(cs)
+		sb.position = b[0]
+		add_child(sb)
+		ride_block.append(sb)
+	# Tunnel: dunkle Waende direkt vor den Fenstern, vorbeirasende Lichter und Pfeiler
+	tunnel = Node3D.new()
+	add_child(tunnel)
+	var dark := _mat(Color(0.05, 0.05, 0.06), 0.0)
+	var lamp := _mat(Color(1.0, 0.85, 0.5), 3.0)
+	for side in [ra.position.y - 0.6, ra.end.y + 0.6]:
+		var wall := MeshInstance3D.new()
+		var wm := BoxMesh.new()
+		wm.size = Vector3(ra.size.x + 80.0, 6.0, 0.3)
+		wall.mesh = wm
+		wall.material_override = dark
+		wall.position = Vector3(ra.get_center().x, 2.0, side)
+		tunnel.add_child(wall)
+		for k in 14:
+			var l := MeshInstance3D.new()
+			var lm := BoxMesh.new()
+			lm.size = Vector3(1.2, 0.15, 0.1)
+			l.mesh = lm
+			l.material_override = lamp
+			l.position = Vector3(ra.position.x - 30.0 + k * (ra.size.x + 60.0) / 14.0, 1.8, side + (0.2 if side > ra.get_center().y else -0.2) * -1.0)
+			tunnel.add_child(l)
+			tunnel_parts.append(l)
+			var pl := MeshInstance3D.new()
+			var pm := BoxMesh.new()
+			pm.size = Vector3(0.4, 6.0, 0.4)
+			pl.mesh = pm
+			pl.material_override = _mat(Color(0.12, 0.12, 0.13), 0.0)
+			pl.position = Vector3(l.position.x + 2.5, 2.0, l.position.z)
+			tunnel.add_child(pl)
+			tunnel_parts.append(pl)
+	# Decke ueber dem Zug, damit das Licht des Bahnhofs verschwindet
+	var roof := MeshInstance3D.new()
+	var rm := BoxMesh.new()
+	rm.size = Vector3(ra.size.x + 80.0, 0.3, ra.size.y + 2.0)
+	roof.mesh = rm
+	roof.material_override = dark
+	roof.position = Vector3(ra.get_center().x, 4.5, ra.get_center().y)
+	tunnel.add_child(roof)
+
+func _end_ride(ra: Rect2, rb: Rect2) -> void:
+	ride = "done"
+	for b in ride_block:
+		b.queue_free()
+	ride_block.clear()
+	if tunnel:
+		tunnel.queue_free()
+	tunnel_parts.clear()
+	var off := Vector3(rb.position.x - ra.position.x, 0, rb.position.y - ra.position.y)
+	player.global_position += off
+	checkpoint = player.global_position
+	level.open_doors("D")
+	puzzle_solved = true
+	banner("NEXT STOP: PLATFORM 4", Color("#ffd23d"))
+	Game.sfx("rail", 0.7, 0.6)
+	# Ereignis in Abschnitt C starten, als waere man hineingelaufen
+	for c in level.triggers:
+		if level.triggers[c] == "3" and not seen.has("3"):
+			seen["3"] = true
+			radio(sid("drones"))
+			objective = ch.objectives[2]
+			start_event()
+			break

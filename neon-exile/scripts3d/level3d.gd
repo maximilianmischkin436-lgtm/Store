@@ -125,6 +125,8 @@ func _setup_mats() -> void:
 
 var secret_cells: Array = []
 var train_cells: Array = []
+var train_cells2: Array = []
+var trains: Array = []       # [Rect2 in Metern (x,z)] Abfahrt, Ankunft
 var room_doors: Array = []   # Zellen mit Schwingtueren
 var swing: Array = []        # [{hinge, pos, open}]
 var pits: Array = []         # Zellen ohne Boden
@@ -155,8 +157,8 @@ func load_map(path: String) -> void:
 			if c in ["P", "c", "d", "S", "B", "X"]:
 				spawns.append({"c": c, "pos": cell_center(Vector2i(x, y))})
 				c = "."
-			elif c == "t":
-				train_cells.append(Vector2i(x, y))
+			elif c == "t" or c == "u":
+				(train_cells if c == "t" else train_cells2).append(Vector2i(x, y))
 				c = "."
 			elif c == "o":
 				room_doors.append(Vector2i(x, y))
@@ -271,8 +273,12 @@ func _build() -> void:
 		_build_yard()
 	for dc in room_doors:
 		_swing_door(dc)
+	if theme != "meadow":
+		_guide_marks()
 	if not train_cells.is_empty():
-		_build_train()
+		_build_train(train_cells)
+	if not train_cells2.is_empty():
+		_build_train(train_cells2)
 	# Farbiges Licht pro Raum fuer Stimmung
 	var lc: Array = ch.lights
 	for l in [[Vector3(8, 4, 14), lc[0]], [Vector3(33, 4, 14), lc[1]], [Vector3(54, 4, 14), lc[2]], [Vector3(83, 5, 14), lc[3]]]:
@@ -1704,14 +1710,15 @@ func update_doors(delta: float, who: Array) -> void:
 		d.hinge.rotation.y = -d.open * 1.6
 
 # ---------------- begehbarer U-Bahn-Zug ----------------
-func _build_train() -> void:
+func _build_train(cells: Array) -> void:
 	var x0 := 9999; var x1 := 0; var y0 := 9999; var y1 := 0
-	for c in train_cells:
+	for c in cells:
 		x0 = mini(x0, c.x); x1 = maxi(x1, c.x); y0 = mini(y0, c.y); y1 = maxi(y1, c.y)
 	var xa := x0 * T
 	var xb := (x1 + 1) * T
 	var za := y0 * T + 0.3
 	var zb := (y1 + 1) * T - 0.3
+	trains.append(Rect2(xa, za, xb - xa, zb - za))
 	var hgt := 2.9
 	var paint := _plain(Color(0.82, 0.84, 0.86), 0.35, 0.6)
 	var stripe := _plain(Color(0.95, 0.75, 0.15), 0.5)
@@ -1783,3 +1790,22 @@ func _build_train() -> void:
 	il.omni_range = (xb - xa) * 0.6
 	il.position = Vector3((xa + xb) / 2.0, hgt - 0.4, (za + zb) / 2.0)
 	add_child(il)
+
+# leise Wegweiser auf dem Boden: kleine leuchtende Pfeile Richtung Geschichte
+func _guide_marks() -> void:
+	var m := _emit(Color(1.0, 0.95, 0.8, 0.5), 0.6)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	for x in range(6, w - 4, 6):
+		if grid[14][x] != "." or grid[15][x] != ".":
+			continue
+		var p := Vector3(x * T + T / 2.0, 0.03, 15.0 * T)
+		for sgn in [-1, 1]:
+			var bar := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			bm.size = Vector3(0.7, 0.01, 0.08)
+			bar.mesh = bm
+			bar.material_override = m
+			bar.position = p + Vector3(-0.22, 0, sgn * 0.22)
+			bar.rotation.y = sgn * 0.75
+			bar.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(bar)

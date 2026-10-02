@@ -15,7 +15,7 @@ def gen(ch, seed, widths, kind, crawlers, drones, windows=False):
             for x in range(max(2, x1), min(W - 2, x2 + 1)):
                 g[y][x] = c
     rooms_style = kind in ('school', 'hospital', 'office', 'home')
-    c0, c1 = (14, 15) if rooms_style else (13, 16)      # Flur-/Hauptweg-Zeilen
+    c0, c1 = 14, 15                                   # Hauptweg: immer nur 2 Felder breit      # Flur-/Hauptweg-Zeilen
     xs = [2]
     for wdt in widths:
         xs.append(xs[-1] + wdt)
@@ -30,7 +30,7 @@ def gen(ch, seed, widths, kind, crawlers, drones, windows=False):
         elif rooms_style:
             y1, y2 = c0, c1
         else:
-            hgt = rnd.randint(3, 5)
+            hgt = rnd.randint(1, 3)
             y1, y2 = c0 - hgt, c1 + hgt
         rect(x1, y1, x2, y2)
         rooms.append([x1, y1, x2, y2])
@@ -80,14 +80,15 @@ def gen(ch, seed, widths, kind, crawlers, drones, windows=False):
     train = None
     if kind == 'subway':
         # begehbarer Zug auf dem Hauptweg in Abschnitt B (t = Wagenboden)
-        tx = rooms[1][0] + 5
-        train = (tx, tx + 12)
-        for x in range(train[0], train[1]):
-            keep.add(x)
-            for y in range(c0, c1 + 1):
-                g[y][x] = '.'
-            for y in (14, 15):
-                g[y][x] = 't'
+        # Abfahrt in B (t), Ankunft in C (u); Bahnsteig links und rechts
+        for room, ch_ in ((rooms[1], 't'), (rooms[2], 'u')):
+            tx = room[0] + 4
+            for x in range(tx, tx + 12):
+                keep.add(x)
+                for y in (13, 16):
+                    g[y][x] = '.'
+                for y in (14, 15):
+                    g[y][x] = ch_
     for i in range(4):
         r = rooms[i]
         for dx in range(-2, 3):
@@ -133,8 +134,10 @@ def gen(ch, seed, widths, kind, crawlers, drones, windows=False):
                     sx = rnd.randint(x1 + 4, x2 - 6)
                     if any(abs(sx + d - k) <= 1 for k in keep for d in range(4)): continue
                     yy = rnd.choice([c0, c1])
-                    for xx in range(sx, sx + 4):
-                        if g[yy][xx] == '.': g[yy][xx] = 'V'
+                    other = c1 if yy == c0 else c0
+                    if all(g[other][xx] == '.' for xx in range(sx - 1, sx + 5)):
+                        for xx in range(sx, sx + 4):
+                            if g[yy][xx] == '.': g[yy][xx] = 'V'
     def pillar(x, y, w=1, h=1):
         for yy in range(y, y + h):
             for xx in range(x, x + w):
