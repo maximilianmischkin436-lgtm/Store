@@ -1,0 +1,15 @@
+DAS LEUCHTFEUER – Kolonie-Überleben im Sporennebel
+Öffnen: Godot 4.3 → Importieren → project.godot → F5
+
+Ein alter Leuchtturm hält den giftigen Nebel zurück. Überlebe 14 Tage
+(Nebelflut an Tag 9–11: das Licht reicht nur halb so weit).
+
+- Licht = Leben: Gebäude im Nebel verwachsen nach 20h, Bewohner werden befallen.
+- Laternen erweitern das Licht (brauchen Öl). Im Nebel nur Laternen bauen.
+- Ölpumpe nur auf Ölquellen, Pilzzucht/Schrottplatz doppelt auf Pilzfeldern/Ruinen.
+- Ruinen anklicken = ausschlachten. Überwuchertes anklicken = freiräumen.
+- Turmstufen: mehr Licht, mehr Öl, Grell überhitzt die Linse.
+- Erlasse, Expeditionen und Entscheidungs-Ereignisse.
+
+Steuerung: Links bauen · Rechts an/aus · WASD/Mittelmaus Kamera · Rad Zoom
+Leertaste Pause · 1/2/3 Tempo · Klick auf Turm: Lichtstufe
