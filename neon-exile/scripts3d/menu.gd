@@ -5,6 +5,7 @@ var t := 0.0
 var main_box: VBoxContainer
 var settings_box: VBoxContainer
 var chap_box: VBoxContainer
+var ach_box: VBoxContainer
 const DEV_ALL_CHAPTERS := true   # waehrend der Entwicklung: alle Kapitel waehlbar
 var font := ThemeDB.fallback_font
 
@@ -17,16 +18,38 @@ func _ready() -> void:
 		_button(main_box, "CONTINUE  (CH. %d)" % Game.chapter, func(): _start(true))
 	_button(main_box, "NEW GAME", func(): _start(false))
 	_button(main_box, "CHAPTERS", func(): main_box.visible = false; chap_box.visible = true)
+	_button(main_box, "ACHIEVEMENTS  %d / %d" % [Game.achievements.size(), Game.ACH.size()], func(): main_box.visible = false; ach_box.visible = true)
 	_button(main_box, "SETTINGS", func(): main_box.visible = false; settings_box.visible = true)
 	_button(main_box, "QUIT", func(): get_tree().quit())
 	chap_box = _box()
 	chap_box.visible = false
-	var names := ["1  THE DRAIN", "2  THE NEON MARKET", "3  THE ARCHIVE", "4  AFTER SCHOOL", "5  WARD 4", "6  HOME", "7  LAST TRAIN", "8  SOMEWHERE GREEN", "9  THE CROWN"]
+	var names := ["1  THE DRAIN", "2  THE NEON MARKET", "3  THE ARCHIVE", "4  AFTER SCHOOL", "5  WARD 4", "6  HOME", "7  LAST TRAIN", "8  SOMEWHERE GREEN", "9  THE CROWN", "10  AFTERWORLD"]
 	for i in names.size():
 		var n := i + 1
+		if n == 10 and not Game.achievements.has("halcyon") and not DEV_ALL_CHAPTERS:
+			continue
 		if n <= Game.max_chapter or DEV_ALL_CHAPTERS:
 			_button(chap_box, names[i], func(): Game.chapter = n; Game.progress = 0; Game.continue_game = false; Game.write_save(); get_tree().change_scene_to_file("res://game3d.tscn"))
 	_button(chap_box, "BACK", func(): chap_box.visible = false; main_box.visible = true)
+	ach_box = _box()
+	ach_box.visible = false
+	ach_box.position = Vector2(-260, -300)
+	ach_box.custom_minimum_size = Vector2(520, 0)
+	ach_box.add_theme_constant_override("separation", 2)
+	var pct := int(round(Game.completion() * 100.0))
+	var head := Label.new()
+	head.text = "COMPLETION  %d%%" % mini(pct, 100)
+	head.add_theme_font_size_override("font_size", 24)
+	head.add_theme_color_override("font_color", Color("#ffd23d"))
+	ach_box.add_child(head)
+	for id in Game.ACH:
+		var al := Label.new()
+		var got: bool = Game.achievements.has(id)
+		al.text = ("\u2605 " if got else "\u2606 ") + Game.ACH[id][0] + "  -  " + Game.ACH[id][1]
+		al.add_theme_font_size_override("font_size", 15)
+		al.add_theme_color_override("font_color", Color(1, 0.95, 0.8) if got else Color(0.6, 0.6, 0.65))
+		ach_box.add_child(al)
+	_button(ach_box, "BACK", func(): ach_box.visible = false; main_box.visible = true)
 	settings_box = _box()
 	settings_box.visible = false
 	_slider(settings_box, "Mouse sensitivity", 0.2, 3.0, Game.sensitivity, func(v): Game.sensitivity = v)

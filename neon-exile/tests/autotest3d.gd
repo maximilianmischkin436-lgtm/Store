@@ -133,6 +133,9 @@ func _meadow(_delta: float) -> void:
 	var p = main.player
 	if main.dialog.active and step != 1 and step != 4:
 		main.dialog.skip()
+	if main.ch.get("afterworld", false):
+		_afterworld()
+		return
 	match step:
 		0:
 			if t > 1.5: snap("01_title"); step = 1; t = 0
@@ -159,4 +162,24 @@ func _meadow(_delta: float) -> void:
 		6:
 			if t > 4.0:
 				print("final state: ", main.state, " next chapter: ", Game.chapter)
+				print("AUTOTEST3D done"); get_tree().quit()
+
+# Welt nach dem Ende: alle Lichter einsammeln, Hund streicheln
+func _afterworld() -> void:
+	var p = main.player
+	match step:
+		0:
+			if t > 2.0: snap("01_afterworld"); step = 1; t = 0
+		1:
+			if main.motes.size() > 0:
+				p.global_position = main.motes[0].n.global_position + Vector3(0, -0.8, 0)
+			elif t > 1.0:
+				print("motes left: ", main.motes.size(), " found: ", Game.found.keys().filter(func(k): return k.begins_with("mote_")).size())
+				p.global_position = main.dog.position + Vector3(-1.5, 0.2, 0)
+				snap("02_afterworld_board")
+				step = 2; t = 0
+		2:
+			if t > 2.0:
+				print("achievements: ", Game.achievements.keys())
+				print("final state: ", main.state)
 				print("AUTOTEST3D done"); get_tree().quit()

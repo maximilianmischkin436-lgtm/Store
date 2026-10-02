@@ -63,6 +63,11 @@ func _apply_textures() -> void:
 	if w:
 		wall_mat = w
 	if f:
+		if theme == "meadow":
+			# Gras: kein Glanz, leicht warm, sonst spiegelt es den blauen Himmel (wirkt wie Wasser)
+			f.metallic_specular = 0.05
+			f.roughness = 1.0
+			f.albedo_color = Color(1.0, 1.0, 0.72)
 		floor_mat = f
 
 func setup(chapter: Dictionary) -> void:

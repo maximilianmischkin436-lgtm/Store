@@ -48,6 +48,8 @@ const WEAPONS := [
 	{"name": "TIDE", "col": Color("#4db8ff"), "type": "disc", "rate": 0.45, "dmg": 3, "pellets": 1, "spread": 0.0, "range": 0.0, "pierce": false, "auto": false, "mag": 3, "reload": 0.9, "crit": 1.0},
 	{"name": "KATANA", "col": Color("#ff4d6d"), "type": "melee", "rate": 0.38, "dmg": 4, "pellets": 1, "spread": 0.0, "range": 3.3, "arc": 0.45, "pierce": false, "auto": true, "mag": 0, "reload": 0.0, "crit": 1.0},
 	{"name": "KNIFE", "col": Color("#e0e6ee"), "type": "melee", "rate": 0.18, "dmg": 2, "pellets": 1, "spread": 0.0, "range": 2.2, "arc": 0.65, "pierce": false, "auto": true, "mag": 0, "reload": 0.0, "crit": 3.0},
+	# Belohnung fuer 100%: alle Geheimraeume, Kassetten und Erinnerungen
+	{"name": "HALO", "col": Color("#ffd23d"), "type": "hitscan", "rate": 0.1, "dmg": 3, "pellets": 1, "spread": 0.004, "range": 140.0, "pierce": true, "auto": true, "mag": 40, "reload": 0.7, "crit": 2.5},
 ]
 var ammo: Array = []
 var reload_t := 0.0          # >0 waehrend des Nachladens
@@ -68,7 +70,7 @@ var ult := 0.0
 var _f_down := false
 var ult_t := 0.0          # Dauer laufender Ults (PULSE / HUMMINGBIRD)
 var ult_kind := -1
-const ULT_NAMES := ["OVERDRIVE", "DRAGON BREATH", "JUDGEMENT", "SWARM", "DEADEYE", "CLUSTER", "SLEEP", "TSUNAMI", "THOUSAND CUTS", "SHADOW STEP"]               # 0..1 Zielen mit rechter Maustaste
+const ULT_NAMES := ["OVERDRIVE", "DRAGON BREATH", "JUDGEMENT", "SWARM", "DEADEYE", "CLUSTER", "SLEEP", "TSUNAMI", "THOUSAND CUTS", "SHADOW STEP", "REMEMBRANCE"]               # 0..1 Zielen mit rechter Maustaste
 var sway := Vector2.ZERO     # Waffe zieht der Mausbewegung nach
 var ability_unlocked := false
 var ability_cd := 0.0
@@ -127,6 +129,10 @@ func make_gun_model(id: int) -> Node3D:
 	glow.emission_energy_multiplier = 2.5
 	var parts: Array = []
 	match id:
+		10:  # HALO: goldener Ring um einen langen Lauf
+			parts = [[Vector3(0, 0, 0), Vector3(0.8, 0.8, 2.2), light], [Vector3(0, 0.1, -1.9), Vector3(0.3, 0.3, 2.0), glow],
+				[Vector3(0, 0.75, 0.2), Vector3(1.4, 0.12, 1.4), glow], [Vector3(0, -0.9, 0.6), Vector3(0.5, 1.2, 0.6), dark],
+				[Vector3(0.45, 0, 0), Vector3(0.06, 0.5, 2.0), glow], [Vector3(-0.45, 0, 0), Vector3(0.06, 0.5, 2.0), glow]]
 		3:  # HUMMINGBIRD: kompakte MP mit langem Magazin
 			parts = [[Vector3(0, 0, 0), Vector3(0.9, 0.9, 2.6), dark], [Vector3(0, 0.3, -1.9), Vector3(0.45, 0.45, 1.6), light],
 				[Vector3(0, -1.1, -0.3), Vector3(0.5, 1.6, 0.6), dark], [Vector3(0, -0.8, 1.0), Vector3(0.6, 1.2, 0.6), dark],
@@ -281,9 +287,14 @@ func give_weapon(n: int) -> void:
 	ammo[n] = WEAPONS[n].mag
 	weapon = -1
 	select_weapon(n)
+	_check_arsenal()
 
 func has_gun() -> bool:
 	return not slots.is_empty()
+
+func _check_arsenal() -> void:
+	if slots.size() >= MAX_SLOTS:
+		Game.unlock("arsenal")
 
 func select_weapon(n: int) -> void:
 	if not slots.has(n) or n == weapon:
@@ -557,6 +568,7 @@ func _melee_special(w: int) -> void:
 		Game.sfx("jump", 3.0, 0.5)
 
 func _do_ult(w: int) -> void:
+	Game.unlock("ult")
 	var col: Color = WEAPONS[w].col
 	main.banner(ULT_NAMES[w], col)
 	main.shake(0.5)
@@ -564,6 +576,14 @@ func _do_ult(w: int) -> void:
 	main.burst(global_position + Vector3(0, 1, 0), col, 60)
 	var fwd: Vector3 = -cam.global_basis.z
 	match w:
+		10:
+			# REMEMBRANCE: Zeit steht still, jeder Gegner in der Naehe wird getroffen
+			main.slowmo(1.5, 0.15)
+			for e in main.get_tree().get_nodes_in_group("enemies"):
+				if is_instance_valid(e) and e.global_position.distance_to(global_position) < 45.0:
+					main._tracer(muzzle.global_position, e.global_position + Vector3(0, 1.4, 0), col, 0.05, 0.4)
+					e.hit(35, (e.global_position - global_position).normalized())
+					main.hit_feedback(e.global_position + Vector3(0, 1.6, 0), 35, true)
 		0, 3:
 			ult_kind = w
 			ult_t = 6.0
@@ -696,7 +716,7 @@ func reload_progress() -> float:
 
 func _fire(wd: Dictionary) -> void:
 	var w := weapon
-	main.noise += [0.06, 0.14, 0.2, 0.03, 0.15, 0.18, 0.02, 0.08, 0.0, 0.0][w]
+	main.noise += [0.06, 0.14, 0.2, 0.03, 0.15, 0.18, 0.02, 0.08, 0.0, 0.0, 0.05][w]
 	var shot := wd.duplicate()
 	var bonus := 1 if perfect[w] else 0
 	var last: bool = ammo[w] == 1

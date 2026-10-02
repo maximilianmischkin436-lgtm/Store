@@ -192,7 +192,13 @@ func _draw() -> void:
 		draw_rect(Rect2(rb.position, Vector2(4, rb.size.y)), col)
 		draw_string(font, rb.position + Vector2(16, 22), "((( " + who, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, col)
 		draw_multiline_string(font, rb.position + Vector2(16, 44), main.radio_line[1], HORIZONTAL_ALIGNMENT_LEFT, rb.size.x - 30, 16, -1, Color.WHITE)
-	draw_string(font, Vector2(30, 34), "Memory shards: %d/7" % main.shards, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#c77dff"))
+	if main.ch.get("afterworld", false):
+		var nm := 0
+		for k in Game.found:
+			if k.begins_with("mote_"): nm += 1
+		draw_string(font, Vector2(30, 34), "Lights: %d/%d     Achievements: %d/%d" % [nm, Game.MOTE_TOTAL, Game.achievements.size(), Game.ACH.size()], HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#ffd23d"))
+	else:
+		draw_string(font, Vector2(30, 34), "Memory shards: %d/7" % main.shards, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#c77dff"))
 	if main.objective != "":
 		draw_string(font, Vector2(0, 34), main.objective, HORIZONTAL_ALIGNMENT_RIGHT, sz.x - 30, 16, Color(1, 1, 1, 0.85))
 	# Boss
@@ -220,8 +226,9 @@ func _draw() -> void:
 		draw_string(font, Vector2(0, sz.y * 0.42), "PAUSED", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 56, Color.WHITE)
 		draw_string(font, Vector2(0, sz.y * 0.42 + 50), "ESC  resume      M  main menu (progress is saved)", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 18, Color(1, 1, 1, 0.7))
 	if main.state == "end":
-		draw_string(font, Vector2(0, sz.y * 0.4 + 130), "Press M for main menu" + ("   -   E: replay the finale" if main.ending != "" else ""), HORIZONTAL_ALIGNMENT_CENTER, sz.x, 16, Color(1, 1, 1, 0.5))
 		draw_rect(Rect2(Vector2.ZERO, sz), Color(0, 0, 0, 0.8))
+		draw_string(font, Vector2(0, sz.y * 0.4 + 130), "E: STAY  -  walk through the door into the world after the end        M: main menu", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 20, Color(1, 0.9, 0.7, 0.9))
+		draw_string(font, Vector2(0, sz.y * 0.4 + 165), "Achievements: %d / %d" % [Game.achievements.size(), Game.ACH.size()], HORIZONTAL_ALIGNMENT_CENTER, sz.x, 18, Color(1, 0.85, 0.3, 0.8))
 		if main.ending != "":
 			draw_string(font, Vector2(0, sz.y * 0.4), main.ENDINGS[main.ending].title, HORIZONTAL_ALIGNMENT_CENTER, sz.x, 48, main.ENDINGS[main.ending].col)
 			draw_string(font, Vector2(0, sz.y * 0.4 + 50), "NEON EXILE  -  THE END   (3 endings: try the other doors)", HORIZONTAL_ALIGNMENT_CENTER, sz.x, 20, Color.WHITE)

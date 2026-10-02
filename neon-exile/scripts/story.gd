@@ -166,6 +166,14 @@ const DIALOG := {
 		["ECHO", "Then let's go somewhere else. Anywhere but here."],
 	],
 	# ---- Kapitel 8: die Wiese (keine Monster, nur ein Hund) ----
+	# ---- Kapitel 10: die Welt nach dem Ende ----
+	"c10_intro": [
+		["MIRA", "You can stay here, Echo. As long as you want. Nobody is late here."],
+		["ECHO", "Then I'll stay a while. Just a while."],
+	],
+	"c10_dog": [
+		["ECHO", "Hey, buddy. We're not going anywhere."],
+	],
 	"c8_intro": [
 		["ECHO", "...Grass. A real sky. Where is this?"],
 		["MIRA", "The only memory she never touched. The day we got Biscuit. Go on. He's waiting for you."],
@@ -246,6 +254,7 @@ const RADIO := {
 	"c7_gate": [["MIRA", "Platform four. He's waiting with your ticket."]],
 	"c7_halfway": [["MIRA", "The train is coming. Keep him busy."]],
 	"c7_exit": [["MIRA", "The doors are open. Get off this train, Echo."]],
+	"c10_controls": [["MIRA", "There are little lights hidden all over this place. Take your time. We have all of it."]],
 	"c8_controls": [["MIRA", "No monsters here. Just breathe."]],
 	"c8_exit": [["MIRA", "Rest a moment. Then we go up."]],
 	"c9_controls": [["MIRA", "Careful. Up here, every room remembers something different."]],

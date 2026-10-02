@@ -52,6 +52,7 @@ func _ready() -> void:
 	ch = Chapters.CHAPTERS[chapter - 1]
 	_setup_input()
 	_setup_world()
+	Game.ach_popup = _ach_toast
 	level = Level.new()
 	level.setup(ch)
 	add_child(level)
@@ -141,6 +142,8 @@ func _ready() -> void:
 		player.ability_unlocked = true
 	_build_secret()
 	_make_dust()
+	if Game.has_completion_weapon() and not player.slots.has(10) and not ch.get("peaceful", false):
+		spawn_pickup("weapon", 10, checkpoint + Vector3(2.5, 0, 2.0))
 	# Kassette im Level: im Raum mit dem Splitter
 	if Story.TAPES.has("c%d_a" % chapter) and door_cols.size() > 1:
 		spawn_pickup("tape", 0, _free_spot(Vector2i(door_cols[1] + 4, 20)))
@@ -324,6 +327,7 @@ func _update_secrets(delta: float) -> void:
 		var c: Vector2i = level.cell_of(player.global_position)
 		if level.secret_cells.has(c):
 			secret_found = true
+			Game.mark("secret_%d" % chapter)
 			Game.sfx("swap", 1.2, 1.0)
 			banner("SECRET FOUND", Color(1, 0.85, 0.5))
 	for t in clocks:
@@ -420,6 +424,9 @@ func _update_dog(delta: float) -> void:
 		return
 	var t := play_time
 	dog_parts.tail.rotation.y = sin(t * 14.0) * 0.7
+	if ch.get("afterworld", false):
+		_update_dog_free(delta, t)
+		return
 	var target: Vector3 = dog_path[mini(dog_i, dog_path.size() - 1)]
 	var to := target - dog.position
 	to.y = 0.0
@@ -458,8 +465,32 @@ func _update_dog(delta: float) -> void:
 		if Input.is_action_just_pressed("interact"):
 			pet_dog()
 
+# Welt nach dem Ende: Biscuit laeuft einfach mit
+func _update_dog_free(delta: float, t: float) -> void:
+	var pp := Vector3(player.global_position.x, 0, player.global_position.z)
+	var to := pp - dog.position
+	var d := to.length()
+	var moving := d > 3.5
+	if moving:
+		dog.position += to.normalized() * minf(d * 1.5, 7.5) * delta
+	if d > 0.1:
+		dog.rotation.y = lerp_angle(dog.rotation.y, atan2(-to.x, -to.z), minf(1.0, delta * 6.0))
+	for k in 4:
+		dog_parts.legs[k].rotation.x = sin(t * 14.0 + k * PI) * (0.6 if moving else 0.0)
+	dog_parts.head.rotation.x = sin(t * 3.0) * 0.08
+	if d < 2.4 and state == "play":
+		pickup_hint = "[E]  PET BISCUIT"
+		if Input.is_action_just_pressed("interact"):
+			Game.unlock("good_boy")
+			Game.sfx("dog", 1.15, 0.9)
+			burst(dog.position + Vector3(0, 1.2, 0), Color(1, 0.6, 0.7), 12)
+			if not dog_petted:
+				dog_petted = true
+				say("c10_dog", func(): state = "play")
+
 func pet_dog() -> void:
 	dog_petted = true
+	Game.unlock("good_boy")
 	Game.sfx("dog", 1.15, 0.9)
 	for i in 3:
 		burst(dog.position + Vector3(0, 1.2, 0), Color(1, 0.6, 0.7), 12)
@@ -813,15 +844,253 @@ func _take(pk: Dictionary) -> void:
 	elif pk.kind == "tape":
 		var key := "c%d_%s" % [chapter, "a" if pk.idx == 0 else "b"]
 		tapes_found += 1
+		Game.mark("tape_" + key)
+		get_tree().create_timer(6.0).timeout.connect(func(): flashback())
 		radio_queue.push_front(["HALCYON LOG", Story.TAPES[key], "res://assets/voice/tape_%s.ogg" % key])
 		radio_t = 0.0
 	elif pk.kind == "memory":
+		Game.mark("memory_%d" % chapter)
 		_memory_moment()
 	else:
 		player.ability_unlocked = true
 		radio("got_overload")
 	if pk.cb.is_valid():
 		pk.cb.call()
+
+# ---------- Welt nach dem Ende: offene Wiese mit Orten aus jedem Kapitel ----------
+var motes: Array = []
+const MOTE_LINES := [
+	"The water is warm now. Someone left a towel for you.",
+	"The music in the market finally stopped. It's quiet. It's okay.",
+	"Every file has been signed: RETURNED TO OWNER.",
+	"The school bell rings at four. Nobody is waiting anymore. Everyone got picked up.",
+	"Visiting hours never end here.",
+	"The light in the kitchen is on. Dinner at six.",
+	"The last train goes nowhere. It just goes around. You can ride for free.",
+	"Her crown is lying in the grass. She doesn't need it anymore.",
+	"A drawing, half buried: three stick figures and a dog.",
+	"A swing moving on its own. Higher. Higher.",
+	"You can hear her laughing somewhere far away. It doesn't hurt.",
+	"MOM: come home whenever you want.",
+]
+
+func _abox(pos: Vector3, size: Vector3, col: Color, emit: float = 0.0, solid: bool = true) -> Node3D:
+	var root: Node3D
+	if solid:
+		var sb := StaticBody3D.new()
+		var cs := CollisionShape3D.new()
+		var sh := BoxShape3D.new()
+		sh.size = size
+		cs.shape = sh
+		sb.add_child(cs)
+		root = sb
+	else:
+		root = Node3D.new()
+	root.position = pos
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size
+	mi.mesh = bm
+	mi.material_override = _mat(col, emit)
+	root.add_child(mi)
+	add_child(root)
+	return root
+
+func _sign(pos: Vector3, text: String, col: Color) -> void:
+	var l := Label3D.new()
+	l.text = text
+	l.font_size = 96
+	l.pixel_size = 0.012
+	l.modulate = col
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.position = pos
+	add_child(l)
+
+func _build_afterworld() -> void:
+	Game.unlock("stay")
+	var c := checkpoint
+	var spots := [
+		["THE DRAIN", Color(0.85, 0.95, 1.0)], ["THE NEON MARKET", Color("#ff8fd0")], ["THE ARCHIVE", Color("#fff1b0")], ["AFTER SCHOOL", Color("#ffb070")],
+		["WARD 4", Color("#c8fff0")], ["HOME", Color("#ffc890")], ["LAST TRAIN", Color("#fff2c0")], ["THE CROWN", Color("#ffffff")],
+	]
+	for i in spots.size():
+		var a := i * TAU / spots.size() + 0.3
+		var p := c + Vector3(cos(a), 0, sin(a)) * 34.0
+		var col: Color = spots[i][1]
+		match i:
+			0:  # kleines Becken mit Wasser
+				_abox(p + Vector3(0, 0.25, 0), Vector3(6, 0.5, 4), Color(0.95, 0.97, 1.0))
+				_abox(p + Vector3(0, 0.52, 0), Vector3(5.4, 0.05, 3.4), Color(0.4, 0.75, 0.95), 0.6, false)
+			1:  # Neon-Kiosk
+				_abox(p + Vector3(0, 1.2, 0), Vector3(3, 2.4, 2), Color(0.15, 0.1, 0.2))
+				_abox(p + Vector3(0, 2.6, 0), Vector3(3.4, 0.3, 2.4), col, 2.5, false)
+			2:  # Schreibtisch mit Lampe
+				_abox(p + Vector3(0, 0.5, 0), Vector3(2.4, 1.0, 1.2), Color(0.55, 0.45, 0.3))
+				_abox(p + Vector3(0.7, 1.3, 0), Vector3(0.2, 0.6, 0.2), col, 3.0, false)
+			3:  # Schultuer mit Glocke
+				_abox(p + Vector3(0, 1.6, 0), Vector3(2.2, 3.2, 0.3), Color(0.6, 0.3, 0.2))
+				_abox(p + Vector3(0, 3.6, 0), Vector3(0.6, 0.6, 0.6), Color(0.9, 0.75, 0.3), 1.0, false)
+			4:  # Krankenbett
+				_abox(p + Vector3(0, 0.45, 0), Vector3(1.2, 0.3, 2.4), Color(0.9, 0.95, 0.95))
+				_abox(p + Vector3(0, 0.8, -1.1), Vector3(1.2, 0.4, 0.2), col, 0.8, false)
+			5:  # Haustuer mit Licht im Fenster
+				_abox(p + Vector3(0, 2.0, 0), Vector3(4, 4, 3), Color(0.92, 0.88, 0.8))
+				_abox(p + Vector3(0, 2.4, -1.52), Vector3(1.0, 0.8, 0.05), Color(1.0, 0.8, 0.45), 3.0, false)
+			6:  # U-Bahn-Schild
+				_abox(p + Vector3(0, 1.5, 0), Vector3(0.2, 3.0, 0.2), Color(0.3, 0.3, 0.3))
+				_abox(p + Vector3(0, 3.2, 0), Vector3(2.4, 0.6, 0.1), Color(0.95, 0.85, 0.2), 1.5, false)
+			7:  # Krone im Gras
+				for k in 6:
+					var ka := k * TAU / 6.0
+					_abox(p + Vector3(cos(ka) * 0.9, 0.4, sin(ka) * 0.9), Vector3(0.25, 0.8, 0.25), Color(1.0, 0.85, 0.3), 1.5, false)
+		_sign(p + Vector3(0, 4.5, 0), spots[i][0], col)
+		_add_mote(i, p + Vector3(2.5, 0, 2.5))
+	# versteckte Lichter: weit draussen in den Ecken, hinter Baeumen
+	var T: float = level.T
+	var corners := [Vector3(6 * T, 0, 6 * T), Vector3((level.w - 6) * T, 0, 6 * T), Vector3(6 * T, 0, (level.h - 6) * T), Vector3((level.w - 6) * T, 0, (level.h - 6) * T)]
+	for k in 4:
+		_add_mote(8 + k, corners[k])
+		for j in 5:
+			var ta := j * TAU / 5.0
+			var tr := _abox(corners[k] + Vector3(cos(ta) * 3.0, 1.5, sin(ta) * 3.0), Vector3(0.5, 3.0, 0.5), Color(0.4, 0.28, 0.18))
+			_abox(tr.position + Vector3(0, 2.4, 0), Vector3(2.2, 2.0, 2.2), Color(0.25, 0.5, 0.2), 0.0, false)
+	# Bank am Start, Erfolgs-Tafel
+	_abox(c + Vector3(-4, 0.45, -3), Vector3(2.4, 0.15, 0.7), Color(0.55, 0.4, 0.25))
+	_abox(c + Vector3(-4, 0.85, -3.3), Vector3(2.4, 0.6, 0.1), Color(0.55, 0.4, 0.25))
+	_ach_board(c + Vector3(-8, 0, 0))
+	if Game.has_completion_weapon():
+		spawn_pickup("weapon", 10, c + Vector3(0, 0, -5))
+
+func _ach_board(p: Vector3) -> void:
+	_abox(p + Vector3(0, 2.0, 0), Vector3(0.3, 4.0, 6.0), Color(0.2, 0.16, 0.12))
+	var txt := "ACHIEVEMENTS  %d / %d\n\n" % [Game.achievements.size(), Game.ACH.size()]
+	for id in Game.ACH:
+		txt += ("[x] " if Game.achievements.has(id) else "[ ] ") + Game.ACH[id][0] + "\n"
+	var l := Label3D.new()
+	l.text = txt
+	l.font_size = 48
+	l.pixel_size = 0.006
+	l.modulate = Color(1, 0.95, 0.8)
+	l.position = p + Vector3(0.2, 2.0, 0)
+	l.rotation.y = PI / 2
+	add_child(l)
+
+func _add_mote(i: int, p: Vector3) -> void:
+	if Game.found.has("mote_%d" % i):
+		return
+	var n := Node3D.new()
+	n.position = p + Vector3(0, 1.2, 0)
+	var mi := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 0.22
+	sm.height = 0.44
+	mi.mesh = sm
+	mi.material_override = _mat(Color(1.0, 0.9, 0.6), 5.0)
+	n.add_child(mi)
+	var ol := OmniLight3D.new()
+	ol.light_color = Color(1.0, 0.85, 0.55)
+	ol.light_energy = 1.5
+	ol.omni_range = 5.0
+	n.add_child(ol)
+	add_child(n)
+	motes.append({"n": n, "i": i})
+
+func _update_motes(delta: float) -> void:
+	for m in motes.duplicate():
+		m.n.position.y = 1.2 + sin(play_time * 2.0 + m.i) * 0.2
+		if state == "play" and m.n.global_position.distance_to(player.global_position + Vector3(0, 1.0, 0)) < 1.8:
+			motes.erase(m)
+			burst(m.n.position, Color(1, 0.9, 0.6), 30)
+			m.n.queue_free()
+			Game.mark("mote_%d" % m.i)
+			Game.sfx("swap", 1.5, 0.9)
+			var n_found := 0
+			for k in Game.found:
+				if k.begins_with("mote_"): n_found += 1
+			radio_queue.push_front(["LIGHT %d / %d" % [n_found, Game.MOTE_TOTAL], MOTE_LINES[m.i]])
+			radio_t = 0.0
+
+# ---------- Erfolge: kleine Meldung oben rechts ----------
+var ach_layer: CanvasLayer
+func _ach_toast(title: String, desc: String) -> void:
+	if not is_inside_tree():
+		return
+	if ach_layer == null:
+		ach_layer = CanvasLayer.new()
+		ach_layer.layer = 20
+		add_child(ach_layer)
+	var p := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.05, 0.04, 0.08, 0.85)
+	sb.border_color = Color("#ffd23d")
+	sb.set_border_width_all(2)
+	sb.set_content_margin_all(12)
+	p.add_theme_stylebox_override("panel", sb)
+	var l := Label.new()
+	l.text = "ACHIEVEMENT UNLOCKED\n" + title + "\n" + desc
+	l.add_theme_font_size_override("font_size", 18)
+	l.add_theme_color_override("font_color", Color(1, 0.95, 0.8))
+	p.add_child(l)
+	p.position = Vector2(get_viewport().get_visible_rect().size.x - 380, 20 + ach_layer.get_child_count() * 96)
+	p.modulate.a = 0.0
+	ach_layer.add_child(p)
+	Game.sfx("rail", 1.6, 0.5)
+	var tw := p.create_tween()
+	tw.tween_property(p, "modulate:a", 1.0, 0.3)
+	tw.tween_interval(3.5)
+	tw.tween_property(p, "modulate:a", 0.0, 0.8)
+	tw.tween_callback(p.queue_free)
+
+# ---------- Rueckblenden: kurze Erinnerungsfetzen (nach Boss, Kassette, manchmal einfach so) ----------
+var flash_layer: CanvasLayer
+var flash_cd := 0.0
+func flashback(text: String = "") -> void:
+	if flash_cd > 0.0 or not is_inside_tree():
+		return
+	flash_cd = 20.0
+	if text == "":
+		var pool: Array = ch.memories if not ch.memories.is_empty() else ["you were there", "remember"]
+		text = pool[randi() % pool.size()]
+	if flash_layer == null:
+		flash_layer = CanvasLayer.new()
+		flash_layer.layer = 6
+		add_child(flash_layer)
+	var r := ColorRect.new()
+	r.set_anchors_preset(Control.PRESET_FULL_RECT)
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	r.color = Color(1, 0.96, 0.9, 0.0)
+	flash_layer.add_child(r)
+	var l := Label.new()
+	l.set_anchors_preset(Control.PRESET_FULL_RECT)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	l.text = text
+	l.add_theme_font_size_override("font_size", 40)
+	l.add_theme_color_override("font_color", Color(0.25, 0.15, 0.1))
+	l.modulate.a = 0.0
+	flash_layer.add_child(l)
+	glitch_t = 0.5
+	Game.sfx("rail", 0.5, 0.6)
+	var shot := "res://assets/sfx/%s.ogg" % ["amb_laugh", "amb_musicbox", "amb_phone"][randi() % 3]
+	if ResourceLoader.exists(shot):
+		var ap := AudioStreamPlayer.new()
+		ap.stream = load(shot)
+		ap.volume_db = -6.0
+		add_child(ap)
+		ap.finished.connect(ap.queue_free)
+		ap.play()
+	var tw := r.create_tween()
+	tw.tween_property(r, "color:a", 0.85, 0.12)
+	tw.tween_property(r, "color:a", 0.45, 0.6)
+	tw.tween_interval(1.8)
+	tw.tween_property(r, "color:a", 0.0, 1.2)
+	tw.tween_callback(r.queue_free)
+	var tl := l.create_tween()
+	tl.tween_interval(0.2)
+	tl.tween_property(l, "modulate:a", 1.0, 0.5)
+	tl.tween_interval(1.7)
+	tl.tween_property(l, "modulate:a", 0.0, 1.0)
+	tl.tween_callback(l.queue_free)
 
 # ---------- Erinnerungen: kurzer warmer Rueckblick ----------
 var memory_rect: ColorRect
@@ -1034,6 +1303,10 @@ func _setup_world() -> void:
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.ambient_light_energy = ev.amb
+	if ch.theme == "meadow":
+		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		env.ambient_light_color = Color(0.85, 0.9, 0.75)
+		env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.tonemap_exposure = ev.exp
 	env.glow_enabled = true
@@ -1060,7 +1333,7 @@ func _setup_world() -> void:
 	# niedrige Aufloesung fuer den Retro-Look (UI bleibt scharf)
 	if Game.retro:
 		get_viewport().scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
-		get_viewport().scaling_3d_scale = 0.66
+		get_viewport().scaling_3d_scale = 0.85
 	# VHS-Filter ueber dem ganzen Bild
 	var post := CanvasLayer.new()
 	post.layer = 0
@@ -1070,7 +1343,7 @@ func _setup_world() -> void:
 	dream_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	dream_mat = ShaderMaterial.new()
 	dream_mat.shader = load("res://scripts3d/dream.gdshader")
-	dream_mat.set_shader_parameter("strength", 0.45 if Game.retro else 0.0)
+	dream_mat.set_shader_parameter("strength", 0.22 if Game.retro else 0.0)
 	dream_rect.material = dream_mat
 	dream_rect.visible = Game.retro
 	post.add_child(dream_rect)
@@ -1185,6 +1458,9 @@ func spawn_npc(role: String, pos: Vector3) -> Node:
 func _populate_ghosts() -> void:
 	if ch.get("peaceful", false):
 		_make_dog()
+		if ch.get("afterworld", false):
+			dog.position = checkpoint + Vector3(3, 0, 2)
+			_build_afterworld()
 		return
 	# friedliche Geister, die einfach herumlaufen
 	var cells: Array = level._floor_cells()
@@ -1662,6 +1938,11 @@ func _process(delta: float) -> void:
 		_update_transition(delta)
 	dream_time += delta
 	_update_amb_shots(delta)
+	if not motes.is_empty():
+		_update_motes(delta)
+	flash_cd = maxf(0.0, flash_cd - delta)
+	if state == "play" and not ch.get("peaceful", false) and randf() < delta / 240.0:
+		flashback()
 	if is_instance_valid(level) and level.is_inside_tree() and player.is_inside_tree():
 		level.dream_update(delta, player.global_position, dream_time)
 	# seltene kurze Traum-Stoerung (Glitch), staerker bei Erinnerungen
@@ -1802,6 +2083,10 @@ func _respawn() -> void:
 	radio("death")
 
 func on_enemy_killed(e) -> void:
+	Game.total_kills += 1
+	Game.unlock("first_blood")
+	if Game.total_kills >= 100:
+		Game.unlock("kills100")
 	if player.ult_kind < 0:
 		player.ult = minf(100.0, player.ult + 12.0)
 	shake(0.18)
@@ -1904,8 +2189,10 @@ func on_boss_killed(b) -> void:
 	Game.write_save()
 	var drop_pos: Vector3 = b.global_position
 	var drop := {1: ["weapon", 1], 2: ["ability", 0], 3: ["weapon", 4], 4: ["weapon", 5], 5: ["weapon", 8], 6: ["weapon", 7]}
+	Game.unlock(ch.boss.kind)
 	say(sid("victory"), func():
 		state = "play"
+		flashback()
 		if drop.has(chapter):
 			objective = "Pick up what %s dropped" % ch.boss.name
 			radio("drop")
@@ -1972,7 +2259,7 @@ func _exit_door(pos: Vector3, col: Color, label: String) -> Node3D:
 
 func _open_exit() -> void:
 	var c: Vector2i = level.cell_of(boss_spawn)
-	if chapter >= Chapters.CHAPTERS.size():
+	if chapter == 9:
 		objective = "Choose"
 		var ids := ["wake", "forget", "stay"]
 		for i in 3:
@@ -1992,6 +2279,7 @@ func _update_exit(_delta: float) -> void:
 		for ed in ending_doors:
 			if player.global_position.distance_to(ed.node.position) < 1.6:
 				ending = ed.id
+				Game.unlock("halcyon")
 				for x in ending_doors:
 					x.node.queue_free()
 				ending_doors.clear()
@@ -2015,7 +2303,7 @@ func _update_transition(delta: float) -> void:
 	glitch_t = 0.4 if trans_t < 1.5 else 0.0
 	var total := 2.0 + trans_lines.size() * 2.6
 	if trans_t >= total:
-		if chapter < Chapters.CHAPTERS.size():
+		if chapter < 9:
 			_carry_weapons(chapter + 1)
 			Game.chapter = chapter + 1
 			Game.progress = 0

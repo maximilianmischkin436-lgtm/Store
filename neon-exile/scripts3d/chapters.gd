@@ -101,4 +101,15 @@ const CHAPTERS := [
 		"transition": [],
 		"memories": ["4:40 PM", "you were late", "she kept the light on", "every room is the same day", "HALCYON = MOM", "it's supposed to hurt", "come home", "nobody is left to forget", "wake up, Echo"],
 	},
+	{
+		"name": "AFTERWORLD", "map": "res://data/chapter10.txt", "theme": "meadow", "music": "afterworld", "wall_h": 4.0, "peaceful": true, "afterworld": true,
+		"objectives": ["Stay as long as you like", "Stay as long as you like", "Stay as long as you like", "Stay as long as you like", "Stay as long as you like"],
+		"env": {"sky_top": Color(0.3, 0.45, 0.85), "sky_hor": Color(1.0, 0.82, 0.7), "fog": Color(0.95, 0.85, 0.8), "fog_d": 0.004, "amb": 0.4, "exp": 0.72, "sun": Color(1.0, 0.85, 0.65), "sun_e": 1.1, "sun_rot": Vector3(-0.45, 0.9, 0), "sat": 1.12},
+		"lights": ["#fff0d0", "#fff0d0", "#fff0d0", "#fff0d0"], "light_e": 0.2,
+		"enemy": Color.WHITE, "drone": Color.WHITE, "proj": Color.WHITE,
+		"boss": {"name": "", "kind": "none", "proj": Color.WHITE, "hp": 1, "phase1": "", "phase2": ""},
+		"next": "",
+		"transition": [],
+		"memories": [],
+	},
 ]

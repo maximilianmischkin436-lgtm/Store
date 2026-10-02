@@ -176,3 +176,7 @@ mem_c7_2 MIRA
 mem_c8_0 ECHO
 mem_c9_0 HALCYON
 mem_c9_1 MIRA
+c10_intro_0 MIRA
+c10_intro_1 ECHO
+c10_dog_0 ECHO
+radio_c10_controls_0 MIRA
