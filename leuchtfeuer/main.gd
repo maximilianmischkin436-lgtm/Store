@@ -16,10 +16,32 @@ const B := {
 	"farm":  {"n": "Pilzzucht", "cost": {"scrap": 15}, "w": 5, "out": {"food": 2.6}, "bonus": "fungus", "col": Color(0.35, 0.3, 0.45), "d": "5 Arbeiter. Doppelt auf Pilzfeldern."},
 	"lamp":  {"n": "Laterne", "cost": {"scrap": 15}, "w": 0, "lamp": true, "col": Color(0.95, 0.75, 0.35), "d": "Licht vertreibt den Nebel. 0.6 Öl/h."},
 	"clinic":{"n": "Heilstube", "cost": {"scrap": 25}, "w": 4, "heal": true, "seal": true, "col": Color(0.85, 0.85, 0.88), "d": "4 Arbeiter. Heilt Befallene."},
-	"scout": {"n": "Späherposten", "cost": {"scrap": 20}, "w": 2, "scout": true, "col": Color(0.4, 0.5, 0.35), "d": "Ermöglicht Expeditionen in den Nebel."},
+	"scout": {"n": "Späherposten", "cost": {"scrap": 20}, "w": 2, "scout": true, "col": Color(0.4, 0.5, 0.35), "d": "Ermöglicht Erkundungen von Höhlen und Bunkern."},
+	"lab":   {"n": "Werkstatt", "cost": {"scrap": 25}, "w": 4, "out": {"know": 1.5}, "col": Color(0.45, 0.4, 0.35), "d": "4 Arbeiter. Erzeugt Wissen für die Forschung."},
+	"green": {"n": "Gewächshaus", "cost": {"scrap": 25}, "w": 4, "out": {"food": 3.2}, "req": "V1", "col": Color(0.5, 0.7, 0.6), "d": "4 Arbeiter. Nahrung, überall."},
+	"filter":{"n": "Filterhaus", "cost": {"scrap": 30}, "w": 2, "filter": true, "req": "V2", "col": Color(0.6, 0.65, 0.7), "d": "2 Arbeiter. Befall im Umkreis -70%."},
+	"brew":  {"n": "Pilzbrennerei", "cost": {"scrap": 25}, "w": 4, "brew": true, "req": "T1", "col": Color(0.45, 0.3, 0.35), "d": "4 Arbeiter. 2 Nahrung → 5 Öl pro Stunde."},
+	"beacon":{"n": "Leuchtmast", "cost": {"scrap": 40}, "w": 0, "lamp": true, "big": true, "req": "L2", "col": Color(1, 0.85, 0.5), "d": "Großes Licht. 1.5 Öl/h."},
 }
-const ORDER := ["hut", "stone", "pump", "yard", "farm", "lamp", "clinic", "scout"]
-const RES_NAME := {"oil": "Öl", "scrap": "Schrott", "food": "Nahrung"}
+
+const TECH := {
+	"L1": {"n": "Spiegellinsen", "c": 20, "req": "", "d": "Turmlicht reicht weiter."},
+	"L2": {"n": "Leuchtmast", "c": 40, "req": "L1", "d": "Schaltet den Leuchtmast frei."},
+	"L3": {"n": "Gekühlte Linse", "c": 60, "req": "L2", "d": "Linse überhitzt halb so schnell."},
+	"V1": {"n": "Gewächshaus", "c": 20, "req": "", "d": "Schaltet Gewächshäuser frei."},
+	"V2": {"n": "Luftfilter", "c": 40, "req": "V1", "d": "Schaltet Filterhäuser frei."},
+	"V3": {"n": "Sporenserum", "c": 70, "req": "V2", "d": "Heilstuben doppelt, weniger Tote."},
+	"T1": {"n": "Brennerei", "c": 25, "req": "", "d": "Schaltet die Pilzbrennerei frei."},
+	"T2": {"n": "Tiefpumpen", "c": 40, "req": "T1", "d": "Ölpumpen +50%."},
+	"T3": {"n": "Dampfbagger", "c": 60, "req": "T2", "d": "Schrottplätze +50%."},
+	"E1": {"n": "Schutzanzüge", "c": 20, "req": "", "d": "Arbeit im Nebel halb so riskant. +3 Atemluft."},
+	"E2": {"n": "Brecheisen", "c": 35, "req": "E1", "d": "Öffnet Stahltüren in Bunkern."},
+	"E3": {"n": "Sauerstofftanks", "c": 55, "req": "E2", "d": "+5 Atemluft, 5er-Team."},
+}
+const BRANCHES := [["LICHT", ["L1", "L2", "L3"]], ["LEBEN", ["V1", "V2", "V3"]], ["TECHNIK", ["T1", "T2", "T3"]], ["ERKUNDUNG", ["E1", "E2", "E3"]]]
+const Explore := preload("res://explore.gd")
+const ORDER := ["hut", "stone", "pump", "yard", "farm", "lamp", "clinic", "scout", "lab", "green", "filter", "brew", "beacon"]
+const RES_NAME := {"oil": "Öl", "scrap": "Schrott", "food": "Nahrung", "know": "Wissen"}
 
 const LAWS := {
 	"mask":   {"n": "Maskenpflicht", "d": "Befall -40%. Zorn +1/Tag."},
@@ -30,7 +52,13 @@ const LAWS := {
 }
 
 # ---------- Zustand ----------
-var res := {"oil": 140.0, "scrap": 90.0, "food": 90.0}
+var res := {"oil": 140.0, "scrap": 90.0, "food": 90.0, "know": 0.0}
+var tech: Array = []
+var explore_node: Control
+var build_btns := {}
+var tech_panel: PanelContainer
+var tech_btns := {}
+var markers: Node2D
 var pop := 60
 var infected := 0
 var hope := 55.0
@@ -47,7 +75,6 @@ var hunger := 0
 var out_day := -1
 var deaths := 0
 var quarantine := 0
-var expedition := -1  # Stunden bis zur Rückkehr
 var tiles: Array = []
 var idx := {}
 var sel := "hut"
@@ -95,6 +122,10 @@ func _ready() -> void:
 	say("Baut Hütten, fördert Öl, züchtet Pilze. Und lasst den Turm nie erlöschen.")
 	if autotest:
 		speed = 40.0
+	if "--shotx" in args or "--shotc" in args:
+		speed = 0.0
+		_shotx()
+		return
 	if "--shot" in args:
 		speed = 30.0
 		_shot()
@@ -139,6 +170,17 @@ func _gen_map() -> void:
 				elif x < 0.31 and d >= 3: t.terr = "rock"
 			idx[Vector2i(q, r)] = tiles.size()
 			tiles.append(t)
+	# Fundorte draußen im Nebel
+	var sites := ["bunker", "cave", "cave", "bunker", "cave"]
+	var cands := []
+	for t in tiles:
+		if t.d >= 4 and t.terr == "ground" and t.type == "":
+			cands.append(t)
+	for k in sites:
+		var t: Dictionary = cands[rng.randi() % cands.size()]
+		cands.erase(t)
+		t.terr = k
+		t.explored = false
 	# garantiert eine Ölquelle in Reichweite
 	for t in tiles:
 		if t.d == 2:
@@ -152,12 +194,12 @@ func light_sources() -> Array:
 	var flood := 0.62 if flood_now() else 1.0
 	var nightm := lerpf(0.85, 1.0, dayf) * flood
 	if tower_lvl > 0:
-		out.append(Vector3(0, 0, (2.6 + tower_lvl * 1.15) * hw * nightm))
+		out.append(Vector3(0, 0, (2.6 + tower_lvl * 1.15 + (0.7 if has_tech("L1") else 0.0)) * hw * nightm))
 	if res.oil > 0:
 		var lr := (2.4 * (1.25 if "watch" in laws else 1.0)) * hw * nightm
 		for t in tiles:
-			if t.type == "lamp" and t.on:
-				out.append(Vector3(t.pos.x, t.pos.y, lr))
+			if (t.type == "lamp" or t.type == "beacon") and t.on and not t.grown:
+				out.append(Vector3(t.pos.x, t.pos.y, lr * (1.55 if t.type == "beacon" else 1.0)))
 	return out
 
 func lit_at(p: Vector2, src: Array) -> float:
@@ -199,6 +241,7 @@ func _process(delta: float) -> void:
 			_tick_hour()
 	_update_ui()
 	queue_redraw()
+	markers.queue_redraw()
 
 func work_hours() -> Vector2i:
 	return Vector2i(6, 22) if "double" in laws else Vector2i(8, 18)
@@ -213,7 +256,7 @@ func _tick_hour() -> void:
 		if over != "": return
 	# Turm und Laternen verbrennen Öl
 	var burn: float = [0.0, 3.0, 6.0, 10.0][tower_lvl]
-	burn += count("lamp") * 0.6 * (1.5 if "watch" in laws else 1.0)
+	burn += (count("lamp") * 0.6 + count("beacon") * 1.5) * (1.5 if "watch" in laws else 1.0)
 	if res.oil < burn:
 		res.oil = 0
 		if tower_lvl > 0:
@@ -224,7 +267,9 @@ func _tick_hour() -> void:
 				hope -= 8
 	else:
 		res.oil -= burn
-	wear = clampf(wear + (4.0 if tower_lvl == 3 else (0.6 if tower_lvl == 2 else -2.0)), 0, 100)
+	var heat: float = 4.0 if tower_lvl == 3 else (0.6 if tower_lvl == 2 else -2.0)
+	if heat > 0 and has_tech("L3"): heat *= 0.5
+	wear = clampf(wear + heat, 0, 100)
 	if wear >= 100:
 		_lose("Die Linse des Turms ist geplatzt. Ohne Licht gibt es keine Stadt.")
 		return
@@ -260,6 +305,12 @@ func _tick_hour() -> void:
 		var f := float(w) / need * (1.0 if t.lit else 0.5)
 		if B[t.type].get("bonus", "") == t.terr:
 			f *= 2.0
+		if t.type == "pump" and has_tech("T2"): f *= 1.5
+		if t.type == "yard" and has_tech("T3"): f *= 1.5
+		if B[t.type].get("brew", false):
+			var use := minf(res.food, 2.0 * f)
+			res.food -= use
+			res.oil += use * 2.5
 		var out: Dictionary = B[t.type].get("out", {})
 		for k in out:
 			res[k] += out[k] * f
@@ -268,22 +319,30 @@ func _tick_hour() -> void:
 		var cap := 0.0
 		for t in tiles:
 			if t.type == "clinic" and t.wk > 0 and not t.grown:
-				cap += 0.5 * t.wk / 4.0
+				cap += 0.5 * t.wk / 4.0 * (2.0 if has_tech("V3") else 1.0)
 		infected -= mini(infected, int(cap + rng.randf()))
 	# Befall: Wer im Dunkeln wohnt oder arbeitet, atmet Sporen
 	var risk := 0.0
 	var left := pop
+	var filters := []
+	for t in tiles:
+		if t.type == "filter" and t.wk > 0 and not t.grown:
+			filters.append(t.pos)
 	for t in tiles:
 		if not (t.type in B) or t.grown:
 			continue
+		var fm := 1.0
+		for fp in filters:
+			if (fp as Vector2).distance_to(t.pos) < HEX * SQ3 * 2.2:
+				fm = 0.3
 		var h: int = B[t.type].get("house", 0)
 		if h > 0 and left > 0:
 			var n := mini(h, left)
 			left -= n
 			if not t.lit:
-				risk += n * (0.004 if B[t.type].get("seal", false) else 0.012)
+				risk += n * (0.004 if B[t.type].get("seal", false) else 0.012) * fm
 		if t.wk > 0 and not t.lit and working:
-			risk += t.wk * 0.01
+			risk += t.wk * 0.01 * fm * (0.5 if has_tech("E1") else 1.0)
 	risk += left * 0.01 # Obdachlose
 	if "mask" in laws: risk *= 0.6
 	if quarantine > 0: risk *= 0.5
@@ -292,10 +351,6 @@ func _tick_hour() -> void:
 	infected = mini(pop, infected + add)
 	if hour == 19:
 		_meal()
-	if expedition > 0:
-		expedition -= 1
-		if expedition == 0:
-			_expedition_return()
 	_check_end()
 
 func _check_end() -> void:
@@ -341,7 +396,7 @@ func _new_day() -> void:
 			cap += 8
 	var untreated := maxi(0, infected - cap)
 	if untreated > 0:
-		_kill(int(untreated * 0.15 + rng.randf()), "dem Befall erlegen")
+		_kill(int(untreated * (0.07 if has_tech("V3") else 0.15) + rng.randf()), "dem Befall erlegen")
 	var homeless := maxi(0, pop - housing())
 	anger += homeless * 0.2
 	if "mask" in laws: anger += 1
@@ -433,36 +488,63 @@ func _resolve(id: String, c: int) -> void:
 				hope -= 5; say("Das fremde Licht flackert und erlischt.")
 	_check_end()
 
-func send_expedition() -> void:
-	if expedition > 0 or count("scout") == 0 or pop - infected < 10 or res.food < 10:
-		return
-	res.food -= 10
-	pop -= 5
-	expedition = 20
-	say("Fünf Späher verschwinden mit Fackeln im Nebel.")
+func has_tech(id: String) -> bool:
+	return id in tech
 
-func _expedition_return() -> void:
-	expedition = -1
-	var x := rng.randf()
-	if x < 0.35:
-		var n := rng.randi_range(6, 12)
-		pop += 5 + n; hope += 5
-		say("Die Späher kehren zurück – mit %d Überlebenden aus einem Keller." % n)
-	elif x < 0.65:
-		pop += 5; res.oil += 60; res.scrap += 40
-		say("Die Späher fanden ein Tanklager: +60 Öl, +40 Schrott.")
-	elif x < 0.88:
-		pop += 5; res.food += 60
-		say("Ein unversehrter Vorratskeller: +60 Nahrung.")
-	else:
-		pop += 3; hope -= 4
-		say("Nur drei Späher kehren zurück. Sie reden nicht darüber.")
+func can_research(id: String) -> bool:
+	var tt: Dictionary = TECH[id]
+	return not has_tech(id) and (tt.req == "" or has_tech(tt.req)) and res.know >= tt.c
+
+func research(id: String) -> void:
+	if not can_research(id): return
+	res.know -= TECH[id].c
+	tech.append(id)
+	say("[color=#90d0ff]Erforscht: %s[/color] – %s" % [TECH[id].n, TECH[id].d])
+
+func start_explore(i: int) -> void:
+	var t: Dictionary = tiles[i]
+	var team := 5 if has_tech("E3") else 4
+	if t.get("explored", false):
+		say("Dieser Ort ist bereits erkundet."); return
+	if count("scout") == 0:
+		say("Für Erkundungen braucht ihr einen Späherposten."); return
+	if pop - infected < team + 6 or res.food < 10:
+		say("Nicht genug gesunde Leute oder Nahrung für eine Erkundung."); return
+	res.food -= 10
+	paused_event = true
+	explore_node = Explore.new()
+	explore_node.main = self
+	var air := 10 + (3 if has_tech("E1") else 0) + (5 if has_tech("E3") else 0)
+	explore_node.setup(t.terr, int(t.seed * 100000), air, team, has_tech("E2"))
+	explore_node.finished.connect(func(r: Dictionary): _explore_done(i, r))
+	ui.add_child(explore_node)
+	if autotest:
+		explore_node.auto_run()
+
+func _explore_done(i: int, r: Dictionary) -> void:
+	tiles[i].explored = true
+	explore_node.queue_free()
+	explore_node = null
+	paused_event = false
+	var l: Dictionary = r.loot
+	for k in l:
+		res[k] += l[k]
+	pop += r.people
+	if r.lost > 0:
+		_kill(r.lost, "bei der Erkundung verschollen")
+	if r.ok:
+		say("Das Erkundungsteam ist zurück: %d Öl, %d Schrott, %d Nahrung, %d Wissen, %d Überlebende." % [l.get("oil", 0), l.get("scrap", 0), l.get("food", 0), l.get("know", 0), r.people])
+		hope += 3 + r.people
+	for h in int(r.hours):
+		if over == "": _tick_hour()
 
 # ================= Bauen =================
 
 func can_place(i: int, type: String) -> bool:
 	var t: Dictionary = tiles[i]
-	if t.type != "" or t.terr == "rock":
+	if t.type != "" or t.terr in ["rock", "cave", "bunker"]:
+		return false
+	if B[type].has("req") and not has_tech(B[type].req):
 		return false
 	var need: String = B[type].get("terr", "")
 	if need != "" and t.terr != need:
@@ -499,8 +581,8 @@ func build(i: int, type: String) -> bool:
 	return true
 
 func _auto_play() -> void:
-	var plan := ["pump", "yard", "farm", "hut", "hut", "yard", "hut", "hut", "farm", "hut", "clinic", "lamp", "hut", "scout",
-		"lamp", "stone", "farm", "pump", "lamp", "stone", "yard", "clinic", "lamp", "stone", "lamp", "farm"]
+	var plan := ["pump", "yard", "farm", "lab", "hut", "hut", "yard", "hut", "hut", "farm", "hut", "clinic", "lamp", "hut", "scout",
+		"lamp", "stone", "farm", "pump", "lamp", "stone", "yard", "clinic", "lamp", "stone", "lamp", "farm", "green", "filter", "beacon", "brew"]
 	var have := {}
 	for t in tiles:
 		if t.type in B: have[t.type] = have.get(t.type, 0) + 1
@@ -508,6 +590,8 @@ func _auto_play() -> void:
 	for p in plan:
 		seen[p] = seen.get(p, 0) + 1
 		if have.get(p, 0) < seen[p]:
+			if B[p].has("req") and not has_tech(B[p].req):
+				continue
 			if can_afford(p):
 				var best := -1
 				for i in tiles.size():
@@ -519,7 +603,13 @@ func _auto_play() -> void:
 		if t.grown and res.scrap > 20: build(tiles.find(t), "hut")
 	if laws.size() < 3 and law_cd == 0:
 		sign_law(["mask", "watch", "pyre"][laws.size()])
-	if expedition < 0: send_expedition()
+	for id in ["V1", "E1", "L1", "V2", "T1", "E2", "L2", "T2", "V3", "L3", "E3", "T3"]:
+		if can_research(id): research(id)
+	if hour == 9 and day % 2 == 0 and explore_node == null:
+		for i in tiles.size():
+			if tiles[i].terr in ["cave", "bunker"] and not tiles[i].get("explored", false):
+				start_explore(i)
+				break
 	tower_lvl = (2 if (flood_now() and wear < 60 and res.oil > 80) else 1) if res.oil > 25 else 0
 
 func sign_law(k: String) -> void:
@@ -546,6 +636,8 @@ func _unhandled_input(e: InputEvent) -> void:
 			if e.button_index == MOUSE_BUTTON_LEFT:
 				if t.type == "tower":
 					tower_lvl = (tower_lvl + 1) % 4
+				elif t.terr in ["cave", "bunker"]:
+					start_explore(hover)
 				elif not build(hover, sel) and t.type == "":
 					if not can_afford(sel): say("Nicht genug Material für %s." % B[sel].n)
 					elif not t.get("lit", true) and sel != "lamp": say("Im Nebel kann man nicht bauen – erst eine Laterne.")
@@ -554,6 +646,7 @@ func _unhandled_input(e: InputEvent) -> void:
 				t.on = not t.on
 	elif e is InputEventKey and e.pressed:
 		match e.keycode:
+			KEY_T: tech_panel.visible = not tech_panel.visible
 			KEY_SPACE: speed = 0.0 if speed > 0 else 1.0
 			KEY_1: speed = 1.0
 			KEY_2: speed = 3.0
@@ -604,6 +697,10 @@ func _make_world() -> void:
 	add_child(fog_rect)
 	fog_mat.set_shader_parameter("origin", fog_rect.position)
 	fog_mat.set_shader_parameter("size", fog_rect.size)
+	markers = Node2D.new()
+	markers.z_index = 12
+	markers.draw.connect(_draw_markers)
+	add_child(markers)
 	spores = CPUParticles2D.new()
 	spores.z_index = 11
 	spores.amount = 160
@@ -641,13 +738,13 @@ func _update_visuals(delta: float) -> void:
 	tower_light.energy = (0.4 + 0.9 * (1.0 - dl)) * (0.9 + 0.1 * sin(Time.get_ticks_msec() * 0.006))
 	for i in tiles.size():
 		var t: Dictionary = tiles[i]
-		var want: bool = t.type == "lamp" and t.on and res.oil > 0
+		var want: bool = (t.type == "lamp" or t.type == "beacon") and t.on and res.oil > 0 and not t.grown
 		if want and not lamp_lights.has(i):
 			var l := PointLight2D.new()
 			l.texture = glow_tex
 			l.color = Color(1.0, 0.75, 0.4)
 			l.position = t.pos
-			l.texture_scale = 1.4
+			l.texture_scale = 2.2 if t.type == "beacon" else 1.4
 			add_child(l)
 			lamp_lights[i] = l
 		elif lamp_lights.has(i):
@@ -672,6 +769,12 @@ func _update_visuals(delta: float) -> void:
 			w.t = clampf(w.t, 0.0, 1.0)
 			if w.t <= 0.0 and homes.size() > 0 and works.size() > 0:
 				w.a = homes.pick_random(); w.b = works.pick_random()
+
+func _dome(c: Vector2, r: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for k in 13:
+		pts.append(c + Vector2.from_angle(PI + k / 12.0 * PI) * r)
+	return pts
 
 func _hex_pts(p: Vector2, s: float) -> PackedVector2Array:
 	var pts := PackedVector2Array()
@@ -709,8 +812,7 @@ func _draw() -> void:
 	for w in walkers:
 		var wp: Vector2 = (w.a as Vector2).lerp(w.b, w.t)
 		wp += Vector2(0, sin(w.t * 60.0) * 0.6)
-		draw_line(wp, wp + Vector2(0, -6), Color(0.15, 0.12, 0.1), 2.5)
-		draw_circle(wp + Vector2(0, -8), 2.2, Color(0.85, 0.75, 0.6))
+		Explore.draw_suit(self, wp, 0.9, w.t * 8.0, true)
 
 func _draw_terrain(t: Dictionary, p: Vector2, tm: float) -> void:
 	var sd: float = t.seed
@@ -809,6 +911,44 @@ func _draw_building(t: Dictionary, p: Vector2, tm: float, dl: float) -> void:
 			draw_rect(Rect2(p + Vector2(-9, -32), Vector2(18, 8)), Color(0.45, 0.35, 0.25))
 			draw_line(p + Vector2(4, -32), p + Vector2(4, -44), Color(0.3, 0.3, 0.3), 1.5)
 			draw_colored_polygon(PackedVector2Array([p + Vector2(4, -44), p + Vector2(14, -41 + sin(tm * 4) * 1.5), p + Vector2(4, -38)]), Color(0.75, 0.3, 0.2))
+		"lab":
+			_house(p, 24, 16, Color(0.45, 0.4, 0.36), Color(0.3, 0.28, 0.3), on, dl)
+			var ga := tm * (1.5 if on and t.wk > 0 else 0.0)
+			draw_circle(p + Vector2(10, -24), 6, Color(0.6, 0.55, 0.3))
+			for k in 6:
+				draw_line(p + Vector2(10, -24), p + Vector2(10, -24) + Vector2.from_angle(ga + k * TAU / 6) * 8, Color(0.6, 0.55, 0.3), 2)
+			draw_circle(p + Vector2(10, -24), 2.5, Color(0.2, 0.2, 0.2))
+		"green":
+			draw_rect(Rect2(p + Vector2(-17, -2), Vector2(34, 10)), Color(0.35, 0.3, 0.25))
+			draw_arc(p + Vector2(0, -2), 17, PI, TAU, 16, Color(0.75, 0.9, 0.95, 0.9), 2)
+			draw_colored_polygon(_dome(p + Vector2(0, -2), 16), Color(0.6, 0.9, 0.8, 0.35))
+			for k in 4:
+				draw_circle(p + Vector2(-10 + k * 7, -5), 3, Color(0.3, 0.75, 0.35))
+		"filter":
+			_house(p + Vector2(-4, 0), 22, 14, Color(0.6, 0.64, 0.68), Color(0.35, 0.38, 0.42), on, dl)
+			var fa := tm * (6.0 if on and t.wk > 0 else 0.0)
+			draw_circle(p + Vector2(12, -20), 8, Color(0.25, 0.27, 0.3))
+			for k in 3:
+				draw_line(p + Vector2(12, -20), p + Vector2(12, -20) + Vector2.from_angle(fa + k * TAU / 3) * 7, Color(0.8, 0.85, 0.9), 2.5)
+			if on and t.wk > 0:
+				draw_arc(p, HEX * SQ3 * 2.2, 0, TAU, 48, Color(0.6, 0.85, 1, 0.12), 2)
+		"brew":
+			draw_rect(Rect2(p + Vector2(-16, -14), Vector2(12, 20)), Color(0.5, 0.35, 0.3))
+			draw_circle(p + Vector2(-10, -14), 6, Color(0.55, 0.4, 0.33))
+			draw_rect(Rect2(p + Vector2(0, -8), Vector2(16, 14)), Color(0.4, 0.3, 0.32))
+			draw_rect(Rect2(p + Vector2(10, -28), Vector2(4, 20)), Color(0.3, 0.25, 0.25))
+			if on and t.wk > 0:
+				for k in 3:
+					var sm := fmod(tm * 0.6 + k * 0.33, 1.0)
+					draw_circle(p + Vector2(12 + sm * 8, -30 - sm * 20), 3 + sm * 4, Color(0.6, 0.6, 0.55, 0.5 * (1.0 - sm)))
+		"beacon":
+			draw_line(p + Vector2(-8, 8), p + Vector2(0, -40), Color(0.25, 0.25, 0.27), 3)
+			draw_line(p + Vector2(8, 8), p + Vector2(0, -40), Color(0.25, 0.25, 0.27), 3)
+			draw_line(p + Vector2(-5, -10), p + Vector2(5, -10), Color(0.25, 0.25, 0.27), 2)
+			var lit3: bool = on and res.oil > 0
+			if lit3:
+				draw_circle(p + Vector2(0, -42), 14, Color(1, 0.85, 0.5, 0.25))
+			draw_circle(p + Vector2(0, -42), 6, Color(1, 0.9, 0.6) if lit3 else Color(0.3, 0.3, 0.3))
 	if t.grown:
 		for k in 7:
 			var o := Vector2.from_angle(k * 0.9 + t.seed * 9) * (5 + k * 2)
@@ -861,12 +1001,14 @@ func _make_ui() -> void:
 	# Bauleiste
 	var bar := HBoxContainer.new()
 	bar.position = Vector2(8, 662)
-	bar.add_theme_constant_override("separation", 6)
+	bar.add_theme_constant_override("separation", 4)
 	root.add_child(bar)
 	for k in ORDER:
 		var b := Button.new()
 		b.text = "%s\n%s" % [B[k].n, _cost_str(B[k].cost)]
-		b.custom_minimum_size = Vector2(118, 50)
+		b.custom_minimum_size = Vector2(92, 50)
+		b.add_theme_font_size_override("font_size", 12)
+		build_btns[k] = b
 		b.toggle_mode = true
 		b.button_pressed = k == sel
 		b.tooltip_text = B[k].d
@@ -908,9 +1050,8 @@ func _make_ui() -> void:
 		b.pressed.connect(func(): sign_law(k))
 		law_box.add_child(b)
 	exp_btn = Button.new()
-	exp_btn.text = "Expedition senden (5 Leute, 10 Nahrung)"
-	exp_btn.add_theme_font_size_override("font_size", 12)
-	exp_btn.pressed.connect(send_expedition)
+	exp_btn.text = "⚙ FORSCHUNG  (T)"
+	exp_btn.pressed.connect(func(): tech_panel.visible = not tech_panel.visible)
 	side.add_child(exp_btn)
 	info = Label.new()
 	info.add_theme_font_size_override("font_size", 13)
@@ -928,7 +1069,7 @@ func _make_ui() -> void:
 	lp.add_child(logl)
 	var help := Label.new()
 	help.position = Vector2(12, 290)
-	help.text = "Links: bauen · Ruinen ausschlachten\nRechts: Gebäude an/aus\nWASD/Mitte ziehen: Kamera · Rad: Zoom\nLeertaste: Pause · 1/2/3: Tempo\nKlick auf Turm: Lichtstufe"
+	help.text = "Links: bauen · Ruinen ausschlachten\nRechts: Gebäude an/aus\nWASD/Mitte ziehen: Kamera · Rad: Zoom\nLeertaste: Pause · 1/2/3: Tempo\nKlick auf Turm: Lichtstufe\nKlick auf Höhle/Bunker: Erkundung\nT: Forschung"
 	help.add_theme_font_size_override("font_size", 12)
 	help.add_theme_color_override("font_color", Color(0.8, 0.8, 0.75, 0.8))
 	root.add_child(help)
@@ -951,6 +1092,43 @@ func _make_ui() -> void:
 	pop_btns.alignment = BoxContainer.ALIGNMENT_CENTER
 	pop_btns.add_theme_constant_override("separation", 16)
 	pv.add_child(pop_btns)
+	tech_panel = PanelContainer.new()
+	tech_panel.position = Vector2(300, 120)
+	tech_panel.visible = false
+	tech_panel.add_theme_stylebox_override("panel", _style(Color(0.08, 0.08, 0.1, 0.97), Color(0.5, 0.75, 1)))
+	root.add_child(tech_panel)
+	var tv := VBoxContainer.new()
+	tech_panel.add_child(tv)
+	var tl := Label.new()
+	tl.text = "FORSCHUNG – Werkstätten erzeugen Wissen, Bunker enthalten Pläne"
+	tl.add_theme_color_override("font_color", Color(0.6, 0.85, 1))
+	tv.add_child(tl)
+	var grid := HBoxContainer.new()
+	grid.add_theme_constant_override("separation", 12)
+	tv.add_child(grid)
+	for br in BRANCHES:
+		var col := VBoxContainer.new()
+		grid.add_child(col)
+		var bl := Label.new()
+		bl.text = br[0]
+		bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		col.add_child(bl)
+		for id in br[1]:
+			var tb := Button.new()
+			tb.custom_minimum_size = Vector2(150, 54)
+			tb.tooltip_text = TECH[id].d
+			tb.pressed.connect(func(): research(id))
+			col.add_child(tb)
+			tech_btns[id] = tb
+			if id != br[1][2]:
+				var ar := Label.new()
+				ar.text = "↓"
+				ar.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				col.add_child(ar)
+	var tc := Button.new()
+	tc.text = "Schließen"
+	tc.pressed.connect(func(): tech_panel.visible = false)
+	tv.add_child(tc)
 	banner = Label.new()
 	banner.size = Vector2(1280, 720)
 	banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -979,7 +1157,7 @@ func _update_ui() -> void:
 	var free := pop - infected
 	for t in tiles: free -= t.wk
 	var s := "Zuversicht %s %d\nZorn       %s %d\nLinsen-Hitze %d%%\nFreie Hände %d" % [_bar(hope), hope, _bar(anger), anger, wear, maxi(0, free)]
-	if expedition > 0: s += "\nExpedition: noch %dh" % expedition
+	s += "\nWissen %d" % res.know
 	if hover >= 0:
 		var h: Dictionary = tiles[hover]
 		var tn: String = {"ground": "Boden", "fungus": "Pilzfeld", "oil": "Ölquelle", "ruin": "Ruine", "rock": "Fels"}[h.terr]
@@ -995,9 +1173,17 @@ func _update_ui() -> void:
 	for b in law_box.get_children():
 		b.disabled = b.name in laws or law_cd > 0
 		b.text = LAWS[b.name].n + ("  ✓" if b.name in laws else "")
-	exp_btn.disabled = expedition > 0 or count("scout") == 0
+	for k in build_btns:
+		build_btns[k].visible = not B[k].has("req") or has_tech(B[k].req)
+	if tech_panel.visible:
+		for id in tech_btns:
+			var tb: Button = tech_btns[id]
+			tb.text = "%s\n%s" % [TECH[id].n, "✓ erforscht" if has_tech(id) else "%d Wissen" % TECH[id].c]
+			tb.disabled = not can_research(id) and not has_tech(id)
+			tb.modulate = Color(0.6, 1, 0.6) if has_tech(id) else Color(1, 1, 1)
 
 func say(s: String) -> void:
+	if autotest and OS.get_cmdline_user_args().has("--verbose"): print(s)
 	log_lines.push_front("• " + s)
 	if log_lines.size() > 10: log_lines.pop_back()
 	_refresh_log()
@@ -1023,4 +1209,39 @@ func _shot() -> void:
 	for n in [5.0, 9.0]:
 		await get_tree().create_timer(n).timeout
 		get_viewport().get_texture().get_image().save_png("res://shot%d.png" % int(n))
+	get_tree().quit()
+
+func _draw_markers() -> void:
+	var tm := Time.get_ticks_msec() / 1000.0
+	for i in tiles.size():
+		var t: Dictionary = tiles[i]
+		if not t.terr in ["cave", "bunker"]:
+			continue
+		var p: Vector2 = t.pos
+		var ex: bool = t.get("explored", false)
+		if t.terr == "bunker":
+			markers.draw_rect(Rect2(p + Vector2(-16, -6), Vector2(32, 14)), Color(0.4, 0.42, 0.4))
+			markers.draw_rect(Rect2(p + Vector2(-8, -2), Vector2(16, 10)), Color(0.08, 0.08, 0.08))
+			for k in 4:
+				markers.draw_line(p + Vector2(-16 + k * 8, -6), p + Vector2(-12 + k * 8, -10), Color(0.9, 0.75, 0.1), 3)
+		else:
+			markers.draw_colored_polygon(PackedVector2Array([p + Vector2(-20, 8), p + Vector2(-12, -14), p + Vector2(0, -20), p + Vector2(13, -12), p + Vector2(20, 8)]), Color(0.32, 0.28, 0.33))
+			markers.draw_colored_polygon(_dome(p + Vector2(0, 8), 9), Color(0.04, 0.03, 0.05))
+			markers.draw_circle(p + Vector2(-14, 4), 3, Color(0.5, 0.95, 0.8))
+		if not ex:
+			var a := 0.6 + 0.4 * sin(tm * 3 + i)
+			markers.draw_arc(p, 24, 0, TAU, 24, Color(1, 0.8, 0.4, a), 2)
+			markers.draw_string(font, p + Vector2(-26, 28), "BUNKER" if t.terr == "bunker" else "HÖHLE", HORIZONTAL_ALIGNMENT_CENTER, 52, 11, Color(1, 0.85, 0.5, a))
+		else:
+			markers.draw_string(font, p + Vector2(-26, 28), "erkundet", HORIZONTAL_ALIGNMENT_CENTER, 52, 10, Color(0.6, 0.6, 0.6))
+
+func _shotx() -> void:
+	var e := Explore.new()
+	e.setup("bunker" if "--shotx" in OS.get_cmdline_user_args() else "cave", 4242, 13, 4, true)
+	ui.add_child(e)
+	for k in 5:
+		var opts: Array = e.rooms[e.cur].links
+		e.move_to(opts[k % opts.size()])
+	await get_tree().create_timer(1.5).timeout
+	get_viewport().get_texture().get_image().save_png("res://shotx.png")
 	get_tree().quit()

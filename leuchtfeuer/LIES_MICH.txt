@@ -13,3 +13,12 @@ Ein alter Leuchtturm hält den giftigen Nebel zurück. Überlebe 14 Tage
 
 Steuerung: Links bauen · Rechts an/aus · WASD/Mittelmaus Kamera · Rad Zoom
 Leertaste Pause · 1/2/3 Tempo · Klick auf Turm: Lichtstufe
+
+NEU:
+- Forschung (T): 4 Zweige – Licht, Leben, Technik, Erkundung (12 Techs).
+  Wissen kommt aus der Werkstatt und aus Bunkern.
+- Neue Gebäude: Werkstatt, Gewächshaus, Filterhaus, Pilzbrennerei, Leuchtmast.
+- Bewohner laufen in gelben Schutzanzügen mit Gasmaske herum.
+- Höhlen und Bunker im Nebel: anklicken (braucht Späherposten).
+  Raum für Raum erkunden, Atemluft im Blick behalten, rechtzeitig zurück!
+  Beute, Überlebende, Notizen, Sporenwolken, Wucherer, Stahltüren (Brecheisen).
