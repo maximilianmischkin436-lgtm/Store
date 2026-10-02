@@ -92,7 +92,19 @@ func _process(delta: float) -> void:
 			p.select_weapon(1)
 			if Engine.get_frames_drawn() % 2 == 0: Input.action_press("shoot")
 			else: Input.action_release("shoot")
-			if t > 3.0: snap("06_boss_scatter"); step = 10; t = 0
+			if t > 3.0:
+				snap("06_boss_scatter")
+				if main.boss:
+					var bp: Vector3 = main.boss.global_position
+					var dir: Vector3 = (p.global_position - bp); dir.y = 0
+					p.global_position = bp + dir.normalized() * 9.0 + Vector3(0, 0.2, 0)
+					p.yaw = atan2(dir.x, dir.z)
+					p.pitch = 0.15
+				step = 95; t = 0
+		95:
+			p.inv = 99
+			Input.action_release("shoot")
+			if t > 0.4: snap("06b_boss_close"); step = 10; t = 0
 		10:
 			p.inv = 99
 			if main.boss: main.boss.hp = mini(main.boss.hp, 50)

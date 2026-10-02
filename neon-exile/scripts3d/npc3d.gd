@@ -9,6 +9,8 @@ extends CharacterBody3D
 #     school TEACHER    - wirft Kreide, sein Blick gibt dir "Nachsitzen" (du erstarrst)
 
 const Figure = preload("res://scripts3d/figure.gd")
+const XBot = preload("res://scripts3d/xbot.gd")
+var xb
 const KIND := {
 	"pool": ["swimmer", "lifeguard"], "mall": ["shopper", "mannequin"],
 	"office": ["worker", "manager"], "school": ["student", "teacher"],
@@ -102,6 +104,25 @@ func _ready() -> void:
 		tilt = rng.randf_range(0.35, 0.6) * (1 if rng.randf() < 0.5 else -1)
 		for m in mats:
 			m.albedo_color = Color(m.albedo_color.darkened(0.25), m.albedo_color.a)
+		# zu lang, zu duenn: etwas stimmt nicht mit ihnen
+		visual.scale *= Vector3(0.9, 1.12, 0.9)
+	# echte, animierte Figur; die Kapsel-Puppe bleibt nur als unsichtbares Geruest
+	for mi in visual.find_children("*", "MeshInstance3D", true, false):
+		mi.visible = false
+	var col: Color = o.skin.lerp(o.shirt, 0.35)
+	if role == "hostile":
+		col = col.darkened(0.2)
+		xb = XBot.new(visual, col, base_alpha, Color(0.7, 0.9, 1.0) if variant != "brute" else Color(1.0, 0.55, 0.5), 0.9, 1.0, o.height)
+		xb.head_tilt = tilt
+		xb.stretch = 1.3
+		xb.step = 1.0 / 14.0
+		xb.void_head(Color(0.7, 0.9, 1.0))
+	elif role == "special":
+		xb = XBot.new(visual, col, base_alpha, Color(1.0, 0.85, 0.6), 0.7, 0.5, o.height)
+	else:
+		xb = XBot.new(visual, col, base_alpha, Color(0.8, 0.85, 1.0), 0.35, 0.15, o.height)
+		xb.head_tilt = rng.randf_range(-0.15, 0.15)
+	mats = xb.mats
 	if kind == "teacher":
 		beam = MeshInstance3D.new()
 		var bm := BoxMesh.new()
@@ -128,6 +149,8 @@ func _physics_process(delta: float) -> void:
 	hit_cd = maxf(0.0, hit_cd - delta)
 	for m in mats:
 		m.emission_energy_multiplier = 2.5 if flash > 0.0 else 0.25
+	if xb:
+		xb.update(delta, Vector2(velocity.x, velocity.z).length())
 	# Geister flackern manchmal
 	if base_alpha < 1.0 and rng.randf() < delta * 0.6:
 		visual.visible = false

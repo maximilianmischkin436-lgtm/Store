@@ -7,6 +7,9 @@ extends CharacterBody3D
 #  headmaster THE HEADMASTER (Schule): Nachsitz-Blick (Deckung suchen!), Kreide, Lineal-Schlag, Schulglocke
 
 const Figure = preload("res://scripts3d/figure.gd")
+const XBot = preload("res://scripts3d/xbot.gd")
+var xb
+var _lastp := Vector3.ZERO
 
 var main
 var cfg: Dictionary = {}
@@ -64,6 +67,9 @@ func _ready() -> void:
 		cs.position.y = 2.5
 		_build_giant()
 	add_child(cs)
+	var rims := {"lifeguard": Color(0.6, 0.9, 1.0), "mannequin": Color(1.0, 0.6, 0.85), "mnemos": Color(1.0, 0.9, 0.55), "headmaster": Color(1.0, 0.55, 0.35),
+		"nurse": Color(0.6, 1.0, 0.85), "mirror": Color(0.3, 1.0, 0.85), "conductor": Color(1.0, 0.85, 0.3), "halcyon": Color(1.0, 1.0, 1.0)}
+	Figure.liminal(visual, rims.get(kind, Color(0.8, 0.9, 1.0)), 1.3, 0.8)
 
 func _build_giant() -> void:
 	var rng := RandomNumberGenerator.new()
@@ -93,7 +99,23 @@ func _build_giant() -> void:
 		o.shirt = Color(0.18, 0.16, 0.15)
 		o.pants = Color(0.14, 0.13, 0.12)
 	P = Figure.build(visual, o, 1.0, 0.0, true)
-	mats = P.mats
+	# echte, animierte Figur statt Kapsel-Puppe (Geruest bleibt unsichtbar fuer Requisiten)
+	for mi in visual.find_children("*", "MeshInstance3D", true, false):
+		mi.visible = false
+	var bcol: Color = o.skin.lerp(o.shirt, 0.5)
+	var brim := {"lifeguard": Color(0.6, 0.9, 1.0), "mannequin": Color(1.0, 0.6, 0.85), "headmaster": Color(1.0, 0.55, 0.35),
+		"nurse": Color(0.6, 1.0, 0.85), "mirror": Color(0.3, 1.0, 0.85), "conductor": Color(1.0, 0.85, 0.3), "halcyon": Color(1.0, 1.0, 1.0)}
+	xb = XBot.new(visual, bcol, 1.0, brim.get(kind, Color(0.8, 0.9, 1.0)), 1.4, 0.8, o.height * o.width if kind != "mirror" else o.height)
+	xb.root.scale = Vector3(o.width, 1.0, o.width) * o.height
+	xb.stretch = 1.45
+	xb.head_tilt = 0.35
+	xb.step = 1.0 / 12.0
+	if kind != "mannequin" and kind != "halcyon":
+		xb.void_head(brim.get(kind, Color.WHITE))
+	if kind == "mannequin":
+		for m in xb.mats:
+			m.roughness = 0.12
+	mats = xb.mats.duplicate()
 	# alle zu lange Arme
 	for sd in [-1, 1]:
 		P["el%d" % sd].scale = Vector3(1, 1.6, 1)
@@ -254,6 +276,10 @@ func _physics_process(delta: float) -> void:
 	if kind != "mnemos":
 		velocity.y = 0.0 if mode != "jump" else velocity.y
 	move_and_slide()
+	if xb:
+		var sp := Vector2(global_position.x - _lastp.x, global_position.z - _lastp.z).length() / maxf(delta, 0.001)
+		_lastp = global_position
+		xb.update(delta, sp / maxf(xb.root.scale.y, 1.0))
 
 func _face(dir: Vector3, delta: float) -> void:
 	if dir.length() > 0.01:

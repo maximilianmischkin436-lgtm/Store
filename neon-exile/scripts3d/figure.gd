@@ -21,7 +21,7 @@ static func _mesh(parent: Node3D, mesh: Mesh, pos: Vector3, scl: Vector3, m: Mat
 	mi.scale = scl
 	mi.rotation = rot
 	mi.material_override = m
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	parent.add_child(mi)
 	return mi
 
@@ -29,16 +29,16 @@ static func cap(r: float, h: float) -> CapsuleMesh:
 	var c := CapsuleMesh.new()
 	c.radius = r
 	c.height = maxf(h, r * 2.0)
-	c.radial_segments = 10
-	c.rings = 4
+	c.radial_segments = 24
+	c.rings = 10
 	return c
 
 static func sph(r: float) -> SphereMesh:
 	var s := SphereMesh.new()
 	s.radius = r
 	s.height = r * 2.0
-	s.radial_segments = 12
-	s.rings = 6
+	s.radial_segments = 32
+	s.rings = 16
 	return s
 
 static func box(x: float, y: float, z: float) -> BoxMesh:
@@ -51,7 +51,7 @@ static func cyl(top: float, bottom: float, h: float) -> CylinderMesh:
 	c.top_radius = top
 	c.bottom_radius = bottom
 	c.height = h
-	c.radial_segments = 12
+	c.radial_segments = 24
 	return c
 
 static func pivot(parent: Node3D, pos: Vector3) -> Node3D:
@@ -310,3 +310,36 @@ static func walk(P: Dictionary, ph: float, amt: float) -> void:
 		P["sh%d" % sd].rotation.x = -s * 0.45 * amt
 		P["el%d" % sd].rotation.x = -0.25 - absf(s) * 0.2 * amt
 	P["hips"].position.y = 0.95 + absf(sin(ph)) * 0.03 * amt
+
+# Liminaler Look: weiche, blasse Oberflaeche mit kaltem Rand, darueber eine flimmernde Huelle
+static var _shell: Shader
+static func liminal(root: Node, rim: Color, strength: float = 1.0, glitch: float = 1.0) -> void:
+	if _shell == null:
+		_shell = load("res://scripts3d/creature_shell.gdshader")
+	var shell := ShaderMaterial.new()
+	shell.shader = _shell
+	shell.set_shader_parameter("rim_col", rim)
+	shell.set_shader_parameter("strength", strength)
+	shell.set_shader_parameter("glitch", glitch)
+	shell.set_shader_parameter("seed", randf() * 100.0)
+	var stack: Array = [root]
+	var done := {}
+	while not stack.is_empty():
+		var n = stack.pop_back()
+		stack.append_array(n.get_children())
+		if n is MeshInstance3D and n.material_override is StandardMaterial3D:
+			var m: StandardMaterial3D = n.material_override
+			if done.has(m):
+				continue
+			done[m] = true
+			if m.albedo_color.a < 0.05:
+				continue
+			# leicht entsaettigt und blass, wie ausgeblichene Fotos
+			var c := m.albedo_color
+			var l := c.r * 0.3 + c.g * 0.59 + c.b * 0.11
+			m.albedo_color = Color(lerpf(c.r, l, 0.35), lerpf(c.g, l, 0.35), lerpf(c.b, l, 0.3), c.a)
+			m.rim_enabled = true
+			m.rim = 0.8
+			m.rim_tint = 0.6
+			m.roughness = maxf(m.roughness, 0.55)
+			m.next_pass = shell

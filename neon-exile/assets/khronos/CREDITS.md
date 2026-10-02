@@ -13,3 +13,7 @@ Added later (Khronos glTF-Sample-Assets, https://github.com/KhronosGroup/glTF-Sa
 - AntiqueCamera (CC BY 4.0, UX3D)
 - ChairDamaskPurplegold (CC BY 4.0, Wayfair LLC)
 See each model's README in the repository for the exact license.
+
+## assets/models/xbot.glb
+"X Bot" character with idle/walk/run animations, from Mixamo (Adobe), taken from the three.js examples
+(https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf). Used as the in-game creature body.
