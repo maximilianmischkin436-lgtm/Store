@@ -17,3 +17,7 @@ See each model's README in the repository for the exact license.
 ## assets/models/xbot.glb
 "X Bot" character with idle/walk/run animations, from Mixamo (Adobe), taken from the three.js examples
 (https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf). Used as the in-game creature body.
+
+## assets/models/human.glb
+Human avatar from the three.js examples (https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf, "readyplayer.me.glb", created with Ready Player Me).
+Used as the body for all in-game people; the X Bot animations are retargeted onto it at runtime.

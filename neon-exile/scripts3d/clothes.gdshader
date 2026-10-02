@@ -14,6 +14,7 @@ uniform float rough = 0.65;
 uniform float face = 1.0;
 uniform float short_sleeves = 0.0;
 uniform float skirt = 0.0;
+uniform int part = -1;   // -1 nach Hoehe; 0 Haut, 1 Oberteil, 2 Hose, 3 Schuhe, 4 Haare, 5 Kopf (Haut + Gesicht), 6 Augen/Zaehne
 uniform float hgt = 1.8;
 uniform float ymin = 0.0;
 varying vec3 mp;
@@ -36,7 +37,13 @@ void fragment() {
 		bool sleeve = y > (short_sleeves > 0.5 ? 0.72 : 0.6);
 		c = sleeve ? shirt.rgb : skin.rgb;
 	}
-	if (y >= 0.84) {
+	if (part == 0) c = skin.rgb;
+	if (part == 1) c = shirt.rgb;
+	if (part == 2) c = pants.rgb;
+	if (part == 3) c = shoes.rgb;
+	if (part == 4) c = hair.rgb;
+	if (part == 6) c = skin.rgb * 0.55;
+	if ((part == -1 && y >= 0.84) || part == 5) {
 		c = skin.rgb;
 		if (y > 0.935 || (y > 0.87 && z < -0.01)) c = hair.rgb;
 		// verschwommenes Gesicht: weiche dunkle Flecken fuer Augen und Mund

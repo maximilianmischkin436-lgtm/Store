@@ -2,28 +2,124 @@ extends RefCounted
 # Echte, animierte Figur (Mixamo X Bot, gesichtslos) statt der Kapsel-Puppe.
 # Liminal: blasse Haut, kaltes Randleuchten, zu lange Glieder, schief gelegter Kopf, ruckartige Bewegung.
 const Figure = preload("res://scripts3d/figure.gd")
-const SCENE := "res://assets/models/xbot.glb"
+# Koerper: realistischer Mensch (ReadyPlayerMe, getrennte Kleidungsteile, normale Proportionen).
+# Bewegungen kommen vom X Bot (Mixamo) und werden ueber die Weltlage der Knochen umgerechnet.
+const SCENE := "res://assets/models/human.glb"
+const ANIM_SRC := "res://assets/models/xbot.glb"
+const ANIMS := {"idle": "x/idle", "walk": "x/walk", "run": "x/run"}
+static var _lib: AnimationLibrary
+
+static func _gq(sk: Skeleton3D, b: int) -> Quaternion:
+	return sk.get_bone_global_rest(b).basis.orthonormalized().get_rotation_quaternion()
+
+# Unterschied der Ruheposen (z.B. A-Pose gegen T-Pose): dreht die Knochenrichtung des Ziels
+# auf die Knochenrichtung der Quelle
+static var _corr_cache := {}
+static func _bone_dir(sk: Skeleton3D, b: int) -> Vector3:
+	for c in sk.get_bone_children(b):
+		var d := sk.get_bone_global_rest(c).origin - sk.get_bone_global_rest(b).origin
+		if d.length() > 0.0001:
+			return d.normalized()
+	return Vector3.ZERO
+
+static func _corr(ssk: Skeleton3D, sb: int, tsk: Skeleton3D, tb: int) -> Quaternion:
+	if _corr_cache.has(tb):
+		return _corr_cache[tb]
+	var ds := _bone_dir(ssk, sb)
+	var dt := _bone_dir(tsk, tb)
+	var q := Quaternion.IDENTITY
+	if ds != Vector3.ZERO and dt != Vector3.ZERO and ds.dot(dt) < 0.9999:
+		q = Quaternion(dt, ds)
+	_corr_cache[tb] = q
+	return q
+
+static func _anim_lib() -> AnimationLibrary:
+	if _lib:
+		return _lib
+	_lib = AnimationLibrary.new()
+	var src: Node = load(ANIM_SRC).instantiate()
+	var ap: AnimationPlayer = src.find_child("AnimationPlayer", true, false)
+	var ssk: Skeleton3D = src.find_child("Skeleton3D", true, false)
+	var tgt: Node = load(SCENE).instantiate()
+	var tsk: Skeleton3D = tgt.find_child("Skeleton3D", true, false)
+	var tpath := String(tgt.get_path_to(tsk))
+	var nb := tsk.get_bone_count()
+	var ns := ssk.get_bone_count()
+	for n in ["idle", "walk", "run"]:
+		var a: Animation = ap.get_animation(n)
+		var tr := {}
+		for i in a.get_track_count():
+			if a.track_get_type(i) == Animation.TYPE_ROTATION_3D:
+				tr[String(a.track_get_path(i)).get_slice(":", 1)] = i
+		var out := Animation.new()
+		out.length = a.length
+		out.loop_mode = Animation.LOOP_LINEAR
+		var tracks := []
+		for tb in nb:
+			var ti := out.add_track(Animation.TYPE_ROTATION_3D)
+			out.track_set_path(ti, NodePath(tpath + ":" + tsk.get_bone_name(tb)))
+			tracks.append(ti)
+		var fps := 30.0
+		var frames := int(a.length * fps) + 1
+		for f in frames:
+			var t := minf(f / fps, a.length)
+			# Quelle: globale Drehung jedes Knochens zu diesem Zeitpunkt
+			var gs := []
+			gs.resize(ns)
+			for sb in ns:
+				var nm := ssk.get_bone_name(sb)
+				var lq: Quaternion = a.rotation_track_interpolate(tr[nm], t) if tr.has(nm) else ssk.get_bone_rest(sb).basis.get_rotation_quaternion()
+				var par := ssk.get_bone_parent(sb)
+				gs[sb] = (gs[par] * lq) if par >= 0 else lq
+			# Ziel: gleiche Abweichung von der Ruhepose in Weltlage, dann zurueck in lokale Drehung
+			var gt := []
+			gt.resize(nb)
+			for tb in nb:
+				var nm2 := tsk.get_bone_name(tb)
+				var sb2 := ssk.find_bone("mixamorig_" + nm2)
+				if sb2 < 0:
+					sb2 = ssk.find_bone("mixamorig:" + nm2)
+				var par2 := tsk.get_bone_parent(tb)
+				var g: Quaternion
+				if sb2 >= 0:
+					var delta: Quaternion = gs[sb2] * _gq(ssk, sb2).inverse()
+					g = delta * _corr(ssk, sb2, tsk, tb) * _gq(tsk, tb)
+				else:
+					var lr := tsk.get_bone_rest(tb).basis.get_rotation_quaternion()
+					g = (gt[par2] * lr) if par2 >= 0 else lr
+				gt[tb] = g
+				var lq2: Quaternion = (gt[par2].inverse() * g) if par2 >= 0 else g
+				out.rotation_track_insert_key(tracks[tb], t, lq2.normalized())
+		_lib.add_animation(n, out)
+	src.free()
+	tgt.free()
+	return _lib
+
 static var _scene: PackedScene
 
 # Leitet die Eigenschaften, die Gegner/Bosse an ihren Materialien setzen, an den Kleidungs-Shader weiter
 class Proxy:
 	var sm: ShaderMaterial
+	var sms: Array = []
+	func _all(k: String, v) -> void:
+		for m in sms:
+			m.set_shader_parameter(k, v)
 	var albedo_color := Color.WHITE:
 		set(v):
 			albedo_color = v
-			sm.set_shader_parameter("tint", v)
+			_all("tint", v)
 	var emission := Color.WHITE:
 		set(v):
 			emission = v
-			sm.set_shader_parameter("emit_col", v)
+			_all("emit_col", v)
 	var emission_energy_multiplier := 0.0:
 		set(v):
 			emission_energy_multiplier = v
-			sm.set_shader_parameter("emit_e", v)
+			_all("emit_e", v)
 	var roughness := 0.65:
 		set(v):
 			roughness = v
-			sm.set_shader_parameter("rough", v)
+			_all("rough", v)
 	var emission_enabled := true
 	var metallic := 0.0
 
@@ -57,15 +153,20 @@ func _init(parent: Node3D, col: Color, alpha: float, rim: Color, rim_str: float,
 	root.scale = Vector3.ONE * height
 	parent.add_child(root)
 	anim = root.find_child("AnimationPlayer", true, false)
+	if anim == null:
+		anim = AnimationPlayer.new()
+		root.add_child(anim)
+		anim.root_node = NodePath("..")
 	skel = root.find_child("Skeleton3D", true, false) as Skeleton3D
 	if anim:
 		anim.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
-		for n in ["idle", "walk", "run"]:
-			if anim.has_animation(n):
-				anim.get_animation(n).loop_mode = Animation.LOOP_LINEAR
+		if not anim.has_animation_library("x"):
+			anim.add_animation_library("x", _anim_lib())
 	if skel:
 		for b in ["Head", "Neck", "LeftForeArm", "RightForeArm", "Spine2", "LeftUpLeg", "RightUpLeg", "LeftLeg", "RightLeg", "LeftArm", "RightArm"]:
-			var bi := skel.find_bone("mixamorig:" + b)
+			var bi := skel.find_bone(b)
+			if bi < 0:
+				bi = skel.find_bone("mixamorig:" + b)
 			if bi < 0:
 				bi = skel.find_bone("mixamorig_" + b)
 			bones[b] = bi
@@ -76,17 +177,38 @@ func _init(parent: Node3D, col: Color, alpha: float, rim: Color, rim_str: float,
 	sm.shader = _clothes
 	var px := Proxy.new()
 	px.sm = sm
-	px.albedo_color = Color(1, 1, 1, alpha)
 	mats = [px]
-	set_clothes({"skin": Color(0.92, 0.9, 0.88), "shirt": col, "pants": col.darkened(0.4), "shoes": Color(0.12, 0.1, 0.1), "hair": Color(0.2, 0.17, 0.15)})
 	var meshes := root.find_children("*", "MeshInstance3D", true, false)
+	# Visier/Helm-Teile weg: nur der Koerper bleibt
+	for mi in meshes.duplicate():
+		if String(mi.name).to_lower().contains("visor"):
+			mi.queue_free()
+			meshes.erase(mi)
 	var aabb := AABB()
 	for mi in meshes:
 		var m3 := mi as MeshInstance3D
 		m3.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if alpha >= 1.0 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		aabb = aabb.merge(m3.mesh.get_aabb()) if aabb.size != Vector3.ZERO else m3.mesh.get_aabb()
+		# jedes Kleidungsstueck bekommt seine eigene Farbe (Teil-Nummer im Shader)
+		var nm := String(m3.name).to_lower()
+		# Hut weg, Bart nur manchmal
+		if nm.contains("headwear") or (nm.contains("beard") and randf() < 0.7):
+			m3.visible = false
+			continue
+		var part := -1
+		if nm.contains("head") and not nm.contains("headwear"): part = 5
+		elif nm.contains("eye") or nm.contains("teeth"): part = 6
+		elif nm.contains("top"): part = 1
+		elif nm.contains("bottom"): part = 2
+		elif nm.contains("footwear"): part = 3
+		elif nm.contains("hair") or nm.contains("beard") or nm.contains("headwear"): part = 4
+		elif nm.contains("body"): part = 0
+		var msm: ShaderMaterial = sm.duplicate() if part >= 0 else sm
+		msm.set_shader_parameter("part", part)
+		if not px.sms.has(msm):
+			px.sms.append(msm)
 		for s in m3.mesh.get_surface_count():
-			m3.set_surface_override_material(s, sm)
+			m3.set_surface_override_material(s, msm)
 		m3.material_override = null
 	if _raw == Vector2.ZERO and not meshes.is_empty():
 		var lo := INF; var hi := -INF
@@ -95,8 +217,8 @@ func _init(parent: Node3D, col: Color, alpha: float, rim: Color, rim_str: float,
 			for v in arr:
 				lo = minf(lo, v.y); hi = maxf(hi, v.y)
 		_raw = Vector2(lo, hi - lo)
-	sm.set_shader_parameter("hgt", maxf(_raw.y, 0.01))
-	sm.set_shader_parameter("ymin", _raw.x)
+	px.albedo_color = Color(1, 1, 1, alpha)
+	set_clothes({"skin": Color(0.92, 0.9, 0.88), "shirt": col, "pants": col.darkened(0.4), "shoes": Color(0.12, 0.1, 0.1), "hair": Color(0.2, 0.17, 0.15)})
 	# liminale Huelle nur bei sichtbar starkem Effekt (spart Leistung bei Hintergrund-Geistern)
 	if rim_str >= 0.5:
 		if Figure._shell == null:
@@ -107,14 +229,39 @@ func _init(parent: Node3D, col: Color, alpha: float, rim: Color, rim_str: float,
 		shell.set_shader_parameter("strength", rim_str)
 		shell.set_shader_parameter("glitch", glitch)
 		shell.set_shader_parameter("seed", randf() * 100.0)
-		sm.next_pass = shell
+		for m in px.sms:
+			m.next_pass = shell
 	play("idle")
 	if anim:
 		anim.seek(randf() * 2.0, true)
 
 # Farben aus einem Figure-Outfit (blass wie Geister)
 func set_clothes(o: Dictionary) -> void:
-	var sm: ShaderMaterial = mats[0].sm
+	# passend zum Ort: das Modell hat Jacke + Hose, die Farben machen daraus Badekleidung, Kittel usw.
+	o = o.duplicate()
+	match o.get("kind", ""):
+		"swimmer":
+			o.shirt = o.skin
+			o.shoes = o.skin
+		"lifeguard":
+			o.shirt = Color(0.85, 0.15, 0.12)
+			o.shoes = o.skin
+		"nurse", "doctor":
+			o.shirt = Color(0.95, 0.96, 0.95)
+			o.pants = Color(0.9, 0.92, 0.92)
+			o.shoes = Color(0.95, 0.95, 0.95)
+		"patient":
+			o.shirt = Color(0.7, 0.82, 0.88)
+			o.pants = Color(0.7, 0.82, 0.88)
+			o.shoes = o.skin
+		"mannequin":
+			o.shirt = o.skin
+			o.pants = o.skin
+			o.hair = o.skin
+	for sm in mats[0].sms:
+		_clothes_on(sm, o)
+
+func _clothes_on(sm: ShaderMaterial, o: Dictionary) -> void:
 	for k in ["skin", "shirt", "pants", "shoes", "hair"]:
 		if o.has(k):
 			var c: Color = o[k]
@@ -128,7 +275,7 @@ func set_clothes(o: Dictionary) -> void:
 		sm.set_shader_parameter("skirt", 1.0 if o.skirt else 0.0)
 
 func set_face(v: float) -> void:
-	mats[0].sm.set_shader_parameter("face", v)
+	mats[0]._all("face", v)
 
 func _shell(m: StandardMaterial3D, rim: Color, strength: float, glitch: float) -> void:
 	var holder := MeshInstance3D.new()
@@ -143,9 +290,13 @@ func _shell(m: StandardMaterial3D, rim: Color, strength: float, glitch: float) -
 func void_head(rim: Color) -> void:
 	if skel == null or bones.get("Head", -1) < 0:
 		return
-	var ba := BoneAttachment3D.new()
-	ba.bone_idx = bones.Head
-	skel.add_child(ba)
+	var ba0 := BoneAttachment3D.new()
+	ba0.bone_idx = bones.Head
+	skel.add_child(ba0)
+	# Teile sind in Zentimetern gebaut: auf Meter herunterskalieren
+	var ba := Node3D.new()
+	ba.scale = Vector3.ONE * 0.01
+	ba0.add_child(ba)
 	var mi := MeshInstance3D.new()
 	var sm := SphereMesh.new()
 	sm.radius = 13.5
@@ -171,9 +322,13 @@ func void_head(rim: Color) -> void:
 func bandage_head(stain: Color = Color(0.35, 0.05, 0.04)) -> void:
 	if skel == null or bones.get("Head", -1) < 0:
 		return
-	var ba := BoneAttachment3D.new()
-	ba.bone_idx = bones.Head
-	skel.add_child(ba)
+	var ba0 := BoneAttachment3D.new()
+	ba0.bone_idx = bones.Head
+	skel.add_child(ba0)
+	# Teile sind in Zentimetern gebaut: auf Meter herunterskalieren
+	var ba := Node3D.new()
+	ba.scale = Vector3.ONE * 0.01
+	ba0.add_child(ba)
 	var cloth := StandardMaterial3D.new()
 	cloth.albedo_color = Color(0.78, 0.74, 0.64)
 	cloth.roughness = 1.0
@@ -218,6 +373,7 @@ func bandage_head(stain: Color = Color(0.35, 0.05, 0.04)) -> void:
 	ba.add_child(blot)
 
 func play(n: String, spd: float = 1.0) -> void:
+	n = ANIMS.get(n, n)
 	if anim == null or not anim.has_animation(n):
 		return
 	if n != cur:
@@ -251,8 +407,8 @@ func update(delta: float, speed: float) -> void:
 	if not _scaled and root.is_inside_tree():
 		_scaled = true
 		var sc: float = root.global_transform.basis.get_scale().y
-		mats[0].sm.set_shader_parameter("hgt", _raw.y * sc)
-		mats[0].sm.set_shader_parameter("ymin", _raw.x * sc - (0.42 * sc if sitting else 0.0) * 0.0)
+		mats[0]._all("hgt", _raw.y * sc)
+		mats[0]._all("ymin", _raw.x * sc)
 	if sitting:
 		if skel:
 			for b in sit_q:
