@@ -1976,6 +1976,8 @@ func _process(delta: float) -> void:
 	if level.trains.size() >= 2:
 		_update_train(delta)
 	if state == "play" and player.global_position.y < -2.5:
+		if test_mode:
+			player.global_position = checkpoint + Vector3(0, 0.3, 0)
 		instakill("YOU SANK INTO THE DEEP END")
 	if not level.swing.is_empty():
 		var who: Array = [player.global_position]
@@ -2107,8 +2109,9 @@ func _check_shard() -> void:
 			banner("GATE OPEN", Color("#ffd23d")))
 
 # ---------------- Sofort-Tod (tiefe Becken, Waechter) ----------------
+var test_mode := false     # automatische Tests: keine Sofort-Tode
 func instakill(reason: String) -> void:
-	if state != "play" or player.hp <= 0:
+	if test_mode or state != "play" or player.hp <= 0:
 		return
 	banner(reason, Color("#ff2a2a"))
 	glitch_t = 1.0

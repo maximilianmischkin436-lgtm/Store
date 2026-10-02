@@ -37,6 +37,7 @@ func _process(delta: float) -> void:
 	t += delta
 	# Raetsel/Waechter werden separat getestet: hier aus dem Weg
 	main.puzzle_solved = true
+	main.test_mode = true
 	main.has_ticket = true
 	for wt in get_tree().get_nodes_in_group("watchers"):
 		wt.queue_free()
