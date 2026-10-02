@@ -180,3 +180,5 @@ c10_intro_0 MIRA
 c10_intro_1 ECHO
 c10_dog_0 ECHO
 radio_c10_controls_0 MIRA
+c11_intro_0 ECHO
+c11_intro_1 MIRA

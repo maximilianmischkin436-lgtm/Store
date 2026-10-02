@@ -49,7 +49,9 @@ func _ready() -> void:
 		b.head_tilt = 0.45 * (1 if i % 2 == 0 else -1)
 		b.stretch = 1.3
 		b.step = 1.0 / 12.0 if i % 2 == 0 else 0.0
-		if i >= 3: b.void_head(Color(0.7, 0.9, 1.0))
+		if i >= 3: b.bandage_head()
+		b.hunch = 0.4
+		b.twitch = 2.0
 		v.set_meta("spd", [0.0, 1.2, 0.0, 6.0, 1.2, 0.0][i])
 		if i == 0 or i == 2: b.sit()
 		b.set_clothes({"skin": Color(0.85, 0.7, 0.6), "shirt": [Color(0.8,0.3,0.3), Color(0.3,0.4,0.7), Color(0.9,0.9,0.85)][i % 3], "pants": Color(0.2,0.22,0.35), "hair": Color(0.3,0.2,0.1)})

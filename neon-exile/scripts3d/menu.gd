@@ -23,7 +23,7 @@ func _ready() -> void:
 	_button(main_box, "QUIT", func(): get_tree().quit())
 	chap_box = _box()
 	chap_box.visible = false
-	var names := ["1  THE DRAIN", "2  THE NEON MARKET", "3  THE ARCHIVE", "4  AFTER SCHOOL", "5  WARD 4", "6  HOME", "7  LAST TRAIN", "8  SOMEWHERE GREEN", "9  THE CROWN", "10  AFTERWORLD"]
+	var names := ["1  THE DRAIN", "2  THE NEON MARKET", "3  THE ARCHIVE", "4  AFTER SCHOOL", "5  WARD 4", "6  HOME", "7  LAST TRAIN", "8  SOMEWHERE GREEN", "9  THE CROWN", "10  AFTERWORLD", "6.5  THE LONG HALLWAY"]
 	for i in names.size():
 		var n := i + 1
 		if n == 10 and not Game.achievements.has("halcyon") and not DEV_ALL_CHAPTERS:

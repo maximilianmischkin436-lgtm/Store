@@ -38,18 +38,18 @@ var gun_base := Vector3(0.17, -0.15, -0.3)
 #  KNIFE: schnelle Stiche, 3x Schaden gegen Gegner, die dich noch nicht bemerkt haben, rechte Maustaste = werfen
 # Aktives Nachladen: nochmal R im leuchtenden Fenster = sofort fertig + naechstes Magazin mehr Schaden
 const WEAPONS := [
-	{"name": "PULSE RIFLE", "col": Color("#38f5c4"), "type": "hitscan", "rate": 0.12, "dmg": 1, "pellets": 1, "spread": 0.008, "range": 90.0, "pierce": false, "auto": true, "mag": 32, "reload": 0.9, "crit": 2.0},
-	{"name": "SCATTER GUN", "col": Color("#ff9f3d"), "type": "hitscan", "rate": 0.5, "dmg": 1, "pellets": 9, "spread": 0.075, "range": 26.0, "pierce": false, "auto": false, "mag": 6, "reload": 1.0, "crit": 1.5},
-	{"name": "RAIL CANNON", "col": Color("#c77dff"), "type": "hitscan", "rate": 0.55, "dmg": 6, "pellets": 1, "spread": 0.0, "range": 120.0, "pierce": true, "auto": false, "mag": 4, "reload": 1.1, "crit": 2.0},
-	{"name": "HUMMINGBIRD", "col": Color("#7dffb0"), "type": "hitscan", "rate": 0.055, "dmg": 1, "pellets": 1, "spread": 0.022, "range": 60.0, "pierce": false, "auto": true, "mag": 48, "reload": 0.8, "crit": 2.0},
-	{"name": "LAST WORD", "col": Color("#ffe066"), "type": "hitscan", "rate": 0.32, "dmg": 4, "pellets": 1, "spread": 0.0, "range": 100.0, "pierce": false, "auto": false, "mag": 6, "reload": 0.95, "crit": 2.5},
-	{"name": "CHALK BOMB", "col": Color("#f4f1e8"), "type": "lob", "rate": 0.6, "dmg": 5, "pellets": 1, "spread": 0.0, "range": 0.0, "pierce": false, "auto": false, "mag": 4, "reload": 1.1, "crit": 1.0},
-	{"name": "LULLABY", "col": Color("#9fd8ff"), "type": "beam", "rate": 0.07, "dmg": 1, "pellets": 1, "spread": 0.0, "range": 16.0, "pierce": false, "auto": true, "mag": 70, "reload": 1.0, "crit": 1.0},
-	{"name": "TIDE", "col": Color("#4db8ff"), "type": "disc", "rate": 0.45, "dmg": 3, "pellets": 1, "spread": 0.0, "range": 0.0, "pierce": false, "auto": false, "mag": 3, "reload": 0.9, "crit": 1.0},
-	{"name": "KATANA", "col": Color("#ff4d6d"), "type": "melee", "rate": 0.38, "dmg": 4, "pellets": 1, "spread": 0.0, "range": 3.3, "arc": 0.45, "pierce": false, "auto": true, "mag": 0, "reload": 0.0, "crit": 1.0},
-	{"name": "KNIFE", "col": Color("#e0e6ee"), "type": "melee", "rate": 0.18, "dmg": 2, "pellets": 1, "spread": 0.0, "range": 2.2, "arc": 0.65, "pierce": false, "auto": true, "mag": 0, "reload": 0.0, "crit": 3.0},
+	{"name": "PULSE RIFLE", "col": Color("#38f5c4"), "type": "hitscan", "rate": 0.1, "dmg": 1, "pellets": 1, "spread": 0.008, "range": 90.0, "pierce": false, "auto": true, "mag": 32, "reload": 0.9, "crit": 2.0},
+	{"name": "SCATTER GUN", "col": Color("#ff9f3d"), "type": "hitscan", "rate": 0.5, "dmg": 1, "pellets": 8, "spread": 0.075, "range": 26.0, "pierce": false, "auto": false, "mag": 6, "reload": 1.0, "crit": 1.5},
+	{"name": "RAIL CANNON", "col": Color("#c77dff"), "type": "hitscan", "rate": 0.6, "dmg": 6, "pellets": 1, "spread": 0.0, "range": 120.0, "pierce": true, "auto": false, "mag": 4, "reload": 1.1, "crit": 2.0},
+	{"name": "HUMMINGBIRD", "col": Color("#7dffb0"), "type": "hitscan", "rate": 0.08, "dmg": 1, "pellets": 1, "spread": 0.03, "range": 60.0, "pierce": false, "auto": true, "mag": 48, "reload": 0.8, "crit": 2.0},
+	{"name": "LAST WORD", "col": Color("#ffe066"), "type": "hitscan", "rate": 0.3, "dmg": 4, "pellets": 1, "spread": 0.0, "range": 100.0, "pierce": false, "auto": false, "mag": 6, "reload": 0.95, "crit": 2.5},
+	{"name": "CHALK BOMB", "col": Color("#f4f1e8"), "type": "lob", "rate": 0.65, "dmg": 6, "pellets": 1, "spread": 0.0, "range": 0.0, "pierce": false, "auto": false, "mag": 4, "reload": 1.1, "crit": 1.0},
+	{"name": "LULLABY", "col": Color("#9fd8ff"), "type": "beam", "rate": 0.08, "dmg": 1, "pellets": 1, "spread": 0.0, "range": 16.0, "pierce": false, "auto": true, "mag": 70, "reload": 1.0, "crit": 1.0},
+	{"name": "TIDE", "col": Color("#4db8ff"), "type": "disc", "rate": 0.45, "dmg": 4, "pellets": 1, "spread": 0.0, "range": 0.0, "pierce": false, "auto": false, "mag": 3, "reload": 0.9, "crit": 1.0},
+	{"name": "KATANA", "col": Color("#ff4d6d"), "type": "melee", "rate": 0.38, "dmg": 5, "pellets": 1, "spread": 0.0, "range": 3.3, "arc": 0.45, "pierce": false, "auto": true, "mag": 0, "reload": 0.0, "crit": 1.0},
+	{"name": "KNIFE", "col": Color("#e0e6ee"), "type": "melee", "rate": 0.16, "dmg": 2, "pellets": 1, "spread": 0.0, "range": 2.2, "arc": 0.65, "pierce": false, "auto": true, "mag": 0, "reload": 0.0, "crit": 3.0},
 	# Belohnung fuer 100%: alle Geheimraeume, Kassetten und Erinnerungen
-	{"name": "HALO", "col": Color("#ffd23d"), "type": "hitscan", "rate": 0.1, "dmg": 3, "pellets": 1, "spread": 0.004, "range": 140.0, "pierce": true, "auto": true, "mag": 40, "reload": 0.7, "crit": 2.5},
+	{"name": "HALO", "col": Color("#ffd23d"), "type": "hitscan", "rate": 0.1, "dmg": 2, "pellets": 1, "spread": 0.004, "range": 140.0, "pierce": true, "auto": true, "mag": 40, "reload": 0.7, "crit": 2.5},
 ]
 var ammo: Array = []
 var reload_t := 0.0          # >0 waehrend des Nachladens

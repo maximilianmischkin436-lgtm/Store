@@ -89,7 +89,7 @@ func _ready() -> void:
 	var kind: String = KIND[theme][1 if role == "special" else 0]
 	var o := Figure.outfit(kind, rng)
 	var solid := kind == "mannequin"
-	base_alpha = 1.0 if solid else (0.42 if role == "passive" else 0.55)
+	base_alpha = 1.0 if (solid or role == "hostile") else (0.42 if role == "passive" else 0.55)
 	P = Figure.build(visual, o, base_alpha, 0.25 if not solid else 0.0, role == "hostile")
 	mats = P.mats
 	match variant:
@@ -117,7 +117,13 @@ func _ready() -> void:
 		xb.head_tilt = tilt
 		xb.stretch = 1.3
 		xb.step = 1.0 / 14.0
-		xb.void_head(Color(0.7, 0.9, 1.0))
+		# menschlich, aber falsch: Binden um den Kopf oder ein schwarzes Loch, gekruemmt, zuckend
+		if rng.randf() < 0.7:
+			xb.bandage_head()
+		else:
+			xb.void_head(Color(0.7, 0.9, 1.0))
+		xb.hunch = rng.randf_range(0.2, 0.5)
+		xb.twitch = rng.randf_range(0.8, 2.0)
 	elif role == "special":
 		xb = XBot.new(visual, col, base_alpha, Color(1.0, 0.85, 0.6), 0.7, 0.5, o.height)
 	else:

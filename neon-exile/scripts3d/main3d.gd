@@ -142,6 +142,8 @@ func _ready() -> void:
 		player.ability_unlocked = true
 	_build_secret()
 	_make_dust()
+	if ch.get("chase", false):
+		_setup_chase()
 	_setup_watchers()
 	_setup_puzzle()
 	if Game.has_completion_weapon() and not player.slots.has(10) and not ch.get("peaceful", false):
@@ -1324,6 +1326,10 @@ func _setup_world() -> void:
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.ambient_light_energy = ev.amb
+	if ch.theme == "office":
+		# Archiv: warmes Lampenlicht statt schwarzer Himmel als Umgebungslicht
+		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		env.ambient_light_color = Color(0.7, 0.58, 0.42)
 	if ch.theme == "meadow":
 		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 		env.ambient_light_color = Color(0.85, 0.9, 0.75)
@@ -1350,7 +1356,15 @@ func _setup_world() -> void:
 	sun.light_energy = ev.sun_e
 	sun.rotation = ev.sun_rot
 	sun.shadow_enabled = true
+	sun.directional_shadow_max_distance = 70.0     # Leistung: Schatten nur in der Naehe
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 	add_child(sun)
+	# weichere Kanten fast ohne Kosten, etwas mehr Tiefe im Licht
+	get_viewport().screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA
+	env.glow_bloom = 0.12
+	env.glow_intensity = 0.7
+	env.tonemap_white = 6.0
+	env.adjustment_contrast = 1.06
 	# niedrige Aufloesung fuer den Retro-Look (UI bleibt scharf)
 	if Game.retro:
 		get_viewport().scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
@@ -1580,6 +1594,8 @@ func _update_lights(delta: float) -> void:
 	flicker_t = maxf(0.0, flicker_t - delta)
 	blackout_t = maxf(0.0, blackout_t - delta)
 	var dark := blackout_t > 0.0 or (flicker_t > 0.0 and randf() < 0.6)
+	if hallu_t > 0.0:
+		return
 	world_env.ambient_light_energy = lerpf(world_env.ambient_light_energy, 0.02 if dark else base_ambient, minf(1.0, delta * 20.0))
 	world_env.tonemap_exposure = lerpf(world_env.tonemap_exposure, 0.25 if dark else ch.env.exp, minf(1.0, delta * 20.0))
 
@@ -1973,6 +1989,9 @@ func _process(delta: float) -> void:
 		_update_transition(delta)
 	dream_time += delta
 	_update_amb_shots(delta)
+	if chase_on:
+		_update_chase(delta)
+	_update_hallu(delta)
 	if level.trains.size() >= 2:
 		_update_train(delta)
 	if state == "play" and player.global_position.y < -2.5:
@@ -2128,6 +2147,9 @@ func on_player_hurt() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func _respawn() -> void:
+	if chase_on or ch.get("chase", false):
+		chase_on = true
+		_reset_chase()
 	player.global_position = checkpoint + Vector3(0, 0.2, 0)
 	player.velocity = Vector3.ZERO
 	player.hp = player.max_hp
@@ -2366,9 +2388,10 @@ func _update_transition(delta: float) -> void:
 	glitch_t = 0.4 if trans_t < 1.5 else 0.0
 	var total := 2.0 + trans_lines.size() * 2.6
 	if trans_t >= total:
-		if chapter < 9:
-			_carry_weapons(chapter + 1)
-			Game.chapter = chapter + 1
+		if chapter < 9 or chapter == 11:
+			var nxt: int = {6: 11, 11: 7}.get(chapter, chapter + 1)
+			_carry_weapons(nxt)
+			Game.chapter = nxt
 			Game.progress = 0
 			Game.continue_game = false
 			Game.write_save()
@@ -2633,3 +2656,189 @@ func _end_ride(ra: Rect2, rb: Rect2) -> void:
 			objective = ch.objectives[2]
 			start_event()
 			break
+
+# ---------------- Halluzination: fuer ein paar Sekunden ist die Welt "echt" ----------------
+# Warmes normales Tageslicht, kein VHS-Filter, die Geister sind ganz normale Menschen, die Monster sind weg.
+var hallu_cd := 100.0
+var hallu_t := 0.0
+var hallu_save := {}
+var hallu_flash: ColorRect
+func _update_hallu(delta: float) -> void:
+	if hallu_t > 0.0:
+		hallu_t -= delta
+		if hallu_t <= 0.0:
+			_hallu_set(false)
+		return
+	if state != "play" or ch.get("peaceful", false) or (boss and is_instance_valid(boss) and boss.active) or event_active():
+		return
+	hallu_cd -= delta
+	if hallu_cd <= 0.0:
+		hallu_cd = randf_range(110.0, 200.0)
+		hallu_t = randf_range(3.5, 5.0)
+		_hallu_set(true)
+
+func event_active() -> bool:
+	return not event.is_empty()
+
+func _hallu_set(on: bool) -> void:
+	if hallu_flash == null:
+		var cl := CanvasLayer.new()
+		cl.layer = 7
+		add_child(cl)
+		hallu_flash = ColorRect.new()
+		hallu_flash.set_anchors_preset(Control.PRESET_FULL_RECT)
+		hallu_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		hallu_flash.color = Color(1, 1, 1, 0)
+		cl.add_child(hallu_flash)
+	hallu_flash.color.a = 1.0
+	var tw := hallu_flash.create_tween()
+	tw.tween_property(hallu_flash, "color:a", 0.0, 0.6)
+	Game.sfx("rail", 0.4 if on else 0.6, 0.7)
+	var env: Environment = world_env
+	if on:
+		hallu_save = {"sat": env.adjustment_saturation, "exp": env.tonemap_exposure, "fog": env.fog_density, "glow": env.glow_enabled, "amb": env.ambient_light_energy, "dream": dream_rect.visible}
+		env.adjustment_saturation = 1.0
+		env.tonemap_exposure = hallu_save.exp * 1.25
+		env.fog_density = hallu_save.fog * 0.15
+		env.glow_enabled = false
+		env.ambient_light_energy = hallu_save.amb * 1.8
+		dream_rect.visible = false
+		var ap := AudioStreamPlayer.new()
+		ap.stream = load("res://assets/sfx/amb_laugh.ogg")
+		ap.volume_db = -2.0
+		add_child(ap)
+		ap.finished.connect(ap.queue_free)
+		ap.play()
+	elif not hallu_save.is_empty():
+		env.adjustment_saturation = hallu_save.sat
+		env.tonemap_exposure = hallu_save.exp
+		env.fog_density = hallu_save.fog
+		env.glow_enabled = hallu_save.glow
+		env.ambient_light_energy = hallu_save.amb
+		dream_rect.visible = hallu_save.dream
+		glitch_t = 0.6
+	for e in get_tree().get_nodes_in_group("npcs"):
+		if e.role == "hostile" or e.role == "special":
+			e.visual.visible = not on
+		elif e.xb:
+			for m in e.xb.mats:
+				m.albedo_color = Color(1, 1, 1, 1.0 if on else e.base_alpha)
+			e.xb.set_face(0.0 if on else 0.8)
+	for w in get_tree().get_nodes_in_group("watchers"):
+		w.visible = not on
+
+# ---------------- Kapitel "THE LONG HALLWAY": wegrennen, der Flur wird immer laenger ----------------
+const XBotC = preload("res://scripts3d/xbot.gd")
+var chase_on := false
+var chase_t := 0.0
+var chaser: Node3D
+var chaser_xb
+var chase_door: Node3D
+var chase_door_x := 0.0
+var chase_steps: AudioStreamPlayer3D
+const CHASE_STRETCH := 38.0      # so lange laeuft die Tuer davon
+func _setup_chase() -> void:
+	var T: float = level.T
+	chase_on = true
+	chase_t = -6.0       # kurze Ruhe am Anfang (Intro), dann geht es los
+	chase_door_x = (level.w - 4) * T
+	# Tuer am Ende des Flurs (leuchtender Spalt)
+	chase_door = Node3D.new()
+	add_child(chase_door)
+	var fr := MeshInstance3D.new()
+	var fb := BoxMesh.new()
+	fb.size = Vector3(0.3, 2.4, 2.0)
+	fr.mesh = fb
+	fr.material_override = _mat(Color(0.35, 0.22, 0.15), 0.0)
+	fr.position.y = 1.2
+	chase_door.add_child(fr)
+	var gl := MeshInstance3D.new()
+	var gb := BoxMesh.new()
+	gb.size = Vector3(0.32, 2.3, 0.08)
+	gl.mesh = gb
+	gl.material_override = _mat(Color(1.0, 0.95, 0.8), 4.0)
+	gl.position = Vector3(0, 1.15, 0.5)
+	chase_door.add_child(gl)
+	var ol := OmniLight3D.new()
+	ol.light_color = Color(1.0, 0.9, 0.7)
+	ol.light_energy = 2.0
+	ol.omni_range = 8.0
+	ol.position = Vector3(-1.0, 1.5, 0)
+	chase_door.add_child(ol)
+	chase_door.position = Vector3(chase_door_x, 0, 15.0 * T)
+	# der Verfolger: zu gross, zu duenn, rennt ruckartig
+	chaser = Node3D.new()
+	add_child(chaser)
+	var vis := Node3D.new()
+	vis.rotation.y = -PI / 2.0
+	chaser.add_child(vis)
+	chaser_xb = XBotC.new(vis, Color(0.25, 0.22, 0.2), 1.0, Color(1.0, 0.25, 0.2), 1.4, 1.2, 1.7)
+	chaser_xb.set_clothes({"skin": Color(0.7, 0.66, 0.62), "shirt": Color(0.15, 0.12, 0.1), "pants": Color(0.1, 0.08, 0.07), "hair": Color(0.05, 0.05, 0.05)})
+	chaser_xb.bandage_head(Color(0.25, 0.0, 0.0))
+	chaser_xb.stretch = 1.5
+	chaser_xb.hunch = 0.55
+	chaser_xb.twitch = 3.0
+	chaser_xb.step = 1.0 / 9.0
+	chaser.position = Vector3(checkpoint.x - 30.0, 0, 15.0 * T)
+	var cl := OmniLight3D.new()
+	cl.light_color = Color(1.0, 0.2, 0.15)
+	cl.light_energy = 5.0
+	cl.omni_range = 9.0
+	cl.position = Vector3(0, 2.6, 0)
+	chaser.add_child(cl)
+	chase_steps = AudioStreamPlayer3D.new()
+	if ResourceLoader.exists("res://assets/sfx/chase_steps.ogg"):
+		chase_steps.stream = load("res://assets/sfx/chase_steps.ogg")
+	if chase_steps.stream:
+		chase_steps.stream.loop = true
+	chase_steps.unit_size = 6.0
+	chase_steps.volume_db = 2.0
+	chaser.add_child(chase_steps)
+
+func _update_chase(delta: float) -> void:
+	var T: float = level.T
+	if state != "play":
+		return
+	chase_t += delta
+	var px: float = player.global_position.x
+	# die Tuer laeuft davon, solange der Flur "waechst"
+	if chase_t < CHASE_STRETCH:
+		chase_door_x = maxf(chase_door_x, px + 55.0)
+		chase_door_x = minf(chase_door_x, (level.w - 4) * T)
+	chase_door.position.x = chase_door_x
+	if chase_t < 0.0:
+		chaser_xb.update(delta, 0.0)
+		return
+	if chase_t - delta < 0.0:
+		banner("RUN", Color("#ff2a2a"))
+		shake(0.6)
+		Game.play_music("chase")
+		if chase_steps.stream:
+			chase_steps.play()
+	if chase_steps.stream and not chase_steps.playing:
+		chase_steps.play()
+	# Gummiband: immer knapp hinter dir, schneller wenn du weit weg bist
+	var dist: float = px - chaser.position.x
+	var spd := 6.4 + clampf((dist - 12.0) * 0.25, 0.0, 6.0)
+	if chase_t < 3.0:
+		spd *= 0.6
+	chaser.position.x += spd * delta
+	chaser.position.z = lerpf(chaser.position.z, player.global_position.z, delta * 2.0)
+	chaser_xb.update(delta, spd)
+	shake_t = maxf(shake_t, clampf(0.25 - dist * 0.01, 0.0, 0.2))
+	if dist < 1.6:
+		instakill("IT CAUGHT YOU")
+		return
+	if player.global_position.distance_to(Vector3(chase_door_x, 0, 15.0 * T)) < 2.0:
+		chase_on = false
+		chase_steps.stop()
+		state = "transition"
+		trans_t = 0.0
+		trans_lines = ch.transition
+		Game.sfx("land", 0.3, 1.0)
+
+# nach dem Tod im Flur: alles zurueck auf Anfang
+func _reset_chase() -> void:
+	chase_t = -2.0
+	chase_door_x = (level.w - 4) * level.T
+	chaser.position.x = checkpoint.x - 30.0

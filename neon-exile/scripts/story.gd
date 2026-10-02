@@ -161,6 +161,10 @@ const DIALOG := {
 	"mem_c7": [["MIRA", "When I grow up I'll drive the train. And you can ride for free."], ["ECHO", "Forever?"], ["MIRA", "Forever and ever."]],
 	"mem_c8": [["ECHO", "I used to think heaven was a place. Maybe it's just a day you get to keep."]],
 	"mem_c9": [["HALCYON", "I kept every day. I just couldn't keep you."], ["MIRA", "Mom. It's okay to put us down now."]],
+	"c11_intro": [
+		["ECHO", "This hallway. I ran down it that night, away from the sirens."],
+		["MIRA", "Something is behind you, Echo. Don't look back. Just run."],
+	],
 	"c7_victory": [
 		["MIRA", "You can't change which train you took. But you can stop riding it."],
 		["ECHO", "Then let's go somewhere else. Anywhere but here."],

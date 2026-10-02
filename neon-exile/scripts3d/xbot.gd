@@ -41,6 +41,11 @@ var head_look := 0.0
 var stretch := 1.0       # Unterarme/Hals laenger
 var bones := {}
 var base_head := Quaternion.IDENTITY
+var base_spine := Quaternion.IDENTITY
+var hunch := 0.0        # Oberkoerper nach vorn gekruemmt (rad)
+var twitch := 0.0       # Zuckungen pro Sekunde
+var _tw_t := 0.0
+var _tw_q := Quaternion.IDENTITY
 var fresh := true
 var mats: Array = []
 
@@ -162,6 +167,56 @@ func void_head(rim: Color) -> void:
 	mi.material_override = m
 	ba.add_child(mi)
 
+# Kopf in schmutzige Binden gewickelt, ein dunkler Fleck, wo ein Auge sein sollte
+func bandage_head(stain: Color = Color(0.35, 0.05, 0.04)) -> void:
+	if skel == null or bones.get("Head", -1) < 0:
+		return
+	var ba := BoneAttachment3D.new()
+	ba.bone_idx = bones.Head
+	skel.add_child(ba)
+	var cloth := StandardMaterial3D.new()
+	cloth.albedo_color = Color(0.78, 0.74, 0.64)
+	cloth.roughness = 1.0
+	var head := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 12.5
+	sm.height = 27.0
+	sm.radial_segments = 24
+	sm.rings = 12
+	head.mesh = sm
+	head.material_override = cloth
+	head.position = Vector3(0, 8.0, 5.0)
+	ba.add_child(head)
+	# einzelne Bahnen der Binde
+	var band_m := StandardMaterial3D.new()
+	band_m.albedo_color = Color(0.68, 0.63, 0.53)
+	band_m.roughness = 1.0
+	for k in 5:
+		var tor := MeshInstance3D.new()
+		var tm := TorusMesh.new()
+		tm.inner_radius = 11.5
+		tm.outer_radius = 13.6
+		tm.rings = 18
+		tm.ring_segments = 6
+		tor.mesh = tm
+		tor.material_override = band_m
+		tor.position = head.position + Vector3(0, -6.0 + k * 3.2, 0)
+		tor.rotation = Vector3(randf_range(-0.35, 0.35), randf() * TAU, randf_range(-0.25, 0.25))
+		tor.scale = Vector3(1, 1, 1) * (1.0 - absf(k - 2) * 0.12)
+		ba.add_child(tor)
+	var st := StandardMaterial3D.new()
+	st.albedo_color = stain
+	st.roughness = 0.3
+	var blot := MeshInstance3D.new()
+	var bm := SphereMesh.new()
+	bm.radius = 4.0
+	bm.height = 6.0
+	blot.mesh = bm
+	blot.material_override = st
+	blot.position = head.position + Vector3(4.0 * (1 if randf() < 0.5 else -1), 2.0, 11.0)
+	blot.scale = Vector3(1.0, 1.3, 0.45)
+	ba.add_child(blot)
+
 func play(n: String, spd: float = 1.0) -> void:
 	if anim == null or not anim.has_animation(n):
 		return
@@ -230,7 +285,17 @@ func update(delta: float, speed: float) -> void:
 		var hb: int = bones.Head
 		if advanced:
 			base_head = skel.get_bone_pose_rotation(hb)
-		skel.set_bone_pose_rotation(hb, base_head * Quaternion(Vector3(0, 0, 1), head_tilt) * Quaternion(Vector3(0, 1, 0), head_look))
+			if bones.get("Spine2", -1) >= 0:
+				base_spine = skel.get_bone_pose_rotation(bones.Spine2)
+		# ploetzliches Zucken des Kopfes (wie etwas, das nur so tut, als waere es ein Mensch)
+		_tw_t -= delta
+		if twitch > 0.0 and _tw_t <= 0.0 and randf() < delta * twitch:
+			_tw_t = randf_range(0.08, 0.2)
+			_tw_q = Quaternion(Vector3(randf() - 0.5, randf() - 0.5, randf() - 0.5).normalized(), randf_range(0.4, 0.9))
+		var tq := _tw_q if _tw_t > 0.0 else Quaternion.IDENTITY
+		skel.set_bone_pose_rotation(hb, base_head * Quaternion(Vector3(0, 0, 1), head_tilt) * Quaternion(Vector3(0, 1, 0), head_look) * tq)
+		if hunch != 0.0 and bones.get("Spine2", -1) >= 0:
+			skel.set_bone_pose_rotation(bones.Spine2, base_spine * Quaternion(Vector3(1, 0, 0), hunch))
 		if stretch != 1.0:
 			for b in ["Neck", "LeftForeArm", "RightForeArm"]:
 				var bi: int = bones.get(b, -1)

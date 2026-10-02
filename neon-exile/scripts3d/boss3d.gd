@@ -110,8 +110,13 @@ func _build_giant() -> void:
 	xb.stretch = 1.45
 	xb.head_tilt = 0.35
 	xb.step = 1.0 / 12.0
-	if kind != "mannequin" and kind != "halcyon":
+	xb.set_clothes(o)
+	if kind in ["nurse", "headmaster", "conductor"]:
+		xb.bandage_head(Color(0.3, 0.02, 0.02))
+	elif kind != "mannequin" and kind != "halcyon":
 		xb.void_head(brim.get(kind, Color.WHITE))
+	xb.hunch = 0.3 if kind != "halcyon" else 0.0
+	xb.twitch = 0.9
 	if kind == "mannequin":
 		for m in xb.mats:
 			m.roughness = 0.12

@@ -58,8 +58,9 @@ func _apply_textures() -> void:
 	}
 	if not cfg.has(theme):
 		return
-	var w = null if cfg[theme][0][0] == "" else _tex(cfg[theme][0][0], cfg[theme][0][1], Color(0.95, 0.95, 0.95), 0.6)
-	var f = _tex(cfg[theme][1][0], cfg[theme][1][1], Color.WHITE, 0.35 if theme in ["pool", "mall", "crown"] else 0.85)
+	var wname: String = ch.get("wall_tex", cfg[theme][0][0])
+	var w = null if wname == "" else _tex(wname, cfg[theme][0][1], Color(0.95, 0.95, 0.95), 0.6)
+	var f = _tex(ch.get("floor_tex", cfg[theme][1][0]), cfg[theme][1][1], Color.WHITE, 0.35 if theme in ["pool", "mall", "crown"] else 0.85)
 	if w:
 		wall_mat = w
 	if f:
@@ -91,7 +92,8 @@ func _setup_mats() -> void:
 		"office":
 			wall_mat = _surf(1, Color(0.78, 0.72, 0.42), Color(0.68, 0.6, 0.32), Color(0.45, 0.4, 0.25), 0.4)
 			floor_mat = _surf(2, Color(0.55, 0.5, 0.3), Color(0.42, 0.38, 0.22), Color.WHITE, 1.0)
-			ceil_mat = _surf(5, Color(0.85, 0.83, 0.75), Color(0.6, 0.58, 0.5), Color.WHITE, 1.2)
+			# Archiv: dunkle Holzkassettendecke statt gelber Backrooms-Platten
+			ceil_mat = _surf(5, Color(0.28, 0.2, 0.13), Color(0.18, 0.12, 0.08), Color.WHITE, 1.2)
 		"crown":
 			# die Krone: blasses, endloses Weiss, Kacheln wie im Schwimmbad, aber ohne Wasser
 			wall_mat = _surf(0, Color(0.93, 0.92, 0.95), Color(0.82, 0.8, 0.86), Color(0.75, 0.7, 0.85), 0.9)
@@ -266,6 +268,7 @@ func _build() -> void:
 					var m := door_mat if grid[y][x] == "D" else gate_mat
 					door_nodes[Vector2i(x, y)] = _box(cell_center(Vector2i(x, y)) + Vector3(0, WALL_H / 2.0, 0), Vector3(T, WALL_H, T * 0.3), m, true)
 				x += 1
+	_round_corners()
 	_decorate()
 	if not side_rooms.is_empty():
 		_furnish_rooms()
@@ -393,7 +396,9 @@ func _build_water_and_ceiling() -> void:
 func _decorate() -> void:
 	match theme:
 		"mall": _deco_mall()
-		"office": _deco_office()
+		"office":
+			_deco_office()
+			_deco_archive()
 		"school": _deco_school()
 		"crown": pass
 		"hospital": _deco_hospital()
@@ -426,7 +431,7 @@ func _deco_pool() -> void:
 						ok = false
 			if ok and rng.randf() < 0.7:
 				var c := cell_center(Vector2i(x, y))
-				_box(Vector3(c.x, WALL_H / 2.0, c.z), Vector3(1.0, WALL_H, 1.0), wall_mat, true)
+				_cyl(Vector3(c.x, WALL_H / 2.0, c.z), 0.55, WALL_H, wall_mat, true)
 	# Pool-Leitern an Waenden
 	for i in 14:
 		var c: Vector2i = cells[rng.randi() % cells.size()]
@@ -621,6 +626,8 @@ func _build_ceiling() -> void:
 				_box(Vector3((s0 + x) * T / 2.0, WALL_H + 0.25, y * T + T / 2.0), Vector3((x - s0) * T, 0.5, T), ceil_mat, false)
 	# Deckenleuchten im Raster
 	var lamp_col := Color("#fff6d8") if theme != "mall" else Color("#ffe6f2")
+	if theme == "office":
+		lamp_col = Color("#ffd9a0")
 	var lm := _emit(lamp_col, 2.5)
 	var n := 0
 	for y in range(1, h, 3 if theme == "office" else 4):
@@ -1809,3 +1816,108 @@ func _guide_marks() -> void:
 			bar.rotation.y = sgn * 0.75
 			bar.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			add_child(bar)
+
+# runde Saeule (mit Kollision)
+func _cyl(pos: Vector3, r: float, hgt: float, m: Material, collide: bool) -> Node3D:
+	var node: Node3D = StaticBody3D.new() if collide else Node3D.new()
+	var mi := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = r
+	cm.bottom_radius = r
+	cm.height = hgt
+	cm.radial_segments = 20
+	mi.mesh = cm
+	mi.material_override = m
+	node.add_child(mi)
+	if collide:
+		var cs := CollisionShape3D.new()
+		var sh := CylinderShape3D.new()
+		sh.radius = r
+		sh.height = hgt
+		cs.shape = sh
+		node.add_child(cs)
+	node.position = pos
+	add_child(node)
+	return node
+
+# Ecken abrunden: an jeder Wandecke eine runde Saeule (aussen) bzw. Hohlkehle (innen).
+# Alles in einem MultiMesh, damit es schnell bleibt.
+func _round_corners() -> void:
+	var pts: Array = []
+	for y in range(1, h - 1):
+		for x in range(1, w - 1):
+			# Eckpunkt oben links der Zelle (x, y)
+			var a: bool = grid[y - 1][x - 1] == "#"
+			var b: bool = grid[y - 1][x] == "#"
+			var c: bool = grid[y][x - 1] == "#"
+			var d: bool = grid[y][x] == "#"
+			var n := int(a) + int(b) + int(c) + int(d)
+			if n == 1 or n == 3:
+				pts.append(Vector3(x * T, WALL_H / 2.0, y * T))
+	if pts.is_empty():
+		return
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.45
+	cm.bottom_radius = 0.45
+	cm.height = WALL_H
+	cm.radial_segments = 16
+	cm.rings = 1
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = cm
+	mm.instance_count = pts.size()
+	for i in pts.size():
+		mm.set_instance_transform(i, Transform3D(Basis(), pts[i]))
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	mmi.material_override = wall_mat
+	add_child(mmi)
+
+# Archiv: Papiertuerme bis zur Decke, gruene Bibliothekslampen, Regalwaende
+func _deco_archive() -> void:
+	var paper := _plain(Color(0.88, 0.85, 0.76), 0.95)
+	var shelf_m := _plain(Color(0.3, 0.2, 0.12), 0.7)
+	var green := _emit(Color(0.35, 0.9, 0.45), 1.6)
+	var brass := _plain(Color(0.75, 0.6, 0.3), 0.3, 0.8)
+	var cells := _floor_cells()
+	for i in 26:
+		var c: Vector2i = cells[rng.randi() % cells.size()]
+		if c.y >= 14 and c.y <= 15:
+			continue
+		var p := cell_center(c) + Vector3(rng.randf_range(-0.8, 0.8), 0, rng.randf_range(-0.8, 0.8))
+		var hgt := rng.randf_range(1.0, WALL_H)
+		var stack := 0.0
+		while stack < hgt:
+			var sh := rng.randf_range(0.15, 0.35)
+			var b := _box(p + Vector3(rng.randf_range(-0.05, 0.05), stack + sh / 2.0, rng.randf_range(-0.05, 0.05)), Vector3(0.5, sh, 0.38), paper, false)
+			b.rotation.y = rng.randf_range(-0.3, 0.3)
+			stack += sh
+	# Regale an den Waenden
+	var walls := _wall_cells()
+	walls.shuffle()
+	for k in mini(40, walls.size()):
+		var wc = walls[k]
+		var c: Vector2i = wc[0]
+		var d: Vector2i = wc[1]
+		if c.y >= 14 and c.y <= 15:
+			continue
+		var p := cell_center(c) + Vector3(d.x, 0, d.y) * (T / 2.0 - 0.3)
+		var size := Vector3(0.5, WALL_H - 0.4, T * 0.9) if d.x != 0 else Vector3(T * 0.9, WALL_H - 0.4, 0.5)
+		_box(p + Vector3(0, size.y / 2.0, 0), size, shelf_m, true)
+		for lvl in int(size.y / 0.6):
+			var bp := p + Vector3(0, 0.4 + lvl * 0.6, 0) - Vector3(d.x, 0, d.y) * 0.05
+			_box(bp, Vector3(0.4, 0.3, T * 0.8) if d.x != 0 else Vector3(T * 0.8, 0.3, 0.4), paper, false)
+	# gruene Bankerlampen
+	for i in 12:
+		var c: Vector2i = cells[rng.randi() % cells.size()]
+		var p := cell_center(c)
+		_box(p + Vector3(0, 0.72, 0), Vector3(1.4, 0.06, 0.8), shelf_m, true)
+		_box(p + Vector3(0, 0.36, 0), Vector3(1.2, 0.72, 0.6), shelf_m, false)
+		_box(p + Vector3(0.3, 0.9, 0), Vector3(0.05, 0.3, 0.05), brass, false)
+		_box(p + Vector3(0.3, 1.05, 0), Vector3(0.4, 0.1, 0.18), green, false)
+		var ol := OmniLight3D.new()
+		ol.light_color = Color(0.6, 1.0, 0.6)
+		ol.light_energy = 0.7
+		ol.omni_range = 4.0
+		ol.position = p + Vector3(0.3, 0.9, 0)
+		add_child(ol)
