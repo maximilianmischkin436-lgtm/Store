@@ -1468,7 +1468,7 @@ func _populate_ghosts() -> void:
 	rng.seed = chapter * 77
 	var n := 0
 	var tries := 0
-	while n < 16 and tries < 400:
+	while n < 10 and tries < 400:
 		tries += 1
 		var c: Vector2i = cells[rng.randi() % cells.size()]
 		var pos: Vector3 = level.cell_center(c)
@@ -1476,6 +1476,20 @@ func _populate_ghosts() -> void:
 			continue
 		spawn_npc("passive", pos)
 		n += 1
+	# sitzende Figuren auf Stuehlen in den Seitenraeumen (Klassen, Bueros, Krankenzimmer, Zuhause)
+	var seated := 0
+	for st in level.seats:
+		if seated >= 16 or rng.randf() > 0.45:
+			continue
+		var cs: Vector2i = level.cell_of(st.pos)
+		if cs.x >= gate_col:
+			continue
+		var e = spawn_npc("passive", st.pos)
+		e.sitting = true
+		e.collision_layer = 0
+		e.position = Vector3(st.pos.x, 0.0, st.pos.z)
+		e.visual.rotation.y = st.yaw
+		seated += 1
 
 # ---------- Gefahrenzonen (Boss-Angriffe mit Vorwarnung) ----------
 var hazards: Array = []

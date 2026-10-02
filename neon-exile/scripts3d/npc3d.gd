@@ -11,6 +11,7 @@ extends CharacterBody3D
 const Figure = preload("res://scripts3d/figure.gd")
 const XBot = preload("res://scripts3d/xbot.gd")
 var xb
+var sitting := false
 const KIND := {
 	"pool": ["swimmer", "lifeguard"], "mall": ["shopper", "mannequin"],
 	"office": ["worker", "manager"], "school": ["student", "teacher"],
@@ -122,6 +123,13 @@ func _ready() -> void:
 	else:
 		xb = XBot.new(visual, col, base_alpha, Color(0.8, 0.85, 1.0), 0.35, 0.15, o.height)
 		xb.head_tilt = rng.randf_range(-0.15, 0.15)
+	var oc := o.duplicate()
+	if role == "hostile":
+		for k in ["shirt", "pants", "skin"]:
+			oc[k] = (oc[k] as Color).darkened(0.25)
+	xb.set_clothes(oc)
+	if role == "passive":
+		xb.set_face(0.8)
 	mats = xb.mats
 	if kind == "teacher":
 		beam = MeshInstance3D.new()
@@ -150,7 +158,15 @@ func _physics_process(delta: float) -> void:
 	for m in mats:
 		m.emission_energy_multiplier = 2.5 if flash > 0.0 else 0.25
 	if xb:
-		xb.update(delta, Vector2(velocity.x, velocity.z).length())
+		if sitting and not xb.sitting:
+			xb.sit()
+		# weit entfernte Figuren seltener animieren (Leistung)
+		var far: bool = main.player and global_position.distance_squared_to(main.player.global_position) > 900.0
+		if not far or Engine.get_physics_frames() % 4 == 0:
+			xb.update(delta * (4.0 if far else 1.0), Vector2(velocity.x, velocity.z).length())
+	if sitting:
+		velocity = Vector3.ZERO
+		return
 	# Geister flackern manchmal
 	if base_alpha < 1.0 and rng.randf() < delta * 0.6:
 		visual.visible = false

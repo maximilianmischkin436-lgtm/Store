@@ -14,7 +14,7 @@ func _ready() -> void:
 	env.background_color = Color(0.25, 0.22, 0.2)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.9, 0.85, 0.75)
-	env.ambient_light_energy = 0.25
+	env.ambient_light_energy = 0.6
 	env.tonemap_exposure = 0.8
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.glow_enabled = true
@@ -26,7 +26,7 @@ func _ready() -> void:
 	we.environment = env
 	add_child(we)
 	var sun := DirectionalLight3D.new()
-	sun.rotation = Vector3(-0.9, 0.6, 0)
+	sun.rotation = Vector3(-0.7, PI + 0.4, 0)
 	sun.light_energy = 0.6
 	sun.shadow_enabled = true
 	add_child(sun)
@@ -51,6 +51,8 @@ func _ready() -> void:
 		b.step = 1.0 / 12.0 if i % 2 == 0 else 0.0
 		if i >= 3: b.void_head(Color(0.7, 0.9, 1.0))
 		v.set_meta("spd", [0.0, 1.2, 0.0, 6.0, 1.2, 0.0][i])
+		if i == 0 or i == 2: b.sit()
+		b.set_clothes({"skin": Color(0.85, 0.7, 0.6), "shirt": [Color(0.8,0.3,0.3), Color(0.3,0.4,0.7), Color(0.9,0.9,0.85)][i % 3], "pants": Color(0.2,0.22,0.35), "hair": Color(0.3,0.2,0.1)})
 		bots.append(b)
 	var bk := ["lifeguard", "mannequin", "headmaster", "nurse", "mirror", "conductor", "halcyon"]
 	for i in bk.size():
@@ -100,7 +102,12 @@ func _process(delta: float) -> void:
 		cam.look_at(Vector3(0, 3.0, 14.0))
 	if t > 4.3 and t - delta <= 4.3:
 		_snap("bosses")
-	if t > 4.8:
+	if t > 4.4 and t - delta <= 4.4:
+		cam.position = Vector3(-3.5 + 2.6, 1.0, -0.8)
+		cam.look_at(Vector3(-3.5, 0.7, 0))
+	if t > 4.8 and t - delta <= 4.8:
+		_snap("sit")
+	if t > 5.2:
 		get_tree().quit()
 
 func _snap(n: String) -> void:

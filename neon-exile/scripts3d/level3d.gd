@@ -124,6 +124,8 @@ func _setup_mats() -> void:
 			ceil_mat = _surf(5, Color(0.92, 0.9, 0.85), Color(0.7, 0.68, 0.6), Color.WHITE, 1.2)
 
 var secret_cells: Array = []
+var side_rooms: Array = []   # [{pos, dir}] Mitte der Seitenraeume, dir = Richtung zum Flur
+var seats: Array = []        # [{pos, yaw}] Plaetze fuer sitzende Figuren
 
 func _init() -> void:
 	(wall_mat as ShaderMaterial).shader = load("res://scripts3d/tiles.gdshader")
@@ -148,6 +150,9 @@ func load_map(path: String) -> void:
 			var c := rows[y][x]
 			if c in ["P", "c", "d", "S", "B", "X"]:
 				spawns.append({"c": c, "pos": cell_center(Vector2i(x, y))})
+				c = "."
+			elif c == "k" or c == "K":
+				side_rooms.append({"pos": cell_center(Vector2i(x, y)), "dir": 1 if c == "k" else -1})
 				c = "."
 			elif c in ["1", "2", "3", "4", "5"]:
 				triggers[Vector2i(x, y)] = c
@@ -228,11 +233,17 @@ func _build() -> void:
 					var fake := _box(cell_center(Vector2i(x, y)) + Vector3(0, WALL_H / 2.0, 0), Vector3(T, WALL_H, T), wall_mat, false)
 					fake.name = "FakeWall"
 					secret_cells.append(Vector2i(x, y))
+				if grid[y][x] == "W":
+					_window(Vector2i(x, y))
 				if grid[y][x] in ["D", "G"]:
 					var m := door_mat if grid[y][x] == "D" else gate_mat
 					door_nodes[Vector2i(x, y)] = _box(cell_center(Vector2i(x, y)) + Vector3(0, WALL_H / 2.0, 0), Vector3(T, WALL_H, T * 0.3), m, true)
 				x += 1
 	_decorate()
+	if not side_rooms.is_empty():
+		_furnish_rooms()
+	if _has("Y"):
+		_build_yard()
 	# Farbiges Licht pro Raum fuer Stimmung
 	var lc: Array = ch.lights
 	for l in [[Vector3(8, 4, 14), lc[0]], [Vector3(33, 4, 14), lc[1]], [Vector3(54, 4, 14), lc[2]], [Vector3(83, 5, 14), lc[3]]]:
@@ -277,6 +288,12 @@ func _floor_cells() -> Array:
 				out.append(Vector2i(x, y))
 	return out
 
+# Dachfenster: verstreut + lange Glasstreifen ueber dem Hauptweg (Blick auf die Rutschen im Himmel)
+func _sky_open(x: int, y: int) -> bool:
+	if grid[y][x] == "#":
+		return false
+	return (x * 7 + y * 13) % 17 == 0 or (theme == "pool" and (y == 13 or y == 16) and x % 4 != 0)
+
 func _build_water_and_ceiling() -> void:
 	rng.seed = 11
 	water_mat.shader = load("res://scripts3d/water.gdshader")
@@ -301,20 +318,20 @@ func _build_water_and_ceiling() -> void:
 	for y in h:
 		var x := 0
 		while x < w:
-			var open: bool = grid[y][x] != "#" and (x * 7 + y * 13) % 17 == 0
+			var open: bool = _sky_open(x, y)
 			if open:
 				skylights.append(Vector2i(x, y))
 				x += 1
 				continue
 			var st := x
-			while x < w and not (grid[y][x] != "#" and (x * 7 + y * 13) % 17 == 0):
+			while x < w and not _sky_open(x, y):
 				x += 1
 			var ln := (x - st) * T
 			_box(Vector3(st * T + ln / 2.0, WALL_H + 0.25, y * T + T / 2.0), Vector3(ln, 0.5, T), wall_mat, false)
 	# Licht durch die Dachfenster
 	for i in skylights.size():
 		var c: Vector2i = skylights[i]
-		if i % 2 == 0:
+		if i % 5 == 0:
 			var sl := SpotLight3D.new()
 			sl.light_color = Color("#fffaf0")
 			sl.light_energy = 2.0
@@ -412,6 +429,113 @@ func _deco_pool() -> void:
 		_box(p + Vector3(-1.4, 1.5, 0), Vector3(0.4, 3.0, 0.4), wall_mat, true)
 		_box(p + Vector3(1.4, 1.5, 0), Vector3(0.4, 3.0, 0.4), wall_mat, true)
 		_box(p + Vector3(0, 3.2, 0), Vector3(3.2, 0.4, 0.4), wall_mat, false)
+	_slides()
+
+# ---------------- Wasserrutschen: an den Waenden und hoch oben im Himmel ----------------
+func _tube(pts: Array, r: float, m: Material, ring_m: Material = null) -> void:
+	var cm := CylinderMesh.new()
+	cm.top_radius = r
+	cm.bottom_radius = r
+	cm.height = 1.0
+	cm.radial_segments = 14
+	cm.rings = 1
+	for i in pts.size() - 1:
+		var a: Vector3 = pts[i]
+		var b: Vector3 = pts[i + 1]
+		var d := b - a
+		var ln := d.length()
+		if ln < 0.01:
+			continue
+		var mi := MeshInstance3D.new()
+		mi.mesh = cm
+		mi.material_override = m
+		var yv := d / ln
+		var xv := yv.cross(Vector3.UP if absf(yv.y) < 0.95 else Vector3.RIGHT).normalized()
+		var zv := xv.cross(yv).normalized()
+		mi.transform = Transform3D(Basis(xv, yv * (ln + r * 0.6), zv), (a + b) / 2.0)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mi)
+		if ring_m and i % 4 == 0:
+			var rg := MeshInstance3D.new()
+			var tm := TorusMesh.new()
+			tm.inner_radius = r * 0.98
+			tm.outer_radius = r * 1.12
+			tm.rings = 14
+			tm.ring_segments = 6
+			rg.mesh = tm
+			rg.material_override = ring_m
+			rg.transform = Transform3D(Basis(xv, yv, zv), a)
+			add_child(rg)
+
+func _slides() -> void:
+	var cols := [Color(1.0, 0.82, 0.2), Color(0.25, 0.6, 1.0), Color(1.0, 0.35, 0.3), Color(0.95, 0.95, 0.95), Color(0.4, 0.9, 0.6)]
+	var white := _plain(Color(0.97, 0.97, 0.97), 0.3)
+	var steel := chrome
+	# 1) an den Waenden entlang: lange Geraden, die langsam nach unten laufen
+	var runs := {}
+	for wc in _wall_cells():
+		var c: Vector2i = wc[0]
+		var d: Vector2i = wc[1]
+		if d.y == 0:
+			continue
+		var key := "%d_%d" % [c.y, d.y]
+		if not runs.has(key):
+			runs[key] = []
+		runs[key].append(c.x)
+	var made := 0
+	for key in runs.keys():
+		var xs: Array = runs[key]
+		xs.sort()
+		var start := 0
+		for i in range(1, xs.size() + 1):
+			if i == xs.size() or xs[i] != xs[i - 1] + 1:
+				var n := i - start
+				if n >= 7 and made < 4:
+					var parts: PackedStringArray = key.split("_")
+					var cy := int(parts[0]); var dy := int(parts[1])
+					var z := cy * T + T / 2.0 + dy * (T / 2.0 - 1.0)
+					var x0: float = xs[start] * T + 1.0
+					var x1: float = (xs[i - 1] + 1) * T - 1.0
+					var pts: Array = []
+					var steps := int((x1 - x0) / 1.5)
+					for k in steps + 1:
+						var f := float(k) / steps
+						pts.append(Vector3(lerpf(x0, x1, f), lerpf(WALL_H - 1.2, 0.7, f) + sin(f * TAU * 1.5) * 0.25, z + sin(f * TAU) * 0.35))
+					var m := _plain(cols[made % cols.size()], 0.25)
+					m.metallic_specular = 0.8
+					_tube(pts, 0.55, m, white)
+					for k in range(0, pts.size(), 3):
+						var sp: Vector3 = pts[k]
+						_box(Vector3(sp.x, sp.y / 2.0, sp.z), Vector3(0.12, sp.y, 0.12), steel, false)
+					made += 1
+				start = i
+	# 2) hoch oben im Himmel: riesige Schlaufen ueber den Dachfenstern
+	var cx := w * T / 2.0
+	var cz := h * T / 2.0
+	for s in 4:
+		var pts: Array = []
+		var x_off := (s - 1.5) * w * T * 0.22
+		var top := WALL_H + 9.0 + s * 2.5
+		for k in 60:
+			var f := k / 59.0
+			var a := f * TAU * 1.6 + s
+			pts.append(Vector3(cx + x_off + cos(a) * (10.0 + s * 2.0) + f * 18.0, top - f * 7.0, cz + sin(a) * (h * T * 0.28)))
+		var m := _plain(cols[(s + 1) % cols.size()], 0.25)
+		m.metallic_specular = 0.8
+		_tube(pts, 0.9, m, white)
+		for k in range(0, pts.size(), 8):
+			var sp: Vector3 = pts[k]
+			var hgt := sp.y - WALL_H
+			_box(Vector3(sp.x, WALL_H + hgt / 2.0, sp.z), Vector3(0.25, hgt, 0.25), steel, false)
+	# Rutschturm in der Mitte des Startraums: Wendel nach oben durchs Dach
+	var tw := cell_center(Vector2i(8, 11))
+	var hel: Array = []
+	for k in 70:
+		var a := k * 0.28
+		hel.append(tw + Vector3(cos(a) * 2.2, 0.8 + k * 0.32, sin(a) * 2.2))
+	_tube(hel, 0.6, _plain(cols[2], 0.25), white)
+	_box(tw + Vector3(0, (0.8 + 70 * 0.32) / 2.0, 0), Vector3(0.6, 0.8 + 70 * 0.32, 0.6), steel, true)
+
 func _memory_text(col: Color) -> void:
 	var cells := _floor_cells()
 	for i in MEMORY_TEXT.size():
@@ -446,8 +570,20 @@ func _plain(col: Color, rough: float = 0.6, metal: float = 0.0) -> StandardMater
 	return m
 
 func _build_ceiling() -> void:
-	# Geschlossene Decke in Streifen
-	_box(Vector3(w * T / 2.0, WALL_H + 0.25, h * T / 2.0), Vector3(w * T, 0.5, h * T), ceil_mat, true)
+	# Geschlossene Decke; ueber dem Pausenhof (Y) bleibt der Himmel offen
+	if not _has("Y"):
+		_box(Vector3(w * T / 2.0, WALL_H + 0.25, h * T / 2.0), Vector3(w * T, 0.5, h * T), ceil_mat, true)
+	else:
+		for y in h:
+			var x := 0
+			while x < w:
+				if grid[y][x] == "Y":
+					x += 1
+					continue
+				var s0 := x
+				while x < w and grid[y][x] != "Y":
+					x += 1
+				_box(Vector3((s0 + x) * T / 2.0, WALL_H + 0.25, y * T + T / 2.0), Vector3((x - s0) * T, 0.5, T), ceil_mat, false)
 	# Deckenleuchten im Raster
 	var lamp_col := Color("#fff6d8") if theme != "mall" else Color("#ffe6f2")
 	var lm := _emit(lamp_col, 2.5)
@@ -1222,3 +1358,221 @@ func _extra_deco() -> void:
 					tr.material_override = _plain(Color(0.85, 0.7, 0.2), 0.2, 0.9)
 					tr.position = p + Vector3(-0.6 + k * 0.6, 2.2, 0).rotated(Vector3.UP, r)
 					add_child(tr))
+
+# ---------------- Fenster, Pausenhof, eingerichtete Seitenraeume ----------------
+func _has(c: String) -> bool:
+	for row in grid:
+		if row.has(c):
+			return true
+	return false
+
+func _window(c: Vector2i) -> void:
+	var p := cell_center(c)
+	var sill := 1.0
+	var top := minf(2.6, WALL_H - 0.5)
+	# Wand unten und oben, dazwischen Glas; Kollision ueber die ganze Hoehe
+	var body := StaticBody3D.new()
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = Vector3(T, WALL_H, 0.4)
+	cs.shape = bs
+	body.add_child(cs)
+	body.position = p + Vector3(0, WALL_H / 2.0, 0)
+	add_child(body)
+	_box(p + Vector3(0, sill / 2.0, 0), Vector3(T, sill, 0.4), wall_mat, false)
+	_box(p + Vector3(0, (top + WALL_H) / 2.0, 0), Vector3(T, WALL_H - top, 0.4), wall_mat, false)
+	var frame := _plain(Color(0.85, 0.85, 0.82), 0.4)
+	_box(p + Vector3(0, sill + 0.03, 0), Vector3(T, 0.08, 0.5), frame, false)
+	_box(p + Vector3(0, top - 0.03, 0), Vector3(T, 0.06, 0.45), frame, false)
+	for k in [-1, 0, 1]:
+		_box(p + Vector3(k * T / 2.0, (sill + top) / 2.0, 0), Vector3(0.08, top - sill, 0.42), frame, false)
+	var glass := StandardMaterial3D.new()
+	glass.albedo_color = Color(0.75, 0.85, 0.95, 0.12)
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	glass.roughness = 0.05
+	glass.metallic_specular = 1.0
+	glass.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var g := _box(p + Vector3(0, (sill + top) / 2.0, 0), Vector3(T, top - sill, 0.03), glass, false)
+	(g.get_child(0) as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+func _build_yard() -> void:
+	# Bereich der Y-Zellen
+	var x0 := w; var x1 := 0; var y0s: Array = []
+	for y in h:
+		for x in w:
+			if grid[y][x] == "Y":
+				x0 = mini(x0, x); x1 = maxi(x1, x)
+				if not y0s.has(y): y0s.append(y)
+	if y0s.is_empty():
+		return
+	var asphalt := _plain(Color(0.36, 0.35, 0.37), 0.95)
+	var grass := _plain(Color(0.3, 0.5, 0.22), 1.0)
+	var line_m := _plain(Color(0.92, 0.9, 0.82), 0.8)
+	# zusammenhaengende Zeilenbloecke (oben und unten) einzeln ausbauen
+	var blocks: Array = []
+	var cur: Array = []
+	y0s.sort()
+	for y in y0s:
+		if cur.is_empty() or y == cur[-1] + 1:
+			cur.append(y)
+		else:
+			blocks.append(cur); cur = [y]
+	blocks.append(cur)
+	for b in blocks:
+		var za: float = b[0] * T
+		var zb: float = (b[-1] + 1) * T
+		var xa := x0 * T
+		var xb := (x1 + 1) * T
+		var cz := (za + zb) / 2.0
+		_box(Vector3((xa + xb) / 2.0, 0.02, cz), Vector3(xb - xa, 0.04, zb - za), asphalt, false)
+		# Spielfeld-Linien
+		for k in 4:
+			var fx := xa + (xb - xa) * (0.15 + k * 0.23)
+			_box(Vector3(fx, 0.05, cz), Vector3(0.12, 0.02, (zb - za) * 0.7), line_m, false)
+			# Basketballkorb
+			var pole := Vector3(fx + 4.0, 0, za + 2.0 if b[0] > h / 2 else zb - 2.0)
+			_box(pole + Vector3(0, 1.6, 0), Vector3(0.15, 3.2, 0.15), _plain(Color(0.3, 0.3, 0.32), 0.4, 0.6), false)
+			_box(pole + Vector3(0, 3.3, 0), Vector3(1.2, 0.8, 0.05), _plain(Color(0.95, 0.95, 0.95), 0.6), false)
+		# Rasenstreifen, Baeume, Baenke, Zaun am Rand
+		var far_z := za + 1.0 if b[0] < h / 2 else zb - 1.0
+		_box(Vector3((xa + xb) / 2.0, 0.06, far_z), Vector3(xb - xa, 0.05, 2.0), grass, false)
+		for i in int((xb - xa) / 9.0):
+			var tx := xa + 4.0 + i * 9.0
+			_box(Vector3(tx, 1.5, far_z), Vector3(0.35, 3.0, 0.35), _plain(Color(0.4, 0.28, 0.18), 0.9), false)
+			var crown := MeshInstance3D.new()
+			var sm := SphereMesh.new()
+			sm.radius = 1.8
+			sm.height = 3.2
+			crown.mesh = sm
+			crown.material_override = _plain(Color(0.28, 0.48, 0.2).lerp(Color(0.8, 0.5, 0.2), rng.randf() * 0.4), 0.9)
+			crown.position = Vector3(tx, 4.2, far_z)
+			add_child(crown)
+			if i % 2 == 0:
+				_box(Vector3(tx + 4.5, 0.45, far_z), Vector3(2.0, 0.1, 0.5), _plain(Color(0.55, 0.38, 0.22), 0.8), false)
+		# Zaun
+		for i in int((xb - xa) / 1.5):
+			_box(Vector3(xa + i * 1.5, 1.0, far_z + (0.9 if b[0] < h / 2 else -0.9)), Vector3(0.05, 2.0, 0.05), _plain(Color(0.6, 0.62, 0.6), 0.4, 0.8), false)
+
+func _furnish_rooms() -> void:
+	for r in side_rooms:
+		var c: Vector3 = r.pos
+		var dir: int = r.dir         # +1: Flur liegt in +z-Richtung
+		match theme:
+			"school": _furnish_class(c, dir)
+			"hospital": _furnish_ward(c, dir)
+			"office": _furnish_office(c, dir)
+			"home": _furnish_home(c, dir)
+
+func _desk(p: Vector3, yaw: float, col: Color) -> void:
+	var top := _box(p + Vector3(0, 0.74, 0), Vector3(1.1, 0.05, 0.6), _plain(col, 0.6), true)
+	top.rotation.y = yaw
+	for sx in [-0.5, 0.5]:
+		for sz in [-0.25, 0.25]:
+			var l := _box(p + Vector3(sx, 0.37, sz).rotated(Vector3.UP, yaw), Vector3(0.05, 0.74, 0.05), _plain(Color(0.3, 0.3, 0.32), 0.4, 0.7), false)
+			l.rotation.y = yaw
+
+func _chair(p: Vector3, yaw: float, col: Color) -> void:
+	var seat := _box(p + Vector3(0, 0.45, 0), Vector3(0.45, 0.05, 0.45), _plain(col, 0.6), false)
+	seat.rotation.y = yaw
+	var back := _box(p + Vector3(0, 0.75, 0.2).rotated(Vector3.UP, yaw), Vector3(0.45, 0.55, 0.05), _plain(col, 0.6), false)
+	back.rotation.y = yaw
+	for sx in [-0.2, 0.2]:
+		for sz in [-0.2, 0.2]:
+			_box(p + Vector3(sx, 0.22, sz).rotated(Vector3.UP, yaw), Vector3(0.04, 0.45, 0.04), _plain(Color(0.25, 0.25, 0.27), 0.4, 0.7), false)
+
+func _room_extent(c: Vector3) -> Rect2i:
+	var cc := cell_of(c)
+	var x0 := cc.x; var x1 := cc.x; var y0 := cc.y; var y1 := cc.y
+	while grid[cc.y][x0 - 1] == ".": x0 -= 1
+	while grid[cc.y][x1 + 1] == ".": x1 += 1
+	while grid[y0 - 1][cc.x] == ".": y0 -= 1
+	while grid[y1 + 1][cc.x] == ".": y1 += 1
+	return Rect2i(x0, y0, x1 - x0 + 1, y1 - y0 + 1)
+
+func _furnish_class(c: Vector3, dir: int) -> void:
+	# Tafel an der linken Seitenwand, Bankreihen schauen nach links zur Tafel,
+	# so bleiben die Fenster (gegenueber vom Flur) frei
+	var r := _room_extent(c)
+	var left := r.position.x * T
+	var right := (r.position.x + r.size.x) * T
+	var zc := (r.position.y + r.size.y * 0.5) * T
+	var depth := r.size.y * T
+	var bd := MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(minf(4.0, depth - 2.0), 1.4)
+	bd.mesh = qm
+	bd.material_override = _plain(Color(0.1, 0.2, 0.15), 0.9)
+	bd.position = Vector3(left + 0.06, 1.8, zc)
+	bd.rotation.y = PI / 2.0
+	add_child(bd)
+	var chalk := ["2 + 2 = ?", "DON'T FORGET", "Mira <3 Echo", "HOMEWORK: remember", "OCT 1", "who is picking you up?"]
+	var lbl := Label3D.new()
+	lbl.text = chalk[rng.randi() % chalk.size()]
+	lbl.font_size = 64
+	lbl.pixel_size = 0.008
+	lbl.modulate = Color(0.95, 0.95, 0.9, 0.9)
+	lbl.position = bd.position + Vector3(0.02, 0.1, 0)
+	lbl.rotation.y = PI / 2.0
+	add_child(lbl)
+	_desk(Vector3(left + 1.6, 0, zc + depth * 0.25), PI / 2.0, Color(0.5, 0.35, 0.22))
+	var face := PI / 2.0
+	var x := left + 3.6
+	while x < right - 1.3:
+		for row in [-1, 0, 1]:
+			var dz: float = row * 1.7
+			if absf(dz) > depth * 0.5 - 1.2:
+				continue
+			var dp := Vector3(x, 0, zc + dz)
+			_desk(dp, PI / 2.0, Color(0.75, 0.6, 0.42))
+			var sp := dp + Vector3(0.75, 0, 0)
+			_chair(sp, face, Color(0.35, 0.45, 0.6))
+			seats.append({"pos": sp, "yaw": face})
+		x += 2.0
+
+func _furnish_ward(c: Vector3, dir: int) -> void:
+	var wall_z := c.z - dir * (2.0 * T - 1.3)
+	for k in [-1, 1]:
+		var bp := Vector3(c.x + k * 1.8, 0, wall_z)
+		_box(bp + Vector3(0, 0.5, 0), Vector3(1.0, 0.25, 2.1), _plain(Color(0.92, 0.95, 0.95), 0.7), true)
+		_box(bp + Vector3(0, 0.62, dir * -0.85), Vector3(0.8, 0.12, 0.35), _plain(Color(1, 1, 1), 0.9), false)
+		_box(bp + Vector3(0, 0.8, -dir * 1.05), Vector3(1.0, 0.8, 0.06), _plain(Color(0.7, 0.72, 0.75), 0.3, 0.7), false)
+		_box(bp + Vector3(0.75, 1.0, 0), Vector3(0.05, 2.0, 0.05), _plain(Color(0.7, 0.72, 0.75), 0.3, 0.7), false)
+		_box(bp + Vector3(0.75, 1.75, 0), Vector3(0.2, 0.3, 0.08), _plain(Color(0.8, 0.9, 1.0, 0.7), 0.1), false)
+		_chair(bp + Vector3(-1.0, 0, dir * 1.4), PI if dir > 0 else 0.0, Color(0.55, 0.6, 0.6))
+		seats.append({"pos": bp + Vector3(-1.0, 0, dir * 1.4), "yaw": PI if dir > 0 else 0.0})
+	# Vorhang
+	var cur := _plain(Color(0.6, 0.8, 0.75, 0.85), 0.9)
+	cur.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_box(Vector3(c.x, 1.3, wall_z + dir * 0.2), Vector3(0.04, 2.4, 2.6), cur, false)
+
+func _furnish_office(c: Vector3, dir: int) -> void:
+	for k in [-1, 1]:
+		var dp := Vector3(c.x + k * 1.9, 0, c.z - dir * 1.5)
+		_desk(dp, 0.0, Color(0.6, 0.58, 0.5))
+		_box(dp + Vector3(0, 0.98, 0.0), Vector3(0.5, 0.4, 0.06), _plain(Color(0.85, 0.85, 0.8), 0.5), false)
+		var scr := _box(dp + Vector3(0, 0.98, dir * 0.035), Vector3(0.42, 0.3, 0.01), _emit(Color(0.5, 0.75, 0.9), 1.5), false)
+		var sp := dp + Vector3(0, 0, dir * 0.8)
+		_chair(sp, 0.0 if dir > 0 else PI, Color(0.2, 0.2, 0.25))
+		seats.append({"pos": sp, "yaw": 0.0 if dir > 0 else PI})
+	_box(Vector3(c.x, 0.9, c.z - dir * (2.0 * T - 0.4)), Vector3(2.6, 1.8, 0.5), _plain(Color(0.55, 0.55, 0.5), 0.4, 0.6), true)
+
+func _furnish_home(c: Vector3, dir: int) -> void:
+	var kind := rng.randi() % 3
+	var back_z := c.z - dir * (2.0 * T - 1.2)
+	if kind == 0:
+		# Kinderzimmer: Bett, Teppich, Kuscheltier
+		_box(Vector3(c.x - 1.5, 0.3, back_z), Vector3(1.0, 0.45, 2.0), _plain(Color(0.85, 0.6, 0.7), 0.9), true)
+		_box(Vector3(c.x, 0.02, c.z), Vector3(2.4, 0.02, 1.8), _plain(Color(0.6, 0.75, 0.9), 1.0), false)
+		_box(Vector3(c.x - 1.5, 0.65, back_z - dir * 0.7), Vector3(0.25, 0.3, 0.2), _plain(Color(0.7, 0.5, 0.3), 1.0), false)
+	elif kind == 1:
+		# Wohnzimmer: Sofa, Fernseher mit Rauschen
+		_box(Vector3(c.x, 0.4, back_z), Vector3(2.4, 0.8, 0.9), _plain(Color(0.45, 0.35, 0.3), 0.95), true)
+		_box(Vector3(c.x, 0.6, c.z + dir * 1.8), Vector3(1.0, 0.7, 0.5), _plain(Color(0.15, 0.15, 0.15), 0.4), true)
+		_box(Vector3(c.x, 0.65, c.z + dir * 1.53), Vector3(0.8, 0.5, 0.02), _emit(Color(0.8, 0.85, 0.9), 1.2), false)
+		seats.append({"pos": Vector3(c.x - 0.6, 0, back_z + dir * 0.2), "yaw": 0.0 if dir > 0 else PI})
+	else:
+		# Kueche: Tisch mit Stuehlen
+		_box(Vector3(c.x, 0.75, c.z), Vector3(1.6, 0.06, 1.0), _plain(Color(0.7, 0.55, 0.38), 0.6), true)
+		for k in [-1, 1]:
+			_chair(Vector3(c.x + k * 1.1, 0, c.z), k * PI / 2.0, Color(0.6, 0.45, 0.3))
+			seats.append({"pos": Vector3(c.x + k * 1.1, 0, c.z), "yaw": -k * PI / 2.0})
