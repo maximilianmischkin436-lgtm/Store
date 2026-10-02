@@ -48,7 +48,10 @@ def gen(ch, seed, widths, kind, crawlers, drones, windows=False):
                         ry1, ry2, wall_y = c1 + 2, c1 + 5, c1 + 1
                     rect(x, ry1, x + rw - 1, ry2)
                     door_x = x + rnd.randint(0, rw - 1)
-                    g[wall_y][door_x] = '.'
+                    g[wall_y][door_x] = 'o'
+                    # Durchgang zum Nachbarraum (Labyrinth): Tuer in der Trennwand
+                    if x > x1 + 1 and rnd.random() < 0.6:
+                        g[rnd.randint(ry1, ry2)][x - 1] = 'o'
                     g[(ry1 + ry2) // 2][x + rw // 2] = 'k' if side < 0 else 'K'
                     if windows:
                         oy = ry1 - 1 if side < 0 else ry2 + 1
@@ -72,6 +75,66 @@ def gen(ch, seed, widths, kind, crawlers, drones, windows=False):
         col = a[2] + 1
         for y in range(c0, c1 + 1):
             g[y][col] = 'D' if i < 2 else 'G'
+    # Engstellen im Hauptweg (Zickzack), nicht an Tueren/Ausloesern
+    keep = set()
+    train = None
+    if kind == 'subway':
+        # begehbarer Zug auf dem Hauptweg in Abschnitt B (t = Wagenboden)
+        tx = rooms[1][0] + 5
+        train = (tx, tx + 12)
+        for x in range(train[0], train[1]):
+            keep.add(x)
+            for y in range(c0, c1 + 1):
+                g[y][x] = '.'
+            for y in (14, 15):
+                g[y][x] = 't'
+    for i in range(4):
+        r = rooms[i]
+        for dx in range(-2, 3):
+            keep.add(r[0] + dx); keep.add(r[2] + dx)
+    keep.add((rooms[2][0] + rooms[2][2]) // 2)
+    for i in (1, 2):
+        x1, y1, x2, y2 = rooms[i]
+        flip = 0
+        for x in range(x1 + 4, x2 - 3, rnd.randint(5, 7)):
+            if any(abs(x - k) <= 1 for k in keep): continue
+            rows = list(range(c0, c1 + 1))
+            n_block = len(rows) - (1 if rooms_style else 2)
+            blk = rows[:n_block] if flip % 2 == 0 else rows[-n_block:]
+            for y in blk:
+                if g[y][x] == '.': g[y][x] = '#'
+            flip += 1
+    if not rooms_style:
+        # Trennwaende in den Hallen: Nischen und Sackgassen
+        for i in (1, 2):
+            x1, y1, x2, y2 = rooms[i]
+            for x in range(x1 + 3, x2 - 2, 4):
+                if any(abs(x - k) <= 1 for k in keep): continue
+                if rnd.random() < 0.5:
+                    for y in range(y1, c0 - 1):
+                        if g[y][x] == '.': g[y][x] = '#'
+                else:
+                    for y in range(c1 + 2, y2 + 1):
+                        if g[y][x] == '.': g[y][x] = '#'
+    if kind == 'pool':
+        # endlos tiefe Becken: V = kein Boden, wer reinfaellt, stirbt
+        for i in (1, 2, 3):
+            x1, y1, x2, y2 = rooms[i]
+            for _ in range(5 if i < 3 else 3):
+                pw, ph = rnd.randint(2, 4), rnd.randint(2, 3)
+                px = rnd.randint(x1 + 2, max(x1 + 2, x2 - pw - 1))
+                py = rnd.choice([rnd.randint(y1, max(y1, c0 - ph - 1)), rnd.randint(c1 + 2, max(c1 + 2, y2 - ph + 1))])
+                for yy in range(py, py + ph):
+                    for xx in range(px, px + pw):
+                        if g[yy][xx] == '.' and not (c0 <= yy <= c1) and not any(abs(xx - k) <= 1 for k in keep): g[yy][xx] = 'V'
+            # schmale Stege: ein Teil des Hauptwegs ist Becken
+            if i < 3:
+                for _ in range(2):
+                    sx = rnd.randint(x1 + 4, x2 - 6)
+                    if any(abs(sx + d - k) <= 1 for k in keep for d in range(4)): continue
+                    yy = rnd.choice([c0, c1])
+                    for xx in range(sx, sx + 4):
+                        if g[yy][xx] == '.': g[yy][xx] = 'V'
     def pillar(x, y, w=1, h=1):
         for yy in range(y, y + h):
             for xx in range(x, x + w):

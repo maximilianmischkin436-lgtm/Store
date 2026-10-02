@@ -124,6 +124,10 @@ func _setup_mats() -> void:
 			ceil_mat = _surf(5, Color(0.92, 0.9, 0.85), Color(0.7, 0.68, 0.6), Color.WHITE, 1.2)
 
 var secret_cells: Array = []
+var train_cells: Array = []
+var room_doors: Array = []   # Zellen mit Schwingtueren
+var swing: Array = []        # [{hinge, pos, open}]
+var pits: Array = []         # Zellen ohne Boden
 var side_rooms: Array = []   # [{pos, dir}] Mitte der Seitenraeume, dir = Richtung zum Flur
 var seats: Array = []        # [{pos, yaw}] Plaetze fuer sitzende Figuren
 
@@ -150,6 +154,12 @@ func load_map(path: String) -> void:
 			var c := rows[y][x]
 			if c in ["P", "c", "d", "S", "B", "X"]:
 				spawns.append({"c": c, "pos": cell_center(Vector2i(x, y))})
+				c = "."
+			elif c == "t":
+				train_cells.append(Vector2i(x, y))
+				c = "."
+			elif c == "o":
+				room_doors.append(Vector2i(x, y))
 				c = "."
 			elif c == "k" or c == "K":
 				side_rooms.append({"pos": cell_center(Vector2i(x, y)), "dir": 1 if c == "k" else -1})
@@ -201,8 +211,23 @@ func _box(pos: Vector3, size: Vector3, mat: Material, collide: bool) -> Node3D:
 
 func _build() -> void:
 	# Boden mit leuchtendem Raster (Shader)
-	var fl := _box(Vector3(w * T / 2.0, -0.25, h * T / 2.0), Vector3(w * T, 0.5, h * T), floor_mat, true)
-	fl.name = "Floor"
+	if not _has("V"):
+		var fl := _box(Vector3(w * T / 2.0, -0.25, h * T / 2.0), Vector3(w * T, 0.5, h * T), floor_mat, true)
+		fl.name = "Floor"
+	else:
+		# Boden in Streifen, Beckenzellen (V) bleiben offen
+		for y in h:
+			var x := 0
+			while x < w:
+				if grid[y][x] == "V":
+					pits.append(Vector2i(x, y))
+					x += 1
+					continue
+				var s0 := x
+				while x < w and grid[y][x] != "V":
+					x += 1
+				_box(Vector3((s0 + x) * T / 2.0, -0.25, y * T + T / 2.0), Vector3((x - s0) * T, 0.5, T), floor_mat, true)
+		_build_pits()
 	_build_water_and_ceiling()
 	# unsichtbarer Deckel ueber allem: man kann nicht ueber Waende springen
 	var lid := StaticBody3D.new()
@@ -244,6 +269,10 @@ func _build() -> void:
 		_furnish_rooms()
 	if _has("Y"):
 		_build_yard()
+	for dc in room_doors:
+		_swing_door(dc)
+	if not train_cells.is_empty():
+		_build_train()
 	# Farbiges Licht pro Raum fuer Stimmung
 	var lc: Array = ch.lights
 	for l in [[Vector3(8, 4, 14), lc[0]], [Vector3(33, 4, 14), lc[1]], [Vector3(54, 4, 14), lc[2]], [Vector3(83, 5, 14), lc[3]]]:
@@ -1576,3 +1605,181 @@ func _furnish_home(c: Vector3, dir: int) -> void:
 		for k in [-1, 1]:
 			_chair(Vector3(c.x + k * 1.1, 0, c.z), k * PI / 2.0, Color(0.6, 0.45, 0.3))
 			seats.append({"pos": Vector3(c.x + k * 1.1, 0, c.z), "yaw": -k * PI / 2.0})
+
+# ---------------- endlos tiefe Becken ----------------
+func _build_pits() -> void:
+	var deep := StandardMaterial3D.new()
+	deep.albedo_color = Color(0.02, 0.08, 0.14)
+	deep.roughness = 0.2
+	deep.cull_mode = BaseMaterial3D.CULL_FRONT
+	var tile := StandardMaterial3D.new()
+	tile.albedo_color = Color(0.3, 0.6, 0.7)
+	tile.cull_mode = BaseMaterial3D.CULL_FRONT
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.0, 0.02, 0.05)
+	dark.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	var surf := StandardMaterial3D.new()
+	surf.albedo_color = Color(0.02, 0.12, 0.22, 0.35)
+	surf.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	surf.roughness = 0.05
+	surf.metallic_specular = 1.0
+	for c in pits:
+		var p := cell_center(c)
+		# oben helle Fliesen, darunter wird es immer dunkler
+		_box(p + Vector3(0, -2.0, 0), Vector3(T, 4.0, T), tile, false)
+		_box(p + Vector3(0, -24.0, 0), Vector3(T, 40.0, T), deep, false)
+		_box(p + Vector3(0, -45.0, 0), Vector3(T, 0.2, T), dark, false)
+		var sf := _box(p + Vector3(0, 0.08, 0), Vector3(T, 0.02, T), surf, false)
+	# Warnschilder
+	var signs := ["NO DIVING", "DEEP END", "DEPTH: ?", "DON'T LOOK DOWN"]
+	for i in mini(pits.size(), 6):
+		var c: Vector2i = pits[(i * 7) % pits.size()]
+		var l := Label3D.new()
+		l.text = signs[i % signs.size()]
+		l.font_size = 48
+		l.pixel_size = 0.008
+		l.modulate = Color(0.8, 0.1, 0.1)
+		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		l.position = cell_center(c) + Vector3(0, 0.6, 0)
+		add_child(l)
+
+func is_pit(p: Vector3) -> bool:
+	var c := cell_of(p)
+	return c.x >= 0 and c.y >= 0 and c.x < w and c.y < h and grid[c.y][c.x] == "V"
+
+# ---------------- Schwingtueren in den Seitenraeumen ----------------
+func _swing_door(c: Vector2i) -> void:
+	var p := cell_center(c)
+	var horiz: bool = grid[c.y][c.x - 1] == "#" or grid[c.y][c.x + 1] == "#"   # Wand laeuft entlang x
+	var door_w := T * 0.8
+	var hinge := Node3D.new()
+	hinge.position = p + (Vector3(-door_w / 2.0, 0, 0) if horiz else Vector3(0, 0, -door_w / 2.0))
+	add_child(hinge)
+	var cols := {"school": Color(0.55, 0.35, 0.22), "hospital": Color(0.85, 0.88, 0.88), "office": Color(0.6, 0.55, 0.45), "home": Color(0.7, 0.5, 0.35)}
+	var dm := _plain(cols.get(theme, Color(0.6, 0.6, 0.6)), 0.6)
+	var hgt := minf(2.3, WALL_H - 0.3)
+	var panel := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(door_w, hgt, 0.08) if horiz else Vector3(0.08, hgt, door_w)
+	panel.mesh = bm
+	panel.material_override = dm
+	panel.position = (Vector3(door_w / 2.0, hgt / 2.0, 0) if horiz else Vector3(0, hgt / 2.0, door_w / 2.0))
+	hinge.add_child(panel)
+	# Fenster in der Tuer + Klinke
+	var win := MeshInstance3D.new()
+	var wm := BoxMesh.new()
+	wm.size = Vector3(0.35, 0.5, 0.1) if horiz else Vector3(0.1, 0.5, 0.35)
+	win.mesh = wm
+	win.material_override = _emit(Color(0.9, 0.85, 0.7), 0.4)
+	win.position = panel.position + Vector3(0, 0.45, 0)
+	hinge.add_child(win)
+	var knob := MeshInstance3D.new()
+	var km := SphereMesh.new()
+	km.radius = 0.05
+	km.height = 0.1
+	knob.mesh = km
+	knob.material_override = chrome
+	knob.position = (Vector3(door_w - 0.12, 1.0, 0.07) if horiz else Vector3(0.07, 1.0, door_w - 0.12))
+	hinge.add_child(knob)
+	# Zarge (Rahmen) im Durchgang
+	var fm := _plain(Color(0.9, 0.9, 0.88), 0.5)
+	for sgn in [-1, 1]:
+		var off := Vector3(sgn * T / 2.0, 0, 0) if horiz else Vector3(0, 0, sgn * T / 2.0)
+		_box(p + off + Vector3(0, WALL_H / 2.0, 0), Vector3(0.6, WALL_H, 0.5) if horiz else Vector3(0.5, WALL_H, 0.6), wall_mat, true)
+	_box(p + Vector3(0, hgt + (WALL_H - hgt) / 2.0, 0), Vector3(T, WALL_H - hgt, 0.4) if horiz else Vector3(0.4, WALL_H - hgt, T), wall_mat, false)
+	swing.append({"hinge": hinge, "pos": p, "open": 0.0, "dir": 1.0})
+
+func update_doors(delta: float, who: Array) -> void:
+	for d in swing:
+		var near := false
+		for q in who:
+			if (q as Vector3).distance_squared_to(d.pos) < 5.0:
+				near = true
+				break
+		var target := 1.0 if near else 0.0
+		var before: float = d.open
+		d.open = move_toward(d.open, target, delta * 3.0)
+		if before == 0.0 and d.open > 0.0:
+			Game.sfx("swap", 0.45, 0.35)
+		d.hinge.rotation.y = -d.open * 1.6
+
+# ---------------- begehbarer U-Bahn-Zug ----------------
+func _build_train() -> void:
+	var x0 := 9999; var x1 := 0; var y0 := 9999; var y1 := 0
+	for c in train_cells:
+		x0 = mini(x0, c.x); x1 = maxi(x1, c.x); y0 = mini(y0, c.y); y1 = maxi(y1, c.y)
+	var xa := x0 * T
+	var xb := (x1 + 1) * T
+	var za := y0 * T + 0.3
+	var zb := (y1 + 1) * T - 0.3
+	var hgt := 2.9
+	var paint := _plain(Color(0.82, 0.84, 0.86), 0.35, 0.6)
+	var stripe := _plain(Color(0.95, 0.75, 0.15), 0.5)
+	var inner := _plain(Color(0.9, 0.9, 0.86), 0.6)
+	var seat_m := _plain(Color(0.25, 0.35, 0.6), 0.9)
+	var glass := StandardMaterial3D.new()
+	glass.albedo_color = Color(0.6, 0.75, 0.8, 0.18)
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	glass.metallic_specular = 1.0
+	glass.roughness = 0.05
+	var floor_m := _plain(Color(0.35, 0.33, 0.3), 0.9)
+	_box(Vector3((xa + xb) / 2.0, 0.06, (za + zb) / 2.0), Vector3(xb - xa, 0.12, zb - za), floor_m, false)
+	# Dach + Deckenlicht
+	_box(Vector3((xa + xb) / 2.0, hgt + 0.1, (za + zb) / 2.0), Vector3(xb - xa + 0.2, 0.2, zb - za + 0.3), paint, false)
+	_box(Vector3((xa + xb) / 2.0, hgt - 0.03, (za + zb) / 2.0), Vector3(xb - xa - 0.4, 0.04, 0.5), _emit(Color(1.0, 0.97, 0.88), 2.0), false)
+	# Seitenwaende mit Fenstern und offenen Tueren (alle 2 Felder)
+	var car := 0
+	var x := xa
+	var seg := 1.5
+	while x < xb - 0.01:
+		var mid := x + seg / 2.0
+		var is_door := int((x - xa) / seg) % 5 == 2
+		for zw in [za, zb]:
+			if is_door:
+				_box(Vector3(mid, hgt - 0.3, zw), Vector3(seg, 0.6, 0.12), paint, false)
+				# offene Schiebetuer seitlich weggeschoben
+				_box(Vector3(mid + seg * 0.45, 1.2, zw + (0.08 if zw == za else -0.08)), Vector3(seg * 0.5, 2.3, 0.05), _plain(Color(0.7, 0.72, 0.74), 0.3, 0.7), false)
+			else:
+				_box(Vector3(mid, 0.5, zw), Vector3(seg, 1.0, 0.12), paint, true)
+				_box(Vector3(mid, 0.35, zw), Vector3(seg + 0.01, 0.12, 0.14), stripe, false)
+				_box(Vector3(mid, 1.6, zw), Vector3(seg, 1.2, 0.04), glass, false)
+				_box(Vector3(mid, 2.5, zw), Vector3(seg, 0.8, 0.12), paint, false)
+				_box(Vector3(x, 1.6, zw), Vector3(0.08, 1.2, 0.13), paint, false)
+				# Sitzbank innen
+				var zin: float = zw + (0.45 if zw == za else -0.45)
+				_box(Vector3(mid, 0.45, zin), Vector3(seg - 0.1, 0.12, 0.6), seat_m, false)
+				_box(Vector3(mid, 0.8, zw + (0.12 if zw == za else -0.12)), Vector3(seg - 0.1, 0.6, 0.1), seat_m, false)
+				if randi() % 2 == 0:
+					seats.append({"pos": Vector3(mid, 0, zin), "yaw": 0.0 if zw == za else PI})
+		# Haltestangen
+		if int((x - xa) / seg) % 2 == 0:
+			_box(Vector3(mid, hgt / 2.0, (za + zb) / 2.0 - 0.9), Vector3(0.05, hgt, 0.05), chrome, false)
+			_box(Vector3(mid, hgt / 2.0, (za + zb) / 2.0 + 0.9), Vector3(0.05, hgt, 0.05), chrome, false)
+		x += seg
+	# Gelaender oben + Linienplan
+	for zr in [(za + zb) / 2.0 - 0.9, (za + zb) / 2.0 + 0.9]:
+		_box(Vector3((xa + xb) / 2.0, hgt - 0.3, zr), Vector3(xb - xa - 0.3, 0.04, 0.04), chrome, false)
+	var map_l := Label3D.new()
+	map_l.text = "LINE 4:  SCHOOL - - - SERVER 7 - - - HOME - - - ?"
+	map_l.font_size = 40
+	map_l.pixel_size = 0.006
+	map_l.modulate = Color(0.1, 0.1, 0.1)
+	map_l.position = Vector3((xa + xb) / 2.0, 2.3, za + 0.08)
+	add_child(map_l)
+	# Front und Heck mit Scheinwerfern (Ein-/Ausgang bleibt offen)
+	for xe in [xa, xb]:
+		for zs in [za + 0.4, zb - 0.4]:
+			_box(Vector3(xe, 1.4, zs), Vector3(0.12, 2.8, 0.8), paint, true)
+		_box(Vector3(xe, 2.6, (za + zb) / 2.0), Vector3(0.12, 0.6, zb - za), paint, false)
+		var hl := OmniLight3D.new()
+		hl.light_color = Color(1.0, 0.95, 0.8)
+		hl.light_energy = 1.2
+		hl.omni_range = 6.0
+		hl.position = Vector3(xe, 2.0, (za + zb) / 2.0)
+		add_child(hl)
+	var il := OmniLight3D.new()
+	il.light_color = Color(1.0, 0.97, 0.9)
+	il.light_energy = 1.0
+	il.omni_range = (xb - xa) * 0.6
+	il.position = Vector3((xa + xb) / 2.0, hgt - 0.4, (za + zb) / 2.0)
+	add_child(il)

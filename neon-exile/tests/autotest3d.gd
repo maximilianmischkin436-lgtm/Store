@@ -35,6 +35,11 @@ func tp(x: float, z: float, yaw: float) -> void:
 
 func _process(delta: float) -> void:
 	t += delta
+	# Raetsel/Waechter werden separat getestet: hier aus dem Weg
+	main.puzzle_solved = true
+	main.has_ticket = true
+	for wt in get_tree().get_nodes_in_group("watchers"):
+		wt.queue_free()
 	var p = main.player
 	if main.dialog.active and step != 1 and step != 6 and step != 11:
 		main.dialog.skip()

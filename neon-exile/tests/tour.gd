@@ -29,6 +29,16 @@ func _process(delta: float) -> void:
 			# in der Tuer zum Flur stehen, in den Raum schauen
 			shots.append([c + Vector3(1.5, 0.1, r.dir * 4.5), 0.0 if r.dir > 0 else PI, -0.1, "room"])
 			shots.append([c + Vector3(0, 0.1, r.dir * 3.5), 0.0 if r.dir > 0 else PI, 0.05, "window"])
+		if not lv.train_cells.is_empty():
+			var c0: Vector3 = lv.cell_center(lv.train_cells[0])
+			shots.append([c0 + Vector3(0.5, 0.1, 1.5), -PI / 2.0, 0.0, "train_in"])
+			shots.append([c0 + Vector3(-5.0, 0.1, -4.0), -PI / 2.0 - 0.6, 0.0, "train_out"])
+		if not lv.pits.is_empty():
+			var pc: Vector3 = lv.cell_center(lv.pits[lv.pits.size() / 2])
+			shots.append([pc + Vector3(0, 0.1, 4.5), 0.0, -0.6, "pit"])
+		if not lv.swing.is_empty():
+			var dp: Vector3 = lv.swing[2].pos
+			shots.append([dp + Vector3(0, 0.1, 4.0), 0.0, 0.0, "door"])
 		shots.append([main.checkpoint + Vector3(2, 0.1, 0), -PI / 2.0, 0.0, "corridor"])
 		shots.append([main.checkpoint + Vector3(6, 0.1, -1), -PI / 2.0, 0.9, "sky"])
 	var s = shots[i]

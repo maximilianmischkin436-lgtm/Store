@@ -142,6 +142,8 @@ func _ready() -> void:
 		player.ability_unlocked = true
 	_build_secret()
 	_make_dust()
+	_setup_watchers()
+	_setup_puzzle()
 	if Game.has_completion_weapon() and not player.slots.has(10) and not ch.get("peaceful", false):
 		spawn_pickup("weapon", 10, checkpoint + Vector3(2.5, 0, 2.0))
 	# Kassette im Level: im Raum mit dem Splitter
@@ -334,12 +336,21 @@ func _update_secrets(delta: float) -> void:
 		var sec := 59 - int(play_time * 3.0) % 60
 		t.text = "4:%02d" % [40 - (sec % 41)]
 	# Interaktionen in der Naehe
+	var look: Vector3 = player.cam.global_position - player.cam.global_basis.z * 1.4
+	var best = null
+	var bd := 9999.0
 	for it in interactables:
-		if player.global_position.distance_to(it.pos) < 2.4:
-			pickup_hint = it.text
-			if Input.is_action_just_pressed("interact"):
-				it.cb.call()
-				return
+		var d: float = player.global_position.distance_to(it.pos)
+		if d < 2.4:
+			var dl: float = look.distance_to(it.pos)
+			if dl < bd:
+				bd = dl
+				best = it
+	if best:
+		pickup_hint = best.text
+		if Input.is_action_just_pressed("interact"):
+			best.cb.call()
+			return
 
 # Geheimcode: E-C-H-O tippen = grosse Koepfe fuer alle Geister
 func _unhandled_key_input(e: InputEvent) -> void:
@@ -779,6 +790,13 @@ func spawn_pickup(kind: String, idx: int, pos: Vector3, cb: Callable = Callable(
 		lab.material_override = _mat(Color(0.95, 0.9, 0.8), 1.2)
 		lab.position.y = 0.05
 		holder.add_child(lab)
+	elif kind == "ticket":
+		var tk := MeshInstance3D.new()
+		var tb := BoxMesh.new()
+		tb.size = Vector3(0.45, 0.02, 0.25)
+		tk.mesh = tb
+		tk.material_override = _mat(Color(1.0, 0.85, 0.3), 1.0)
+		holder.add_child(tk)
 	elif kind == "memory":
 		# Erinnerung: ein kleines warmes Licht, wie ein Gluehwuermchen
 		var orb := MeshInstance3D.new()
@@ -822,7 +840,7 @@ func _update_pickups(delta: float) -> void:
 	for pk in pickups:
 		var d: float = Vector2(pk.n.position.x - player.global_position.x, pk.n.position.z - player.global_position.z).length()
 		if d < 2.2:
-			var nm: String = player.WEAPONS[pk.idx].name if pk.kind == "weapon" else ("TAPE" if pk.kind == "tape" else ("MEMORY" if pk.kind == "memory" else "OVERLOAD CORE"))
+			var nm: String = player.WEAPONS[pk.idx].name if pk.kind == "weapon" else ("TAPE" if pk.kind == "tape" else ("MEMORY" if pk.kind == "memory" else ("TICKET" if pk.kind == "ticket" else "OVERLOAD CORE")))
 			pickup_hint = "[E]  PICK UP  " + nm
 			if pk.kind == "weapon" and player.slots.size() >= player.MAX_SLOTS and not player.slots.has(pk.idx):
 				pickup_hint += "   (replaces " + player.WEAPONS[player.weapon].name + ")"
@@ -848,6 +866,9 @@ func _take(pk: Dictionary) -> void:
 		get_tree().create_timer(6.0).timeout.connect(func(): flashback())
 		radio_queue.push_front(["HALCYON LOG", Story.TAPES[key], "res://assets/voice/tape_%s.ogg" % key])
 		radio_t = 0.0
+	elif pk.kind == "ticket":
+		has_ticket = true
+		banner("TICKET VALID - INSPECTORS WILL IGNORE YOU", Color("#ffd23d"))
 	elif pk.kind == "memory":
 		Game.mark("memory_%d" % chapter)
 		_memory_moment()
@@ -1952,6 +1973,14 @@ func _process(delta: float) -> void:
 		_update_transition(delta)
 	dream_time += delta
 	_update_amb_shots(delta)
+	if state == "play" and player.global_position.y < -2.5:
+		instakill("YOU SANK INTO THE DEEP END")
+	if not level.swing.is_empty():
+		var who: Array = [player.global_position]
+		for e in get_tree().get_nodes_in_group("npcs"):
+			if e.global_position.distance_squared_to(player.global_position) < 400.0:
+				who.append(e.global_position)
+		level.update_doors(delta, who)
 	if not motes.is_empty():
 		_update_motes(delta)
 	flash_cd = maxf(0.0, flash_cd - delta)
@@ -2046,6 +2075,11 @@ func _check_doors() -> void:
 		waves_left -= 1
 		_spawn_wave(3 - waves_left)
 		return
+	if not alive and player.global_position.x > door_cols[0] * T and puzzle_seq.size() > 0 and not puzzle_solved:
+		if objective != "Solve the color lock":
+			objective = "Solve the color lock"
+			banner("THE DOOR IS LOCKED", Color("#ffd23d"))
+		return
 	if not alive and player.global_position.x > door_cols[0] * T:
 		level.open_doors("D", (door_cols[1] + 1) * T)
 		banner("DOOR UNLOCKED", Color("#38f5c4"))
@@ -2069,6 +2103,16 @@ func _check_shard() -> void:
 			level.open_doors("G")
 			objective = ch.objectives[3]
 			banner("GATE OPEN", Color("#ffd23d")))
+
+# ---------------- Sofort-Tod (tiefe Becken, Waechter) ----------------
+func instakill(reason: String) -> void:
+	if state != "play" or player.hp <= 0:
+		return
+	banner(reason, Color("#ff2a2a"))
+	glitch_t = 1.0
+	Game.sfx("enemy_die", 0.4, 1.0)
+	player.hp = 0
+	on_player_hurt()
 
 func on_player_hurt() -> void:
 	shake(0.3)
@@ -2327,3 +2371,140 @@ func _update_transition(delta: float) -> void:
 		else:
 			state = "end"
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+# ---------------- Waechter: Lehrer (Schule) und Kontrolleure (U-Bahn) ----------------
+const Watcher = preload("res://scripts3d/watcher3d.gd")
+var has_ticket := false
+func _setup_watchers() -> void:
+	if door_cols.size() < 2 or not (chapter in [4, 7]):
+		return
+	var segs: Array = []
+	var rows := [14, 15] if chapter == 4 else [13, 14, 15, 16]
+	for room in [[door_cols[0] + 2, door_cols[1] - 1], [door_cols[1] + 2, gate_col - 1]]:
+		for r in rows:
+			var x: int = room[0]
+			while x < room[1]:
+				if level.grid[r][x] != ".":
+					x += 1
+					continue
+				var s0 := x
+				while x < room[1] and level.grid[r][x] == ".":
+					x += 1
+				if x - s0 >= 5:
+					segs.append([Vector2i(s0, r), Vector2i(x - 1, r)])
+	segs.shuffle()
+	for i in mini(segs.size(), 4 if chapter == 4 else 3):
+		var wt = Watcher.new()
+		wt.main = self
+		wt.kind = "teacher" if chapter == 4 else "inspector"
+		wt.a = level.cell_center(segs[i][0])
+		wt.b = level.cell_center(segs[i][1])
+		wt.position = wt.a + Vector3(0, 0.1, 0)
+		add_child(wt)
+	if chapter == 7:
+		spawn_pickup("ticket", 0, _free_spot(Vector2i(door_cols[0] - 4, 12)))
+		radio_queue.push_back(["MIRA", "The inspectors are still checking tickets. Find one, or don't let them see you."])
+
+# ---------------- Raetsel: Farbschloss vor der zweiten Tuer ----------------
+var puzzle_seq: Array = []
+var puzzle_in: Array = []
+var puzzle_solved := false
+const PUZ_COLS := [Color("#ff3b3b"), Color("#3b8bff"), Color("#ffd23d"), Color("#3bff8b")]
+const PUZ_NAMES := ["RED", "BLUE", "YELLOW", "GREEN"]
+func _setup_puzzle() -> void:
+	if door_cols.size() < 2 or ch.get("peaceful", false) or chapter == 9:
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = chapter * 991
+	var order := [0, 1, 2, 3]
+	for i in 4:
+		var j := rng.randi_range(i, 3)
+		var tmp = order[i]; order[i] = order[j]; order[j] = tmp
+	puzzle_seq = order
+	var T: float = level.T
+	# Schalttafel an der Wand direkt vor der Tuer
+	var dc: int = door_cols[1]
+	var row := 13
+	while row > 2 and level.grid[row][dc - 1] == ".":
+		row -= 1
+	var wall_z: float = (row + 1) * T + 0.12
+	for k in 4:
+		var bpos := Vector3((dc - 1) * T + (k - 1.5) * 0.55, 1.3, wall_z)
+		var bx := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.4, 0.4, 0.12)
+		bx.mesh = bm
+		bx.material_override = _mat(PUZ_COLS[k], 1.2)
+		bx.position = bpos
+		add_child(bx)
+		interactables.append({"pos": bpos, "text": "[E]  PRESS " + PUZ_NAMES[k], "node": bx, "cb": _puzzle_press.bind(k, bx)})
+	var lab := Label3D.new()
+	lab.text = "COLOR LOCK - THE ORDER IS SOMEWHERE IN THIS PLACE"
+	lab.font_size = 40
+	lab.pixel_size = 0.006
+	lab.position = Vector3((dc - 1) * T, 1.95, wall_z + 0.02)
+	add_child(lab)
+	# Hinweis: irgendwo im Abschnitt B an einer Wand, 4 Farbfelder in der richtigen Reihenfolge
+	var cands: Array = []
+	for wc in level._wall_cells():
+		var c: Vector2i = wc[0]
+		if c.x > door_cols[0] + 2 and c.x < dc - 4 and (c.y < 13 or c.y > 16):
+			cands.append(wc)
+	if cands.is_empty():
+		for wc in level._wall_cells():
+			if wc[0].x > door_cols[0] + 2 and wc[0].x < dc - 2:
+				cands.append(wc)
+	if cands.is_empty():
+		puzzle_seq = []
+		return
+	var wc = cands[rng.randi() % cands.size()]
+	var d: Vector2i = wc[1]
+	var hp: Vector3 = level.cell_center(wc[0]) + Vector3(d.x, 0, d.y) * (T / 2.0 - 0.06) + Vector3(0, 1.6, 0)
+	var yaw := atan2(-d.x, -d.y)
+	var hints := {1: "LOST & FOUND: LOCKER ORDER", 2: "TODAY'S FLAVORS", 3: "FILING ORDER", 4: "STUDENT OF THE MONTH", 5: "MEDICATION SCHEDULE", 6: "MIRA'S DRAWING", 7: "LINE COLORS"}
+	var frame := MeshInstance3D.new()
+	var fq := QuadMesh.new()
+	fq.size = Vector2(2.6, 1.3)
+	frame.mesh = fq
+	frame.material_override = _mat(Color(0.95, 0.93, 0.88), 0.3)
+	frame.position = hp
+	frame.rotation.y = yaw
+	add_child(frame)
+	for k in 4:
+		var sq := MeshInstance3D.new()
+		var sm := QuadMesh.new()
+		sm.size = Vector2(0.45, 0.45)
+		sq.mesh = sm
+		sq.material_override = _mat(PUZ_COLS[puzzle_seq[k]], 1.5)
+		sq.position = hp + Vector3(0, -0.1, 0) + Vector3((k - 1.5) * 0.55, 0, 0).rotated(Vector3.UP, yaw) + Vector3(-d.x, 0, -d.y) * 0.01
+		sq.rotation.y = yaw
+		add_child(sq)
+	var hl := Label3D.new()
+	hl.text = hints.get(chapter, "REMEMBER THE ORDER") + "\n1        2        3        4"
+	hl.font_size = 36
+	hl.pixel_size = 0.006
+	hl.modulate = Color(0.2, 0.15, 0.1)
+	hl.position = hp + Vector3(0, 0.42, 0) + Vector3(-d.x, 0, -d.y) * 0.02
+	hl.rotation.y = yaw
+	add_child(hl)
+
+func _puzzle_press(k: int, bx: MeshInstance3D) -> void:
+	if puzzle_solved:
+		return
+	puzzle_in.append(k)
+	Game.sfx("swap", 0.8 + k * 0.15, 0.8)
+	var tw := bx.create_tween()
+	tw.tween_property(bx, "scale", Vector3(1, 1, 0.4), 0.08)
+	tw.tween_property(bx, "scale", Vector3.ONE, 0.15)
+	var n := puzzle_in.size()
+	if puzzle_in[n - 1] != puzzle_seq[n - 1]:
+		puzzle_in.clear()
+		banner("WRONG ORDER", Color("#ff4d4d"))
+		shake(0.25)
+		glitch_t = 0.4
+		return
+	if n == 4:
+		puzzle_solved = true
+		banner("UNLOCKED", Color("#38f5c4"))
+		Game.sfx("rail", 1.4, 0.8)
+		objective = ch.objectives[1]
