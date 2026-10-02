@@ -2,3 +2,4 @@ dist/neon-exile.zip
 dist/parts/
 dist/itch/
 dist/itch-parts/
+dist/*.zip
