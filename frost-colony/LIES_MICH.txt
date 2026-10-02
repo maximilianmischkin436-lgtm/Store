@@ -1,0 +1,6 @@
+LETZTE GLUT – Überlebens-Städtebau im ewigen Frost (Prototyp)
+Öffnen: Godot 4.3 → Importieren → project.godot → F5
+Ziel: 15 Tage überleben (Sturm Tag 11–13, -70°C).
+Links: bauen / Wrack plündern · Rechts: Gebäude an/aus · H: Wärmekarte
+Leertaste: Pause · 1/2/3: Tempo · Klick auf Generator: Stufe
+Je näher am Generator, desto wärmer. Kälte = Kranke, Hunger = Unzufriedenheit.
