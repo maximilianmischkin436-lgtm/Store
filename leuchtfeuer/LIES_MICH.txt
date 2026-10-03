@@ -1,47 +1,30 @@
-DAS LEUCHTFEUER – Kolonie-Überleben im Sporennebel
+DAS LEUCHTFEUER
+Licht gegen den Nebel – Aufbau, Turmverteidigung und dauerhafter Fortschritt
+
 Öffnen: Godot 4.3 → Importieren → project.godot → F5
 
-Ein alter Leuchtturm hält den giftigen Nebel zurück. Überlebe 14 Tage
-(Nebelflut an Tag 9–11: das Licht reicht nur halb so weit).
+SO FUNKTIONIERT ES
+- Tagsüber (45 s) baust du, baust aus und erkundest. Mit [N] startest du die Nacht früher.
+- Nachts kommen Wucherer in Wellen aus dem Nebel. Jede Nacht werden es mehr und sie werden stärker.
+  Jede 5. Nacht erscheint ein Koloss.
+- Licht ist deine Waffe: Wucherer verbrennen im Licht von Turm, Laternen und Leuchtmasten.
+  Wachtürme schießen Feuer. [Q] löst den Lichtstoß aus, eine Druckwelle aus dem Turm.
+- Fällt der Turm, endet der Lauf.
 
-- Licht = Leben: Gebäude im Nebel verwachsen nach 20h, Bewohner werden befallen.
-- Laternen erweitern das Licht (brauchen Öl). Im Nebel nur Laternen bauen.
-- Ölpumpe nur auf Ölquellen, Pilzzucht/Schrottplatz doppelt auf Pilzfeldern/Ruinen.
-- Ruinen anklicken = ausschlachten. Überwuchertes anklicken = freiräumen.
-- Turmstufen: mehr Licht, mehr Öl, Grell überhitzt die Linse.
-- Erlasse, Expeditionen und Entscheidungs-Ereignisse.
+FORTSCHRITT
+- Jedes Gebäude lässt sich bis Stufe 5 ausbauen, der Turm bis Stufe 8.
+- Nach jeder Nacht wählst du 1 von 3 Karten (gewöhnlich, selten, episch). Karten stapeln sich.
+- Aufträge links geben Glut und erneuern sich endlos.
+- Glut bekommst du für Kills, überstandene Nächte, Aufträge und Erkundungen.
+  Sie bleibt nach dem Lauf erhalten.
+- Glutschmiede (Hauptmenü): dauerhafte Upgrades und neue Baupläne
+  (Leuchtmast, Feuerkanone, Glutofen) für alle zukünftigen Läufe.
+- Bestenliste: längste Nacht, Läufe, besiegte Wucherer.
 
-Steuerung: Links bauen · Rechts an/aus · WASD/Mittelmaus Kamera · Rad Zoom
-Leertaste Pause · 1/2/3 Tempo · Klick auf Turm: Lichtstufe
+ERKUNDUNG
+- Späherposten bauen, dann tagsüber eine Höhle oder einen Bunker anklicken.
+- Raum für Raum vorgehen, Atemluft im Blick behalten. Jäger lauern in der Tiefe, Fackeln vertreiben sie.
 
-NEU:
-- Forschung (T): 4 Zweige – Licht, Leben, Technik, Erkundung (12 Techs).
-  Wissen kommt aus der Werkstatt und aus Bunkern.
-- Neue Gebäude: Werkstatt, Gewächshaus, Filterhaus, Pilzbrennerei, Leuchtmast.
-- Bewohner laufen in gelben Schutzanzügen mit Gasmaske herum.
-- Höhlen und Bunker im Nebel: anklicken (braucht Späherposten).
-  Raum für Raum erkunden, Atemluft im Blick behalten, rechtzeitig zurück!
-  Beute, Überlebende, Notizen, Sporenwolken, Wucherer, Stahltüren (Brecheisen).
-
-UPDATE 3 – Grafik & neue Probleme (schwerer, 16 Tage):
-- Alle Gebäude, Gelände, Menschen und Wucherer sind jetzt gemalte Sprites.
-- WASSER: Jeder trinkt jeden Abend. Ohne Wasserwerk → Nebelwasser → Befall, Zorn, Verdursten.
-- WUCHERER: Ab Tag 3 kommen sie nachts aus dem Nebel und verwüsten Gebäude.
-  Wachposten (3 Wachen) verbrennen sie im Umkreis von 3 Feldern.
-- STREIK ab Zorn 65 (Produktion halbiert), SABOTAGE ab Zorn 85.
-- Der Nebel wird jeden Tag dichter – das Turmlicht schrumpft langsam.
-- Nebelflut Tag 10–12 und Sporensturm ab Tag 15.
-- Neue Entscheidungen: verseuchtes Wasser, Wucherer-Nest, Aufbruch nach Norden.
-
-UPDATE 4 – Musik, Sound, moderne Grafik, eigener Weg:
-- Dynamische Musik: ruhig am Tag, unheimlich nachts, treibend bei Gefahr –
-  sie blendet je nach Stresslage über. Herzschlag bei höchster Gefahr.
-- Sounds: Turmglocke im Morgengrauen, Bauen, Klicks, Wucherer-Knurren,
-  Flammenstöße der Wachen, Alarmsirene, Streik, Ereignis-Fanfare, Sieg/Niederlage.
-- Moderne Grafik: Tilt-Shift (Miniatur-Look), Bloom, Farbkorrektur, Filmkorn,
-  Glas-Oberfläche, weiche Kamera, Bau-Animation, Bildschirmwackeln bei Angriffen.
-  Unter Stress wird das Bild blasser und der Rand pulsiert rot.
-- Tag 3: Wähle deinen Weg
-  * Weg des Lichts: stärkere Wachen, weiteres Licht, aber mehr Zorn.
-  * Weg des Myzels: Gebäude verwachsen nicht, Befallene arbeiten mit,
-    weniger Wucherer, leuchtend violetter Nebel – aber schwächeres Turmlicht.
+STEUERUNG
+Linksklick bauen / auswählen · Rechtsklick abwählen · U ausbauen · Q Lichtstoß
+N Nacht starten · WASD Kamera · Mausrad Zoom · Leertaste Pause · 1/2/3 Tempo
