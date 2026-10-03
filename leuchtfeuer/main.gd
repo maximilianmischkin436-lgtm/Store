@@ -108,6 +108,7 @@ var shake := 0.0
 var reroll_left := 0
 var card_opts: Array = []
 var explore_node: Control
+var expedition := {}
 
 # Szene
 var cam: Camera2D
@@ -179,6 +180,7 @@ func _ready() -> void:
 func start_run() -> void:
 	rng.randomize()
 	tiles.clear(); idx.clear(); creatures.clear(); bolts.clear(); rings.clear(); floats.clear()
+	expedition = {}
 	for k in lamp_lights: lamp_lights[k].queue_free()
 	lamp_lights.clear()
 	_gen_map()
@@ -190,7 +192,7 @@ func start_run() -> void:
 	is_night = false
 	phase_t = DAY_LEN + 15.0
 	tower_lvl = 1
-	tower_max = 400.0 * (1.0 + 0.2 * meta.level("tower_hp"))
+	tower_max = 400.0 * (1.0 + 0.2 * meta.level("tower_hp")) * (1.0 + 0.06 * meta.rel("iron_will"))
 	tower_hp = tower_max
 	pulse_cd = 0.0
 	perks = {}
@@ -271,6 +273,16 @@ func pk(id: String) -> int:
 func lvl_mul(l: int) -> float:
 	return 1.0 + 0.6 * (l - 1)
 
+func cons_time(type: String, lvl: int) -> float:
+	var base: float = 3.5 + B[type].cost / 9.0
+	return base * (0.7 + 0.55 * (lvl - 1)) * pow(0.94, meta.rel("swift_hands"))
+
+func builder_slots() -> int:
+	var n := 3
+	for t in tiles:
+		if t.type == "clinic" and not t.ruined and t.get("cons", 0.0) <= 0: n += 1
+	return n
+
 func build_cost(type: String) -> int:
 	return int(B[type].cost * pow(0.85, pk("cheap")))
 
@@ -283,7 +295,7 @@ func repair_cost(t: Dictionary) -> int:
 	return int(build_cost(t.type) * 0.5)
 
 func bmaxhp(t: Dictionary) -> float:
-	return B[t.type].hp * 1.3 * lvl_mul(t.lvl) * (1.0 + 0.2 * meta.level("bhp")) * (1.0 + 0.3 * pk("hp"))
+	return B[t.type].hp * 1.3 * (1.0 + 0.06 * meta.rel("bell_bronze")) * lvl_mul(t.lvl) * (1.0 + 0.2 * meta.level("bhp")) * (1.0 + 0.3 * pk("hp"))
 
 func housing() -> int:
 	var h := 0
@@ -295,6 +307,7 @@ func housing() -> int:
 func tower_radius() -> float:
 	var hw := HEX * SQ3
 	var r := 2.4 + tower_lvl * 0.45 + 0.3 * meta.level("light") + 0.4 * pk("radius")
+	r *= 1.0 + 0.04 * meta.rel("amber_lens")
 	if res.oil <= 0: r = 1.2
 	return r * hw
 
@@ -302,13 +315,13 @@ func burn_dps() -> float:
 	return (6.0 + tower_lvl * 2.0) * (1.0 + 0.2 * meta.level("burn")) * (1.0 + 0.4 * pk("burn"))
 
 func glut_mul() -> float:
-	return (1.0 + 0.15 * meta.level("glut")) * (1.0 + 0.3 * pk("glut"))
+	return (1.0 + 0.15 * meta.level("glut")) * (1.0 + 0.3 * pk("glut")) * (1.0 + 0.06 * meta.rel("glut_shard")) * meta.rank_bonus()
 
 func light_sources() -> Array:
 	var out := [Vector3(0, -40, tower_radius())]
 	if res.oil > 0:
 		for t in tiles:
-			if t.type in B and B[t.type].has("lamp") and not t.ruined:
+			if t.type in B and B[t.type].has("lamp") and not t.ruined and t.get("cons", 0.0) <= 0:
 				out.append(Vector3(t.pos.x, t.pos.y, B[t.type].lamp * HEX * SQ3 * (1.0 + 0.15 * (t.lvl - 1))))
 	return out
 
@@ -370,12 +383,14 @@ func _sim(dt: float) -> void:
 			_start_night()
 	# ---- Wirtschaft
 	var free := pop
-	var prod_mul := 1.0 + 0.1 * meta.level("prod")
+	var prod_mul := (1.0 + 0.1 * meta.level("prod")) * meta.rank_bonus()
+	var relm := {"food": meta.rel("fungal_seed"), "oil": meta.rel("oil_idol"), "scrap": meta.rel("scrap_saint")}
+	_sim_construction(dt)
 	for k in rates: rates[k] = 0.0
 	var burn := 0.18 + tower_lvl * 0.06
 	for t in tiles:
 		t.wk = 0
-		if not (t.type in B) or t.ruined: continue
+		if not (t.type in B) or t.ruined or t.get("cons", 0.0) > 0: continue
 		var b: Dictionary = B[t.type]
 		if b.has("burn"): burn += b.burn * (1.0 + 0.3 * (t.lvl - 1))
 		var need: int = b.w
@@ -386,7 +401,7 @@ func _sim(dt: float) -> void:
 		var f := (float(t.wk) / need if need > 0 else 1.0) * lvl_mul(t.lvl) * prod_mul
 		if b.get("bonus", "") == t.terr: f *= 2.0
 		for k in b.get("prod", {}):
-			var m := 1.0 + 0.25 * pk(k)
+			var m: float = (1.0 + 0.25 * pk(k)) * (1.0 + 0.08 * relm.get(k, 0))
 			rates[k] += b.prod[k] * f * m
 		if b.has("glut") and t.wk > 0:
 			_add_glut(b.glut * f * dt)
@@ -413,6 +428,7 @@ func _sim(dt: float) -> void:
 	_sim_guards(dt)
 	_sim_creatures(dt)
 	_sim_bolts(dt)
+	_sim_expedition(dt)
 	if tower_hp <= 0:
 		_game_over()
 
@@ -426,8 +442,10 @@ func _start_night() -> void:
 	if night % 5 == 1 and night > 1:
 		_spawn_foe("boss")
 		say("[color=#ff5a4a]Ein Koloss erhebt sich aus dem Nebel.[/color]")
+		toast("Ein Koloss erhebt sich!", Color(1, 0.4, 0.3))
 		sfx("alarm", -2.0)
 	say("[color=#9fb4ff]Nacht %d[/color] · %d Wucherer nähern sich." % [night, n])
+	toast("☾  Nacht %d bricht herein" % night, Color(0.65, 0.75, 1.0))
 	sfx("bell", -4.0)
 
 func _end_night() -> void:
@@ -485,7 +503,7 @@ func _sim_creatures(dt: float) -> void:
 		# Licht verbrennt
 		if lit > 0.3:
 			c.hp -= bdps * lit * dt * (0.4 if c.type == "boss" else 1.0)
-		var spd: float = c.spd * (1.0 - 0.25 * pk("slow") * lit)
+		var spd: float = c.spd * (1.0 - 0.25 * pk("slow") * lit) * pow(0.97, meta.rel("moth_wing"))
 		var reach := 70.0 if f.get("ranged", false) else 16.0
 		if (c.pos as Vector2).distance_to(tp) > reach:
 			c.pos = (c.pos as Vector2).move_toward(tp, spd * dt)
@@ -516,6 +534,7 @@ func _hit_tile(i: int, dmg: float) -> void:
 		t.ruined = true
 		t.hp = 0
 		say("[color=#ff6a5a]Zerstört:[/color] %s" % B[t.type].n)
+		toast("%s zerstört" % B[t.type].n, Color(1, 0.45, 0.35))
 		shake = 0.8
 		flash_v = 0.3
 		sfx("alarm", -6.0)
@@ -538,7 +557,7 @@ func _kill_foe(c: Dictionary, by_pulse: bool) -> void:
 
 func _sim_guards(dt: float) -> void:
 	for t in tiles:
-		if not (t.type in B) or t.ruined or not B[t.type].has("dmg") or t.wk == 0: continue
+		if not (t.type in B) or t.ruined or not B[t.type].has("dmg") or t.wk == 0 or t.get("cons", 0.0) > 0: continue
 		var b: Dictionary = B[t.type]
 		t.cd -= dt * (1.0 + 0.2 * pk("grate"))
 		if t.cd > 0: continue
@@ -550,7 +569,7 @@ func _sim_guards(dt: float) -> void:
 			if d < rng_px and d < bd: bd = d; best = c
 		if best.is_empty(): continue
 		t.cd = 1.0 / b.rate
-		var dmg: float = b.dmg * lvl_mul(t.lvl) * (float(t.wk) / b.w) * (1.0 + 0.15 * meta.level("guard")) * (1.0 + 0.25 * pk("gdmg"))
+		var dmg: float = b.dmg * lvl_mul(t.lvl) * (float(t.wk) / b.w) * (1.0 + 0.15 * meta.level("guard")) * (1.0 + 0.25 * pk("gdmg")) * (1.0 + 0.06 * meta.rel("watch_eye"))
 		if pk("crit") > 0 and rng.randf() < 0.15 * pk("crit"): dmg *= 3.0
 		bolts.append({"a": t.pos + Vector2(0, -34), "p": t.pos + Vector2(0, -34), "c": best, "spd": 420.0 if not b.has("splash") else 260.0,
 			"dmg": dmg, "foe": false, "splash": b.get("splash", 0.0)})
@@ -586,7 +605,7 @@ func light_pulse() -> void:
 	if state != "play" or pulse_cd > 0 or res.oil < 15: return
 	res.oil -= 15
 	pulse_cd = 18.0 * pow(0.8, pk("pulsecd"))
-	var dmg := (55.0 + tower_lvl * 25.0) * (1.0 + 0.25 * meta.level("pulse")) * (1.0 + 0.4 * pk("pulse"))
+	var dmg := (55.0 + tower_lvl * 25.0) * (1.0 + 0.25 * meta.level("pulse")) * (1.0 + 0.4 * pk("pulse")) * (1.0 + 0.08 * meta.rel("ember_heart"))
 	var r := tower_radius() * 1.1
 	rings.append({"p": Vector2(0, -40), "r": 10.0, "max": r, "t": 0.6, "c": Color(1, 0.9, 0.6)})
 	flash_v = 0.6
@@ -626,6 +645,7 @@ func _quest_progress(id: String, n: int) -> void:
 				var g := int(q.reward * glut_mul())
 				_add_glut(g)
 				say("[color=#ffcf8a]Auftrag erfüllt:[/color] %s · +%d Glut" % [q.text, g])
+				toast("Auftrag erfüllt  ·  ✦ %d" % g, Color(1, 0.8, 0.45))
 				sfx("sting", -6.0)
 	for i in quests.size():
 		if quests[i].get("done", false):
@@ -689,7 +709,11 @@ func build(i: int, type: String) -> bool:
 	t.lvl = 1
 	t.ruined = false
 	t.maxhp = bmaxhp(t)
-	t.hp = t.maxhp
+	t.hp = t.maxhp * 0.35
+	t.cons = cons_time(type, 1)
+	t.cons_max = t.cons
+	t.queue = Time.get_ticks_msec()
+	t.up = false
 	t.born = Time.get_ticks_msec() / 1000.0
 	floats.append({"p": t.pos + Vector2(0, -40), "t": 1.2, "s": "-%d Schrott" % build_cost(type), "c": Color(1, 0.8, 0.5)})
 	sfx("build", -4.0)
@@ -707,23 +731,53 @@ func upgrade(i: int) -> void:
 		tower_max += 120
 		tower_hp = minf(tower_max, tower_hp + 200)
 	else:
-		if t.lvl >= MAX_LVL or t.ruined: return
+		if t.lvl >= MAX_LVL or t.ruined or t.get("cons", 0.0) > 0: return
 		res.scrap -= c
-		t.lvl += 1
-		t.maxhp = bmaxhp(t)
-		t.hp = t.maxhp
+		t.cons = cons_time(t.type, t.lvl + 1)
+		t.cons_max = t.cons
+		t.queue = Time.get_ticks_msec()
+		t.up = true
+		sfx("build", -6.0)
+		return
 	t.born = Time.get_ticks_msec() / 1000.0
 	sfx("build", -2.0)
-	_quest_progress("upgrade", 1)
 
 func repair(i: int) -> void:
 	var t: Dictionary = tiles[i]
 	if not t.ruined or res.scrap < repair_cost(t): return
 	res.scrap -= repair_cost(t)
 	t.ruined = false
-	t.hp = t.maxhp
+	t.hp = t.maxhp * 0.35
+	t.cons = cons_time(t.type, 1) * 0.6
+	t.cons_max = t.cons
+	t.queue = Time.get_ticks_msec()
+	t.up = false
 	t.born = Time.get_ticks_msec() / 1000.0
 	sfx("build", -4.0)
+
+func _sim_construction(dt: float) -> void:
+	var sites := []
+	for t in tiles:
+		t.active = false
+		if t.get("cons", 0.0) > 0 and not t.ruined: sites.append(t)
+	sites.sort_custom(func(a, b): return a.queue < b.queue)
+	var slots := builder_slots()
+	for i in mini(slots, sites.size()):
+		var t: Dictionary = sites[i]
+		t.active = true
+		t.cons -= dt
+		t.hp = minf(t.maxhp, t.hp + t.maxhp * 0.65 * dt / t.cons_max)
+		if t.cons <= 0:
+			t.cons = 0.0
+			if t.up:
+				t.lvl += 1
+				t.maxhp = bmaxhp(t)
+				_quest_progress("upgrade", 1)
+				toast("%s erreicht Stufe %d" % [B[t.type].n, t.lvl], Color(1, 0.85, 0.55))
+			t.hp = t.maxhp
+			t.born = Time.get_ticks_msec() / 1000.0
+			rings.append({"p": t.pos, "r": 6.0, "max": 40.0, "t": 0.5, "c": Color(1, 0.85, 0.5)})
+			sfx("build", -4.0)
 
 func demolish(i: int) -> void:
 	var t: Dictionary = tiles[i]
@@ -737,48 +791,84 @@ func demolish(i: int) -> void:
 func start_explore(i: int) -> void:
 	var t: Dictionary = tiles[i]
 	if t.explored:
-		say("Dieser Ort ist bereits erkundet."); return
+		toast("Dieser Ort ist bereits erkundet.", Color(0.8, 0.75, 0.7)); return
+	if expedition.size() > 0:
+		toast("Ein Team ist bereits unterwegs.", Color(0.8, 0.75, 0.7)); return
 	var scouts := 0
 	for o in tiles:
-		if o.type == "scout" and not o.ruined: scouts += 1
+		if o.type == "scout" and not o.ruined and o.get("cons", 0.0) <= 0: scouts += 1
 	if scouts == 0:
-		say("Baue zuerst einen Späherposten."); return
-	if is_night:
-		say("Nachts kann niemand hinaus."); return
+		toast("Baue zuerst einen Späherposten.", Color(1, 0.7, 0.5)); return
 	if pop < 8:
-		say("Zu wenige Bewohner für ein Team."); return
-	state = "explore"
+		toast("Zu wenige Bewohner für ein Team.", Color(1, 0.7, 0.5)); return
+	pop -= 4
+	expedition = {"site": i, "phase": "out", "p": Vector2(0, 10), "res": {}}
+	say("[color=#8fd0ff]Vier Späher[/color] brechen zur %s auf." % ("Höhle" if t.terr == "cave" else "Bunker-Ruine"))
+	sfx("click", -4.0)
+
+func _sim_expedition(dt: float) -> void:
+	if expedition.is_empty(): return
+	var site: Dictionary = tiles[expedition.site]
+	var spd := 46.0 * (1.4 if autotest else 1.0)
+	if expedition.phase == "out":
+		expedition.p = (expedition.p as Vector2).move_toward(site.pos, spd * dt)
+		if (expedition.p as Vector2).distance_to(site.pos) < 4:
+			expedition.phase = "in"
+			_open_explore(expedition.site)
+	elif expedition.phase == "back":
+		expedition.p = (expedition.p as Vector2).move_toward(Vector2(0, 10), spd * dt)
+		if (expedition.p as Vector2).length() < 14:
+			_explore_done(expedition.site, expedition.res)
+			expedition = {}
+
+func _open_explore(i: int) -> void:
+	var t: Dictionary = tiles[i]
 	explore_node = Explore.new()
 	explore_node.main = self
-	var air := 10 + meta.level("air") * 2
+	var air := 10 + meta.level("air") * 2 + meta.rel("old_map")
 	explore_node.setup(t.terr, int(t.seed * 100000), air, 4, true, 2, SPR.get("creature"))
-	explore_node.finished.connect(func(r: Dictionary): _explore_done(i, r))
+	explore_node.finished.connect(func(r: Dictionary):
+		explore_node.queue_free()
+		explore_node = null
+		expedition.res = r
+		expedition.phase = "back"
+		say("Das Team macht sich auf den Rückweg."))
 	ui.add_child(explore_node)
+	toast("Die Späher erreichen den Eingang.", Color(0.6, 0.85, 1.0))
 	if autotest: explore_node.auto_run()
 
 func _explore_done(i: int, r: Dictionary) -> void:
 	tiles[i].explored = true
-	explore_node.queue_free()
-	explore_node = null
-	state = "play"
 	var l: Dictionary = r.loot
 	res.oil += l.get("oil", 0)
 	res.scrap += l.get("scrap", 0)
 	res.food += l.get("food", 0)
 	var g := int((l.get("know", 0) * 1.5 + 10) * glut_mul()) if r.ok else 0
 	_add_glut(g)
-	pop = maxi(1, pop - r.lost + r.people)
+	pop = maxi(1, pop + 4 - r.lost + r.people)
 	_quest_progress("explore", 1)
 	if r.ok:
 		say("[color=#8fd0ff]Team zurück:[/color] +%d Glut · +%d Öl · +%d Schrott · +%d Leute" % [g, l.get("oil", 0), l.get("scrap", 0), r.people])
+		toast("Die Späher sind zurück  ·  ✦ %d" % g, Color(0.6, 0.85, 1.0))
+		if r.get("relic", false):
+			var id := meta.add_relic(rng)
+			toast("Reliquie gefunden: %s" % Meta.RELICS[id][0], RARITY_COL[Meta.RELICS[id][2]])
+			say("[color=#e6c27a]Reliquie:[/color] %s (%s)" % [Meta.RELICS[id][0], Meta.RELICS[id][1]])
+			sfx("win", -6.0)
 	else:
 		say("[color=#ff8a6a]Das Team kehrt nicht zurück.[/color]")
+		toast("Das Team ist verloren.", Color(1, 0.5, 0.4))
 
 # ================================================================ Ende
 func _game_over() -> void:
 	state = "over"
 	var earned := int(run_glut)
 	meta.glut += earned
+	meta.xp += earned
+	if explore_node:
+		explore_node.queue_free()
+		explore_node = null
+	expedition = {}
 	meta.total_kills += run_kills
 	var record := night > meta.best_night
 	meta.best_night = maxi(meta.best_night, night)
@@ -796,8 +886,9 @@ func _bot(dt: float) -> void:
 	bot_t -= dt
 	if bot_t > 0: return
 	bot_t = 1.0
+	if OS.get_cmdline_user_args().has("--dbg"): print("DBG n=%d night=%s st=%s exp=%s cr=%d sl=%d pt=%.1f" % [night, is_night, state, expedition.get("phase", "-"), creatures.size(), spawn_left, phase_t])
 	if creatures.size() >= 5: light_pulse()
-	var plan := ["pump", "hut", "guard", "farm", "yard", "hut", "guard", "lamp", "pump", "farm", "clinic", "guard", "hut", "lamp",
+	var plan := ["pump", "hut", "guard", "farm", "yard", "hut", "guard", "scout", "lamp", "pump", "farm", "clinic", "guard", "hut", "lamp",
 		"scout", "guard", "yard", "farm", "hut", "guard", "lamp", "guard", "hut", "guard"]
 	var have := {}
 	for t in tiles:
@@ -819,7 +910,7 @@ func _bot(dt: float) -> void:
 		if t.ruined and not is_night: repair(i)
 		elif t.type in ["guard", "pump", "farm"] and t.lvl < 3 and res.scrap > upgrade_cost(t) + 30: upgrade(i)
 	if res.scrap > upgrade_cost(tiles[idx[Vector2i(0, 0)]]) + 60: upgrade(idx[Vector2i(0, 0)])
-	if not is_night and night >= 2 and night % 2 == 0 and explore_node == null:
+	if not is_night and night >= 2 and expedition.is_empty():
 		for i in tiles.size():
 			if tiles[i].terr in ["cave", "bunker"] and not tiles[i].explored:
 				start_explore(i); break
@@ -847,8 +938,8 @@ func _unhandled_input(e: InputEvent) -> void:
 				elif t.terr in ["cave", "bunker"]:
 					start_explore(hover)
 				elif not build(hover, sel_build):
-					if res.scrap < build_cost(sel_build): say("Zu wenig Schrott.")
-					elif not can_place(hover, sel_build): say("%s passt hier nicht hin." % B[sel_build].n)
+					if res.scrap < build_cost(sel_build): toast("Zu wenig Schrott", Color(1, 0.6, 0.45))
+					elif not can_place(hover, sel_build): toast("%s passt hier nicht hin" % B[sel_build].n, Color(1, 0.75, 0.55))
 			elif e.button_index == MOUSE_BUTTON_RIGHT:
 				sel_tile = -1
 	elif e is InputEventKey and e.pressed and state == "play":
@@ -870,6 +961,11 @@ func _load_sprites() -> void:
 			if img:
 				img.generate_mipmaps()
 				SPR[f.get_basename()] = ImageTexture.create_from_image(img)
+				var ic := img.duplicate()
+				ic.clear_mipmaps()
+				var sc := 96.0 / maxf(ic.get_width(), ic.get_height())
+				ic.resize(maxi(1, int(ic.get_width() * sc)), maxi(1, int(ic.get_height() * sc)), Image.INTERPOLATE_LANCZOS)
+				ICON[f.get_basename()] = ImageTexture.create_from_image(ic)
 	draw_order = range(tiles.size())
 	draw_order.sort_custom(func(a, b): return tiles[a].pos.y < tiles[b].pos.y)
 
@@ -1088,6 +1184,9 @@ func _draw_building(t: Dictionary, p: Vector2, tm: float) -> void:
 			var a: float = j * TAU / 6.0 + t.seed
 			draw_circle(p + Vector2.from_angle(a) * (10 + k * 30) * Vector2(1, 0.5), 6 * (1.0 - k), Color(0.7, 0.65, 0.55, 0.5 * (1.0 - k)))
 	var sc: float = pop_s * ((1.0 + 0.05 * (tower_lvl - 1)) if t.type == "tower" else (1.0 + 0.04 * (t.lvl - 1)))
+	if t.get("cons", 0.0) > 0 and not t.ruined:
+		_draw_site(t, p, tm, key)
+		return
 	spr(self, key, p, mod, sc)
 	if t.type == "tower":
 		var top := p + Vector2(0, -SPR_W.tower * 1.62 * sc)
@@ -1123,6 +1222,29 @@ func _draw_building(t: Dictionary, p: Vector2, tm: float) -> void:
 		draw_circle(p + Vector2(20, -30), 5, Color(0, 0, 0, 0.5))
 		draw_circle(p + Vector2(20, -30), 3.5, Color(0.95, 0.3, 0.2))
 
+## Baustelle: halb durchsichtiges Gebäude im Holzgerüst mit Fortschrittsring
+func _draw_site(t: Dictionary, p: Vector2, tm: float, key: String) -> void:
+	var k: float = 1.0 - t.cons / t.cons_max
+	spr(self, key, p, Color(1, 0.9, 0.75, 0.25 + 0.6 * k), 0.92)
+	var wood := Color(0.55, 0.4, 0.25)
+	var h := 30.0 + 14.0 * k
+	for x in [-22.0, 22.0]:
+		draw_line(p + Vector2(x, 10), p + Vector2(x * 0.9, -h), wood, 2.5)
+	draw_line(p + Vector2(-22, -h * 0.5), p + Vector2(22, -h * 0.5), wood, 2)
+	draw_line(p + Vector2(-20, -h), p + Vector2(20, -h), wood, 2)
+	draw_line(p + Vector2(-22, 8), p + Vector2(20, -h * 0.5), Color(wood, 0.7), 1.5)
+	if t.get("active", false):
+		# Funken und Hammerschläge
+		var ph := fmod(tm * 2.2 + t.seed * 5.0, 1.0)
+		if ph < 0.15:
+			for j in 4:
+				var a: float = t.seed * 30.0 + j * 1.6
+				draw_circle(p + Vector2(8, -h * 0.5) + Vector2.from_angle(a) * (6 + ph * 40), 1.6, Color(1, 0.8, 0.4, 1.0 - ph * 6))
+		draw_arc(p + Vector2(0, -h - 14), 9, -PI / 2, -PI / 2 + TAU * k, 24, Color(1, 0.8, 0.45), 3)
+		draw_arc(p + Vector2(0, -h - 14), 9, 0, TAU, 24, Color(0, 0, 0, 0.35), 1)
+	else:
+		draw_string(font, p + Vector2(-20, -h - 8), "wartet", HORIZONTAL_ALIGNMENT_CENTER, 40, 10, Color(0.85, 0.8, 0.7, 0.8))
+
 func _draw_markers() -> void:
 	var tm := Time.get_ticks_msec() / 1000.0
 	for i in tiles.size():
@@ -1155,6 +1277,13 @@ func _draw_markers() -> void:
 			var w := hh * 0.9
 			markers.draw_rect(Rect2(cp + Vector2(-w / 2, -hh - 8), Vector2(w, 3)), Color(0, 0, 0, 0.6))
 			markers.draw_rect(Rect2(cp + Vector2(-w / 2, -hh - 8), Vector2(w * c.hp / c.max, 3)), Color(1, 0.35, 0.25))
+	if expedition.size() > 0 and expedition.phase != "in":
+		var ep: Vector2 = expedition.p
+		var site: Vector2 = tiles[expedition.site].pos
+		markers.draw_dashed_line(ep, site if expedition.phase == "out" else Vector2(0, 10), Color(0.6, 0.85, 1.0, 0.35), 2.0, 8.0)
+		for j in 4:
+			Explore.draw_suit(markers, ep + Vector2(-12 + j * 8, (j % 2) * 4), 0.9, tm * 1.5 + j, true)
+		markers.draw_circle(ep + Vector2(0, -22), 14, Color(1, 0.85, 0.5, 0.12))
 	for bo in bolts:
 		var col := Color(0.6, 1, 0.4) if bo.foe else Color(1, 0.65, 0.25)
 		markers.draw_line(bo.p, (bo.p as Vector2).lerp(bo.a, 0.08), Color(col, 0.6), 3)
@@ -1165,25 +1294,53 @@ func _draw_markers() -> void:
 		markers.draw_string(font, f.p + Vector2(-60, 0), f.s, HORIZONTAL_ALIGNMENT_CENTER, 120, 13, Color(f.c, minf(f.t, 1.0)))
 
 # ================================================================ UI
-func _style(c: Color, border: Color = Color(1, 1, 1, 0.08), radius: int = 10) -> StyleBoxFlat:
+const BRASS := Color(0.78, 0.6, 0.32)
+const EMBER := Color(1.0, 0.62, 0.25)
+const INK := Color(0.055, 0.05, 0.045)
+const CATS := [["Wirtschaft", ["hut", "pump", "yard", "farm", "water", "forge"]], ["Licht & Wehr", ["lamp", "guard", "beacon", "mortar"]], ["Werkstätten", ["clinic", "scout"]]]
+
+var font_head: SystemFont
+var font_body: SystemFont
+var disp := {"oil": 0.0, "scrap": 0.0, "food": 0.0, "glut": 0.0}
+var toast_box: VBoxContainer
+var sel_panel: PanelContainer
+var sel_icon: TextureRect
+var sel_title: Label
+var cat_idx := 0
+var cat_btns: Array = []
+var build_row: HBoxContainer
+var queue_lbl: Label
+var ICON := {}
+
+func _style(c: Color, border: Color = Color(BRASS, 0.45), radius: int = 6, bw: int = 1) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
 	s.bg_color = c
 	s.border_color = border
-	s.set_border_width_all(1)
+	s.set_border_width_all(bw)
 	s.set_corner_radius_all(radius)
-	s.shadow_color = Color(0, 0, 0, 0.35)
-	s.shadow_size = 10
+	s.shadow_color = Color(0, 0, 0, 0.45)
+	s.shadow_size = 12
 	s.anti_aliasing = true
-	s.content_margin_left = 12; s.content_margin_right = 12
-	s.content_margin_top = 7; s.content_margin_bottom = 7
+	s.content_margin_left = 14; s.content_margin_right = 14
+	s.content_margin_top = 9; s.content_margin_bottom = 9
+	return s
+
+func _flat(c: Color, bottom: Color = Color(0, 0, 0, 0)) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = c
+	s.border_color = bottom
+	s.border_width_bottom = 2
+	s.content_margin_left = 6; s.content_margin_right = 6
+	s.content_margin_top = 4; s.content_margin_bottom = 4
 	return s
 
 func _bar(fill: Color, w: float, h: float) -> ProgressBar:
 	var pb := ProgressBar.new()
 	pb.show_percentage = false
 	pb.custom_minimum_size = Vector2(w, h)
-	var bg := StyleBoxFlat.new(); bg.bg_color = Color(1, 1, 1, 0.08); bg.set_corner_radius_all(4)
-	var fg := StyleBoxFlat.new(); fg.bg_color = fill; fg.set_corner_radius_all(4)
+	var bg := StyleBoxFlat.new(); bg.bg_color = Color(0, 0, 0, 0.45); bg.set_corner_radius_all(3)
+	bg.border_color = Color(BRASS, 0.35); bg.set_border_width_all(1)
+	var fg := StyleBoxFlat.new(); fg.bg_color = fill; fg.set_corner_radius_all(3)
 	pb.add_theme_stylebox_override("background", bg)
 	pb.add_theme_stylebox_override("fill", fg)
 	return pb
@@ -1197,29 +1354,41 @@ func _rich(size: int) -> RichTextLabel:
 	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	r.add_theme_font_size_override("normal_font_size", size)
 	r.add_theme_font_size_override("bold_font_size", size + 1)
-	r.add_theme_color_override("default_color", Color(0.86, 0.87, 0.88))
+	r.add_theme_color_override("default_color", Color(0.88, 0.85, 0.8))
 	return r
+
+func _head(text: String, size: int, col: Color = BRASS) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_override("font", font_head)
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", col)
+	return l
 
 func _make_ui() -> void:
 	ui = CanvasLayer.new()
 	ui.layer = 5
 	add_child(ui)
+	font_head = SystemFont.new()
+	font_head.font_names = PackedStringArray(["Cinzel", "Trajan Pro", "Georgia", "Palatino", "Times New Roman", "Noto Serif", "DejaVu Serif"])
+	font_head.font_weight = 600
+	font_body = SystemFont.new()
+	font_body.font_names = PackedStringArray(["Inter", "SF Pro Text", "Helvetica Neue", "Segoe UI", "Roboto", "Noto Sans", "DejaVu Sans"])
 	th = Theme.new()
-	var sf := SystemFont.new()
-	sf.font_names = PackedStringArray(["Inter", "SF Pro Text", "Helvetica Neue", "Segoe UI", "Roboto", "Noto Sans", "DejaVu Sans"])
-	th.default_font = sf
-	var accent := Color(1.0, 0.72, 0.35)
-	th.set_stylebox("normal", "Button", _style(Color(0.09, 0.1, 0.12, 0.66)))
-	th.set_stylebox("hover", "Button", _style(Color(0.16, 0.15, 0.14, 0.8), Color(accent, 0.7)))
-	th.set_stylebox("pressed", "Button", _style(Color(0.32, 0.22, 0.1, 0.85), accent))
-	th.set_stylebox("disabled", "Button", _style(Color(0.06, 0.06, 0.07, 0.5), Color(1, 1, 1, 0.04)))
+	th.default_font = font_body
+	th.set_stylebox("normal", "Button", _style(Color(0.08, 0.07, 0.06, 0.82)))
+	th.set_stylebox("hover", "Button", _style(Color(0.16, 0.12, 0.08, 0.9), EMBER))
+	th.set_stylebox("pressed", "Button", _style(Color(0.3, 0.18, 0.07, 0.92), EMBER, 6, 2))
+	th.set_stylebox("disabled", "Button", _style(Color(0.05, 0.05, 0.05, 0.6), Color(BRASS, 0.12)))
 	th.set_stylebox("focus", "Button", StyleBoxEmpty.new())
-	th.set_stylebox("panel", "PanelContainer", _style(Color(0.05, 0.06, 0.08, 0.7)))
-	th.set_stylebox("panel", "TooltipPanel", _style(Color(0.05, 0.06, 0.08, 0.94), Color(accent, 0.5)))
-	th.set_color("font_color", "Button", Color(0.93, 0.92, 0.9))
-	th.set_color("font_hover_color", "Button", Color(1, 0.9, 0.75))
-	th.set_color("font_disabled_color", "Button", Color(0.5, 0.5, 0.52))
-	th.set_color("font_color", "Label", Color(0.92, 0.92, 0.9))
+	th.set_stylebox("panel", "PanelContainer", _style(Color(INK, 0.86)))
+	th.set_stylebox("panel", "TooltipPanel", _style(Color(INK, 0.96), EMBER))
+	th.set_color("font_color", "Button", Color(0.93, 0.88, 0.8))
+	th.set_color("font_hover_color", "Button", Color(1, 0.86, 0.6))
+	th.set_color("font_pressed_color", "Button", Color(1, 0.8, 0.5))
+	th.set_color("font_disabled_color", "Button", Color(0.45, 0.42, 0.4))
+	th.set_color("font_color", "Label", Color(0.9, 0.86, 0.8))
+	th.set_color("font_color", "TooltipLabel", Color(0.95, 0.9, 0.82))
 	th.set_font_size("font_size", "Button", 13)
 	th.set_font_size("font_size", "Label", 13)
 	root = Control.new()
@@ -1227,298 +1396,618 @@ func _make_ui() -> void:
 	root.size = Vector2(1280, 720)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.add_child(root)
-	# Oben: Ressourcen
+	# ---------- Ressourcenleiste
 	var tp := PanelContainer.new()
-	tp.position = Vector2(300, 8)
+	tp.add_theme_stylebox_override("panel", _style(Color(INK, 0.9), Color(BRASS, 0.6), 4))
+	tp.position = Vector2(306, 8)
 	root.add_child(tp)
-	top = _rich(15)
+	top = _rich(14)
 	top.autowrap_mode = TextServer.AUTOWRAP_OFF
-	top.custom_minimum_size = Vector2(660, 22)
+	top.custom_minimum_size = Vector2(640, 20)
 	tp.add_child(top)
 	hud_nodes.append(tp)
-	# Phase
+	# ---------- Phase
 	var pp := PanelContainer.new()
-	pp.position = Vector2(470, 52)
+	pp.add_theme_stylebox_override("panel", _style(Color(INK, 0.8), Color(BRASS, 0.3), 4))
+	pp.position = Vector2(478, 54)
 	root.add_child(pp)
 	var pv := VBoxContainer.new()
+	pv.add_theme_constant_override("separation", 4)
 	pp.add_child(pv)
-	phase_lbl = Label.new()
+	phase_lbl = _head("", 15)
 	phase_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	phase_lbl.custom_minimum_size = Vector2(316, 0)
+	phase_lbl.custom_minimum_size = Vector2(296, 0)
 	pv.add_child(phase_lbl)
-	phase_bar = _bar(Color(1, 0.8, 0.45), 316, 6)
+	phase_bar = _bar(EMBER, 296, 5)
 	pv.add_child(phase_bar)
 	hud_nodes.append(pp)
-	# Links: Aufträge + Chronik
+	# ---------- Einblendungen
+	toast_box = VBoxContainer.new()
+	toast_box.position = Vector2(440, 112)
+	toast_box.custom_minimum_size = Vector2(400, 0)
+	toast_box.add_theme_constant_override("separation", 6)
+	toast_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(toast_box)
+	# ---------- Links: Aufträge & Chronik
 	var lp := PanelContainer.new()
 	lp.position = Vector2(8, 8)
-	lp.custom_minimum_size = Vector2(280, 0)
+	lp.custom_minimum_size = Vector2(290, 0)
 	root.add_child(lp)
 	var lv := VBoxContainer.new()
 	lv.add_theme_constant_override("separation", 8)
 	lp.add_child(lv)
-	var qh := Label.new(); qh.text = "AUFTRÄGE"; qh.add_theme_color_override("font_color", accent); qh.add_theme_font_size_override("font_size", 11)
-	lv.add_child(qh)
+	lv.add_child(_head("Aufträge", 15))
 	quest_lbl = _rich(12)
-	quest_lbl.custom_minimum_size = Vector2(256, 0)
+	quest_lbl.custom_minimum_size = Vector2(262, 0)
 	lv.add_child(quest_lbl)
-	var lh := Label.new(); lh.text = "CHRONIK"; lh.add_theme_color_override("font_color", accent); lh.add_theme_font_size_override("font_size", 11)
-	lv.add_child(lh)
-	logl = _rich(12)
-	logl.custom_minimum_size = Vector2(256, 190)
-	logl.add_theme_constant_override("line_separation", 4)
+	var sep := HSeparator.new()
+	sep.add_theme_stylebox_override("separator", _flat(Color(0, 0, 0, 0), Color(BRASS, 0.3)))
+	lv.add_child(sep)
+	lv.add_child(_head("Chronik", 15))
+	logl = _rich(11)
+	logl.custom_minimum_size = Vector2(262, 150)
+	logl.add_theme_constant_override("line_separation", 3)
+	logl.add_theme_color_override("default_color", Color(0.75, 0.73, 0.7))
 	lv.add_child(logl)
 	hud_nodes.append(lp)
-	# Rechts: Turm & Auswahl
+	# ---------- Rechts: Leuchtturm
 	side = PanelContainer.new()
-	side.position = Vector2(1000, 8)
-	side.custom_minimum_size = Vector2(272, 0)
+	side.position = Vector2(992, 8)
+	side.custom_minimum_size = Vector2(280, 0)
 	root.add_child(side)
 	var sv := VBoxContainer.new()
 	sv.add_theme_constant_override("separation", 8)
 	side.add_child(sv)
-	var tl := Label.new(); tl.text = "LEUCHTTURM"; tl.add_theme_color_override("font_color", accent); tl.add_theme_font_size_override("font_size", 11)
-	sv.add_child(tl)
-	tower_bar = _bar(Color(1, 0.75, 0.4), 248, 8)
+	sv.add_child(_head("Leuchtturm", 15))
+	tower_bar = _bar(Color(1, 0.72, 0.35), 252, 9)
 	sv.add_child(tower_bar)
+	side_lbl = _rich(12)
+	side_lbl.custom_minimum_size = Vector2(252, 0)
+	sv.add_child(side_lbl)
 	pulse_btn = Button.new()
-	pulse_btn.custom_minimum_size = Vector2(248, 40)
+	pulse_btn.custom_minimum_size = Vector2(252, 42)
 	pulse_btn.pressed.connect(light_pulse)
 	sv.add_child(pulse_btn)
 	night_btn = Button.new()
-	night_btn.custom_minimum_size = Vector2(248, 34)
-	night_btn.text = "Nacht jetzt beginnen  [N]"
+	night_btn.custom_minimum_size = Vector2(252, 34)
+	night_btn.text = "Nacht herbeirufen   N"
+	night_btn.tooltip_text = "Die Nacht beginnt sofort. Mehr Zeit für Glut."
 	night_btn.pressed.connect(func(): if not is_night: phase_t = 0.01)
 	sv.add_child(night_btn)
-	side_lbl = _rich(12)
-	side_lbl.custom_minimum_size = Vector2(248, 0)
-	sv.add_child(side_lbl)
+	queue_lbl = Label.new()
+	queue_lbl.add_theme_font_size_override("font_size", 11)
+	queue_lbl.add_theme_color_override("font_color", Color(0.75, 0.7, 0.62))
+	sv.add_child(queue_lbl)
+	hud_nodes.append(side)
+	# ---------- Rechts unten: Auswahl
+	sel_panel = PanelContainer.new()
+	sel_panel.position = Vector2(992, 330)
+	sel_panel.custom_minimum_size = Vector2(280, 0)
+	sel_panel.visible = false
+	root.add_child(sel_panel)
+	var selv := VBoxContainer.new()
+	selv.add_theme_constant_override("separation", 6)
+	sel_panel.add_child(selv)
+	var selh := HBoxContainer.new()
+	selh.add_theme_constant_override("separation", 10)
+	selv.add_child(selh)
+	sel_icon = TextureRect.new()
+	sel_icon.custom_minimum_size = Vector2(56, 56)
+	sel_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	sel_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	selh.add_child(sel_icon)
+	sel_title = _head("", 17, Color(1, 0.85, 0.6))
+	sel_title.autowrap_mode = TextServer.AUTOWRAP_WORD
+	sel_title.custom_minimum_size = Vector2(180, 0)
+	selh.add_child(sel_title)
+	var sinfo := _rich(12)
+	sinfo.name = "Info"
+	sinfo.custom_minimum_size = Vector2(252, 0)
+	selv.add_child(sinfo)
 	up_btn = Button.new()
-	up_btn.custom_minimum_size = Vector2(248, 36)
+	up_btn.custom_minimum_size = Vector2(252, 38)
 	up_btn.pressed.connect(func(): if sel_tile >= 0: upgrade(sel_tile))
-	sv.add_child(up_btn)
+	selv.add_child(up_btn)
 	rep_btn = Button.new()
-	rep_btn.custom_minimum_size = Vector2(248, 32)
+	rep_btn.custom_minimum_size = Vector2(252, 32)
 	rep_btn.pressed.connect(func():
 		if sel_tile >= 0:
 			if tiles[sel_tile].ruined: repair(sel_tile)
 			else: demolish(sel_tile))
-	sv.add_child(rep_btn)
-	hud_nodes.append(side)
-	# Unten: Bauleiste
-	var bar := HBoxContainer.new()
-	bar.position = Vector2(8, 662)
-	bar.add_theme_constant_override("separation", 4)
-	root.add_child(bar)
+	selv.add_child(rep_btn)
+	# ---------- Unten: Bauleiste mit Kategorien
+	var bp := PanelContainer.new()
+	bp.add_theme_stylebox_override("panel", _style(Color(INK, 0.9), Color(BRASS, 0.5), 6))
+	bp.position = Vector2(8, 590)
+	root.add_child(bp)
+	var bv := VBoxContainer.new()
+	bv.add_theme_constant_override("separation", 6)
+	bp.add_child(bv)
+	var tabs := HBoxContainer.new()
+	tabs.add_theme_constant_override("separation", 4)
+	bv.add_child(tabs)
+	for ci in CATS.size():
+		var tb := Button.new()
+		tb.text = CATS[ci][0]
+		tb.toggle_mode = true
+		tb.add_theme_stylebox_override("normal", _flat(Color(0, 0, 0, 0)))
+		tb.add_theme_stylebox_override("hover", _flat(Color(1, 1, 1, 0.04), Color(EMBER, 0.6)))
+		tb.add_theme_stylebox_override("pressed", _flat(Color(1, 0.6, 0.2, 0.08), EMBER))
+		tb.add_theme_font_override("font", font_head)
+		tb.add_theme_font_size_override("font_size", 13)
+		var idx2 := ci
+		tb.pressed.connect(func(): _set_cat(idx2))
+		tabs.add_child(tb)
+		cat_btns.append(tb)
+	build_row = HBoxContainer.new()
+	build_row.add_theme_constant_override("separation", 6)
+	bv.add_child(build_row)
 	for k in ORDER:
 		var b := Button.new()
-		b.custom_minimum_size = Vector2(96, 50)
-		b.add_theme_font_size_override("font_size", 12)
+		b.custom_minimum_size = Vector2(92, 76)
+		b.icon = ICON.get(SPRITE_OF.get(k, k))
+		b.expand_icon = true
+		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+		b.add_theme_font_size_override("font_size", 11)
+		b.add_theme_constant_override("icon_max_width", 46)
 		b.toggle_mode = true
-		b.tooltip_text = B[k].d
+		b.tooltip_text = "%s\n%s" % [B[k].n, B[k].d]
 		b.pressed.connect(func():
 			sel_build = k
 			sel_tile = -1
-			for x in bar.get_children(): x.button_pressed = x == b)
-		bar.add_child(b)
+			for x in build_btns.values(): x.button_pressed = x == b)
+		build_row.add_child(b)
 		build_btns[k] = b
+		b.mouse_entered.connect(func(): _hover_tween(b, 1.06))
+		b.mouse_exited.connect(func(): _hover_tween(b, 1.0))
 	build_btns["hut"].button_pressed = true
-	hud_nodes.append(bar)
+	_set_cat(0)
+	hud_nodes.append(bp)
 	var help := _rich(11)
-	help.position = Vector2(16, 560)
-	help.size = Vector2(280, 90)
-	help.add_theme_color_override("default_color", Color(0.75, 0.77, 0.8, 0.8))
-	help.text = "[color=#ffcf8a]Linksklick[/color] Bauen / Auswählen   [color=#ffcf8a]Q[/color] Lichtstoß\n[color=#ffcf8a]U[/color] Ausbauen   [color=#ffcf8a]N[/color] Nacht starten   [color=#ffcf8a]WASD[/color] Kamera\n[color=#ffcf8a]Leertaste[/color] Pause   [color=#ffcf8a]1 2 3[/color] Tempo"
+	help.position = Vector2(640, 694)
+	help.size = Vector2(740, 24)
+	help.autowrap_mode = TextServer.AUTOWRAP_OFF
+	help.add_theme_color_override("default_color", Color(0.75, 0.7, 0.62, 0.75))
+	help.text = "[color=#e0a860]Q[/color] Lichtstoß   [color=#e0a860]U[/color] Ausbauen   [color=#e0a860]N[/color] Nacht   [color=#e0a860]WASD[/color] Kamera   [color=#e0a860]Leertaste[/color] Pause   [color=#e0a860]1·2·3[/color] Tempo"
 	root.add_child(help)
 	hud_nodes.append(help)
 	for n in hud_nodes: n.visible = false
 
+func _set_cat(i: int) -> void:
+	cat_idx = i
+	for j in cat_btns.size(): cat_btns[j].button_pressed = j == i
+	for k in build_btns:
+		var locked: bool = B[k].has("unlock") and meta.level(B[k].unlock) == 0
+		build_btns[k].visible = k in CATS[i][1] and not locked
+
+func _hover_tween(c: Control, s: float) -> void:
+	c.pivot_offset = c.size / 2.0
+	var tw := c.create_tween()
+	tw.tween_property(c, "scale", Vector2(s, s), 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+## Einblendung mittig oben, gleitet herein und verblasst
+func toast(text: String, col: Color = Color(1, 0.85, 0.6)) -> void:
+	if toast_box == null or state == "menu": return
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", _style(Color(INK, 0.88), Color(col, 0.7), 4))
+	var l := Label.new()
+	l.text = text
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.add_theme_font_override("font", font_head)
+	l.add_theme_font_size_override("font_size", 15)
+	l.add_theme_color_override("font_color", col)
+	l.custom_minimum_size = Vector2(372, 0)
+	p.add_child(l)
+	toast_box.add_child(p)
+	toast_box.move_child(p, 0)
+	while toast_box.get_child_count() > 3:
+		var old := toast_box.get_child(toast_box.get_child_count() - 1)
+		toast_box.remove_child(old)
+		old.queue_free()
+	p.modulate.a = 0.0
+	var tw := p.create_tween()
+	tw.tween_property(p, "modulate:a", 1.0, 0.25)
+	tw.tween_interval(2.6)
+	tw.tween_property(p, "modulate:a", 0.0, 0.6)
+	tw.tween_callback(p.queue_free)
+
 func _update_ui() -> void:
-	var chip := func(col: String, name: String, v: float, r: float) -> String:
-		var rc := "#8fdc8f" if r >= 0 else "#ff7b6b"
-		return "[color=%s]●[/color] [color=#9aa0a6]%s[/color] [b]%d[/b] [color=%s]%+.1f[/color]" % [col, name, int(v), rc, r]
-	top.text = "%s    %s    %s    [color=#6fd3ff]●[/color] [color=#9aa0a6]Leute[/color] [b]%d[/b][color=#9aa0a6]/%d[/color]    [color=#ff9a4a]◆[/color] [color=#9aa0a6]Glut[/color] [b]%d[/b]" % [
-		chip.call("#ffb347", "Öl", res.oil, rates.oil), chip.call("#c9a27a", "Schrott", res.scrap, rates.scrap),
-		chip.call("#9be37a", "Nahrung", res.food, rates.food), pop, housing(), int(run_glut)]
+	for k in ["oil", "scrap", "food"]:
+		disp[k] = lerpf(disp[k], res[k], 0.18)
+	disp.glut = lerpf(disp.glut, run_glut, 0.15)
+	var chip := func(col: String, name: String, v: float, r: float, low: float) -> String:
+		var rc := "#9fd88a" if r >= 0 else "#ff8a6a"
+		var vc := "#ff6a5a" if v < low and sin(Time.get_ticks_msec() * 0.01) > 0 else "#f3ead9"
+		return "[color=%s]◆[/color] [color=#a89c88]%s[/color] [color=%s][b]%d[/b][/color][color=%s] %+.1f[/color]" % [col, name, vc, int(v), rc, r]
+	top.text = "%s    %s    %s    [color=#7fc8ff]◆[/color] [color=#a89c88]Leute[/color] [b]%d[/b][color=#a89c88]/%d[/color]    [color=#ff9a4a]✦[/color] [color=#a89c88]Glut[/color] [b]%d[/b]" % [
+		chip.call("#ffb347", "Öl", disp.oil, rates.oil, 15), chip.call("#d2a679", "Schrott", disp.scrap, rates.scrap, 0),
+		chip.call("#a3e07a", "Nahrung", disp.food, rates.food, 5), pop, housing(), int(disp.glut)]
 	if is_night:
-		phase_lbl.text = "NACHT %d  ·  %d Wucherer" % [night, creatures.size() + spawn_left]
+		phase_lbl.text = "☾  Nacht %d   ·   %d Wucherer" % [night, creatures.size() + spawn_left]
 		phase_lbl.add_theme_color_override("font_color", Color(0.65, 0.75, 1.0))
 		phase_bar.max_value = maxf(1.0, creatures.size() + spawn_left + 0.01)
 		phase_bar.value = creatures.size() + spawn_left
 	else:
-		phase_lbl.text = "TAG  ·  Nacht %d in %d s" % [night + 1, int(phase_t)]
-		phase_lbl.add_theme_color_override("font_color", Color(1, 0.85, 0.55))
+		phase_lbl.text = "☀  Tag   ·   Nacht %d in %d s" % [night + 1, int(phase_t)]
+		phase_lbl.add_theme_color_override("font_color", Color(1, 0.84, 0.55))
 		phase_bar.max_value = DAY_LEN
 		phase_bar.value = phase_t
 	tower_bar.max_value = tower_max
-	tower_bar.value = tower_hp
-	pulse_btn.text = ("Lichtstoß  [Q]   · 15 Öl" if pulse_cd <= 0 else "Lichtstoß lädt … %d s" % int(ceil(pulse_cd)))
-	pulse_btn.disabled = pulse_cd > 0 or res.oil < 15
+	tower_bar.value = lerpf(tower_bar.value, tower_hp, 0.2)
+	var ready: bool = pulse_cd <= 0 and res.oil >= 15
+	pulse_btn.text = ("☀  Lichtstoß   Q   ·   15 Öl" if pulse_cd <= 0 else "Lichtstoß lädt …  %d s" % int(ceil(pulse_cd)))
+	pulse_btn.disabled = not ready
+	pulse_btn.modulate = Color(1, 1, 1).lerp(Color(1.25, 1.1, 0.85), (0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.006)) if ready else 0.0)
 	night_btn.visible = not is_night
+	var building := 0
+	var waiting := 0
+	for t in tiles:
+		if t.get("cons", 0.0) > 0:
+			if t.get("active", false): building += 1
+			else: waiting += 1
+	queue_lbl.text = "Baumeister  %d / %d   ·   Warteschlange %d" % [building, builder_slots(), waiting]
+	var s := "[color=#a89c88]Lebenspunkte[/color]  %d / %d     [color=#a89c88]Stufe[/color]  %d" % [int(tower_hp), int(tower_max), tower_lvl]
+	if expedition.size() > 0:
+		s += "\n[color=#8fd0ff]Späher unterwegs[/color]  ·  " + {"out": "auf dem Hinweg", "in": "in der Tiefe", "back": "auf dem Rückweg"}[expedition.phase]
+	if perks.size() > 0:
+		var parts := []
+		for k in perks: parts.append("%s ×%d" % [CARDS[k][0], perks[k]])
+		s += "\n[color=#c9a7ff]Karten[/color]  [color=#b8b0a6]" + ", ".join(parts) + "[/color]"
+	side_lbl.text = s
 	var qt := ""
 	for q in quests:
-		qt += "%s\n[color=#9aa0a6]%d / %d[/color]   [color=#ff9a4a]+%d Glut[/color]\n" % [q.text, mini(q.have, q.goal), q.goal, q.reward]
+		var pct: float = float(mini(q.have, q.goal)) / q.goal
+		var bar_n := int(pct * 14)
+		qt += "%s\n[color=#e0a860]%s[/color][color=#4a4036]%s[/color]  [color=#a89c88]%d/%d[/color]  [color=#ff9a4a]✦%d[/color]\n" % [q.text, "▰".repeat(bar_n), "▱".repeat(14 - bar_n), mini(q.have, q.goal), q.goal, q.reward]
 	quest_lbl.text = qt.strip_edges()
-	# Auswahl
-	var s := "[color=#9aa0a6]Turm[/color]  %d / %d LP   ·   Stufe %d" % [int(tower_hp), int(tower_max), tower_lvl]
+	_update_sel()
+	for k in build_btns:
+		var b: Button = build_btns[k]
+		b.text = "%s\n%d" % [B[k].n, build_cost(k)]
+		b.modulate = Color(1, 1, 1) if res.scrap >= build_cost(k) else Color(0.55, 0.52, 0.5)
+
+func _update_sel() -> void:
+	var info: RichTextLabel = sel_panel.get_node("VBoxContainer/Info") if sel_panel.has_node("VBoxContainer/Info") else null
+	if info == null:
+		for c in sel_panel.get_child(0).get_children():
+			if c is RichTextLabel: info = c
+	var show: bool = sel_tile >= 0 or (hover >= 0 and tiles[hover].type == "" and state == "play")
+	sel_panel.visible = show
+	if not show: return
 	up_btn.visible = false
 	rep_btn.visible = false
+	var s := ""
 	if sel_tile >= 0:
 		var t: Dictionary = tiles[sel_tile]
 		if t.type == "tower":
-			s += "\n\n[b]Leuchtturm[/b]  ·  Stufe %d\n[color=#9aa0a6]Mehr Licht, mehr Lebenspunkte, stärkerer Lichtstoß.[/color]" % tower_lvl
+			sel_icon.texture = ICON.get("tower")
+			sel_title.text = "Leuchtturm"
+			s = "Stufe %d / 8\n[color=#a89c88]Mehr Licht, mehr Lebenspunkte, stärkerer Lichtstoß.[/color]" % tower_lvl
 			up_btn.visible = tower_lvl < 8
-			up_btn.text = "Ausbauen  ·  %d Schrott  [U]" % upgrade_cost(t)
+			up_btn.text = "Ausbauen   ·   %d Schrott" % upgrade_cost(t)
 			up_btn.disabled = res.scrap < upgrade_cost(t)
 		elif t.type in B:
 			var b: Dictionary = B[t.type]
-			s += "\n\n[b]%s[/b]  ·  Stufe %d / %d" % [b.n, t.lvl, MAX_LVL]
-			s += "\n[color=#9aa0a6]%s[/color]" % b.d
-			s += "\nLebenspunkte  %d / %d" % [int(t.hp), int(t.maxhp)]
-			if b.w > 0: s += "\nArbeiter  %d / %d" % [t.wk, b.w]
-			if b.has("dmg"): s += "\nSchaden  %.0f   ·   Reichweite %.1f" % [b.dmg * lvl_mul(t.lvl), b.range + 0.25 * (t.lvl - 1)]
+			sel_icon.texture = ICON.get(SPRITE_OF.get(t.type, t.type))
+			sel_title.text = b.n
+			s = "Stufe %d / %d   %s\n[color=#a89c88]%s[/color]" % [t.lvl, MAX_LVL, "[color=#e0a860]" + "★".repeat(t.lvl) + "[/color][color=#4a4036]" + "★".repeat(MAX_LVL - t.lvl) + "[/color]", b.d]
+			if t.get("cons", 0.0) > 0:
+				s += "\n\n[color=#ffcf8a]%s  %d %%[/color]" % ["Im Bau" if t.get("active", false) else "Wartet auf Baumeister", int(100.0 * (1.0 - t.cons / t.cons_max))]
+			s += "\n\n[color=#a89c88]Lebenspunkte[/color]  %d / %d" % [int(t.hp), int(t.maxhp)]
+			if b.w > 0: s += "\n[color=#a89c88]Arbeiter[/color]  %d / %d" % [t.wk, b.w]
+			if b.has("dmg"): s += "\n[color=#a89c88]Schaden[/color]  %.0f   [color=#a89c88]Reichweite[/color]  %.1f" % [b.dmg * lvl_mul(t.lvl), b.range + 0.25 * (t.lvl - 1)]
 			for k in b.get("prod", {}):
-				s += "\nErtrag  %.2f %s/s" % [b.prod[k] * lvl_mul(t.lvl) * (2.0 if b.get("bonus", "") == t.terr else 1.0), {"oil": "Öl", "scrap": "Schrott", "food": "Nahrung"}[k]]
+				s += "\n[color=#a89c88]Ertrag[/color]  %.2f %s/s" % [b.prod[k] * lvl_mul(t.lvl) * (2.0 if b.get("bonus", "") == t.terr else 1.0), {"oil": "Öl", "scrap": "Schrott", "food": "Nahrung"}[k]]
 			if t.ruined:
 				s += "\n[color=#ff7b6b]Zerstört[/color]"
 				rep_btn.visible = true
-				rep_btn.text = "Reparieren  ·  %d Schrott" % repair_cost(t)
+				rep_btn.text = "Wiederaufbauen   ·   %d Schrott" % repair_cost(t)
 				rep_btn.disabled = res.scrap < repair_cost(t)
-			else:
+			elif t.get("cons", 0.0) <= 0:
 				up_btn.visible = t.lvl < MAX_LVL
-				up_btn.text = "Ausbauen  ·  %d Schrott  [U]" % upgrade_cost(t)
+				up_btn.text = "Ausbauen   ·   %d Schrott   ·   %d s" % [upgrade_cost(t), int(cons_time(t.type, t.lvl + 1))]
 				up_btn.disabled = res.scrap < upgrade_cost(t)
 				rep_btn.visible = true
-				rep_btn.text = "Abreißen  ·  +%d Schrott" % int(build_cost(t.type) * 0.4)
-				rep_btn.disabled = false
-	elif hover >= 0 and tiles[hover].type == "":
+				rep_btn.text = "Abreißen   ·   +%d Schrott" % int(build_cost(t.type) * 0.4)
+	else:
 		var h: Dictionary = tiles[hover]
-		var tn: String = {"ground": "Boden", "fungus": "Pilzfeld", "oil": "Ölquelle", "ruin": "Ruine · klicken für Schrott", "rock": "Fels",
-			"cave": "Höhle · klicken zum Erkunden", "bunker": "Bunker · klicken zum Erkunden"}.get(h.terr, "Gelände")
-		s += "\n\n[b]%s[/b]" % tn
-	if perks.size() > 0:
-		s += "\n\n[color=#c9a7ff]Karten[/color]  "
-		var parts := []
-		for k in perks: parts.append("%s ×%d" % [CARDS[k][0], perks[k]])
-		s += ", ".join(parts)
-	side_lbl.text = s
-	for k in build_btns:
-		var b: Button = build_btns[k]
-		var locked: bool = B[k].has("unlock") and meta.level(B[k].unlock) == 0
-		b.visible = not locked
-		b.text = "%s\n%d Schrott" % [B[k].n, build_cost(k)]
-		b.modulate = Color(1, 1, 1) if res.scrap >= build_cost(k) else Color(0.6, 0.6, 0.62)
+		var tn: String = {"ground": "Boden", "fungus": "Pilzfeld", "oil": "Ölquelle", "ruin": "Ruine", "rock": "Fels", "cave": "Höhle", "bunker": "Bunker"}.get(h.terr, "Gelände")
+		var td: String = {"ground": "Bebaubar.", "fungus": "Pilzzucht bringt hier doppelt.", "oil": "Nur für Ölpumpen.", "ruin": "Klicken: plündern für Schrott.\nSchrottplatz bringt hier doppelt.",
+			"rock": "Nicht bebaubar.", "cave": "Klicken: Späher hineinschicken.", "bunker": "Klicken: Späher hineinschicken."}.get(h.terr, "")
+		sel_icon.texture = ICON.get(h.terr) if h.terr in ["oil", "ruin", "rock", "cave", "bunker"] else ICON.get(SPRITE_OF.get(sel_build, sel_build))
+		sel_title.text = tn
+		s = "[color=#a89c88]%s[/color]" % td
+		if h.terr in ["ground", "fungus", "oil", "ruin"]:
+			s += "\n\nHier bauen: [b]%s[/b]  ·  %d Schrott  ·  %d s" % [B[sel_build].n, build_cost(sel_build), int(cons_time(sel_build, 1))]
+	if info: info.text = s
 
 func say(s: String) -> void:
 	if autotest and OS.get_cmdline_user_args().has("--verbose"): print(s)
 	log_lines.push_front(s)
-	if log_lines.size() > 8: log_lines.pop_back()
+	if log_lines.size() > 7: log_lines.pop_back()
 	if logl: logl.text = "\n".join(log_lines)
 
-# ---------------------------------------------------------------- Überlagerungen
+# ---------------------------------------------------------------- Menüs
 func _hide_overlays() -> void:
 	for n in [menu_box, forge_box, card_box, over_box]:
 		if n: n.queue_free()
 	menu_box = null; forge_box = null; card_box = null; over_box = null
 
-func _center_panel(w: float) -> PanelContainer:
-	var p := PanelContainer.new()
-	p.add_theme_stylebox_override("panel", _style(Color(0.04, 0.05, 0.07, 0.86), Color(1, 0.75, 0.4, 0.35), 16))
-	p.custom_minimum_size = Vector2(w, 0)
-	p.position = Vector2((1280 - w) / 2.0, 90)
-	return p
+func _fade_in(c: CanvasItem, dur: float = 0.35) -> void:
+	c.modulate.a = 0.0
+	c.create_tween().tween_property(c, "modulate:a", 1.0, dur)
+
+func _embers(parent: Node, area: Vector2, amount: int = 70) -> void:
+	var e := CPUParticles2D.new()
+	e.position = Vector2(area.x / 2, area.y + 10)
+	e.amount = amount
+	e.lifetime = 7.0
+	e.preprocess = 7.0
+	e.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	e.emission_rect_extents = Vector2(area.x / 2, 10)
+	e.direction = Vector2(0, -1)
+	e.spread = 25
+	e.gravity = Vector2(4, -6)
+	e.initial_velocity_min = 25
+	e.initial_velocity_max = 70
+	e.scale_amount_min = 1.0
+	e.scale_amount_max = 3.0
+	var g := Gradient.new()
+	g.set_color(0, Color(1, 0.75, 0.35, 0.0))
+	g.add_point(0.15, Color(1, 0.65, 0.25, 0.9))
+	g.set_color(1, Color(1, 0.3, 0.1, 0.0))
+	e.color_ramp = g
+	parent.add_child(e)
+
+func _menu_button(text: String, cb: Callable) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.custom_minimum_size = Vector2(320, 46)
+	b.add_theme_font_override("font", font_head)
+	b.add_theme_font_size_override("font_size", 22)
+	b.add_theme_stylebox_override("normal", _flat(Color(0, 0, 0, 0)))
+	b.add_theme_stylebox_override("hover", _flat(Color(1, 0.6, 0.2, 0.06), EMBER))
+	b.add_theme_stylebox_override("pressed", _flat(Color(1, 0.6, 0.2, 0.12), EMBER))
+	b.add_theme_color_override("font_color", Color(0.86, 0.8, 0.7))
+	b.add_theme_color_override("font_hover_color", Color(1, 0.8, 0.45))
+	b.pressed.connect(cb)
+	b.mouse_entered.connect(func():
+		var tw := b.create_tween()
+		tw.tween_property(b, "position:x", 12.0, 0.12))
+	b.mouse_exited.connect(func():
+		var tw := b.create_tween()
+		tw.tween_property(b, "position:x", 0.0, 0.12))
+	return b
 
 func show_menu() -> void:
 	state = "menu"
 	_hide_overlays()
 	for n in hud_nodes: n.visible = false
+	if sel_panel: sel_panel.visible = false
 	creatures.clear()
 	menu_box = Control.new()
 	menu_box.size = Vector2(1280, 720)
 	root.add_child(menu_box)
+	var shade := ColorRect.new()
+	shade.size = Vector2(620, 720)
+	shade.color = Color(0, 0, 0, 0.0)
+	var grad := GradientTexture2D.new()
+	var gg := Gradient.new()
+	gg.set_color(0, Color(0.02, 0.02, 0.02, 0.92))
+	gg.set_color(1, Color(0.02, 0.02, 0.02, 0.0))
+	grad.gradient = gg
+	grad.fill_to = Vector2(1, 0)
+	var tr := TextureRect.new()
+	tr.texture = grad
+	tr.size = Vector2(760, 720)
+	tr.stretch_mode = TextureRect.STRETCH_SCALE
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	menu_box.add_child(tr)
+	_embers(menu_box, Vector2(1280, 720))
 	var v := VBoxContainer.new()
-	v.position = Vector2(80, 170)
-	v.add_theme_constant_override("separation", 14)
+	v.position = Vector2(90, 120)
+	v.add_theme_constant_override("separation", 6)
 	menu_box.add_child(v)
-	var t := Label.new()
-	t.text = "DAS LEUCHTFEUER"
-	t.add_theme_font_size_override("font_size", 56)
-	t.add_theme_color_override("font_color", Color(1, 0.85, 0.6))
-	t.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
-	t.add_theme_constant_override("shadow_offset_y", 3)
+	var kicker := Label.new()
+	kicker.text = "EIN SPIEL ÜBER LICHT UND NEBEL"
+	kicker.add_theme_font_size_override("font_size", 12)
+	kicker.add_theme_color_override("font_color", Color(BRASS, 0.9))
+	v.add_child(kicker)
+	var t := _head("Das Leuchtfeuer", 64, Color(1, 0.84, 0.58))
+	t.add_theme_color_override("font_shadow_color", Color(1, 0.45, 0.1, 0.45))
+	t.add_theme_constant_override("shadow_offset_y", 0)
+	t.add_theme_constant_override("shadow_outline_size", 14)
 	v.add_child(t)
-	var sub := Label.new()
-	sub.text = "Halte das Licht. Überlebe die Nächte. Werde stärker mit jedem Lauf."
-	sub.add_theme_color_override("font_color", Color(0.8, 0.82, 0.85))
-	sub.add_theme_font_size_override("font_size", 16)
-	v.add_child(sub)
-	var st := _rich(14)
-	st.custom_minimum_size = Vector2(500, 0)
-	st.text = "[color=#ff9a4a]◆ %d Glut[/color]      [color=#9aa0a6]Längste Nacht[/color]  [b]%d[/b]      [color=#9aa0a6]Läufe[/color]  [b]%d[/b]      [color=#9aa0a6]Wucherer besiegt[/color]  [b]%d[/b]" % [meta.glut, meta.best_night, meta.runs, meta.total_kills]
-	v.add_child(st)
-	var sp := Control.new(); sp.custom_minimum_size = Vector2(0, 20); v.add_child(sp)
-	for item in [["Lauf beginnen", start_run], ["Glutschmiede", show_forge], ["Beenden", func(): get_tree().quit()]]:
-		var b := Button.new()
-		b.text = item[0]
-		b.custom_minimum_size = Vector2(280, 48)
-		b.add_theme_font_size_override("font_size", 17)
-		b.pressed.connect(item[1])
-		v.add_child(b)
+	var line := ColorRect.new()
+	line.custom_minimum_size = Vector2(380, 2)
+	line.color = Color(BRASS, 0.6)
+	v.add_child(line)
+	var sp := Control.new(); sp.custom_minimum_size = Vector2(0, 26); v.add_child(sp)
+	v.add_child(_menu_button("Neuer Lauf", start_run))
+	v.add_child(_menu_button("Glutschmiede", show_forge))
+	v.add_child(_menu_button("Reliquien", show_relics))
+	v.add_child(_menu_button("Beenden", func(): get_tree().quit()))
+	# Werte-Karte
+	var card := PanelContainer.new()
+	card.position = Vector2(90, 520)
+	card.add_theme_stylebox_override("panel", _style(Color(INK, 0.75), Color(BRASS, 0.35), 4))
+	menu_box.add_child(card)
+	var cv := VBoxContainer.new()
+	cv.add_theme_constant_override("separation", 6)
+	card.add_child(cv)
+	var rk := HBoxContainer.new()
+	rk.add_theme_constant_override("separation", 12)
+	cv.add_child(rk)
+	rk.add_child(_head("Wächter-Rang %d" % meta.rank(), 18, Color(1, 0.82, 0.55)))
+	var rb := _bar(EMBER, 180, 6)
+	rb.max_value = 1.0
+	rb.value = meta.rank_progress()
+	rb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	rk.add_child(rb)
+	var st := _rich(13)
+	st.custom_minimum_size = Vector2(440, 0)
+	var nrel := 0
+	for k in meta.relics: nrel += meta.relics[k]
+	st.text = "[color=#ff9a4a]✦ %d Glut[/color]     [color=#a89c88]Längste Nacht[/color] [b]%d[/b]     [color=#a89c88]Läufe[/color] [b]%d[/b]     [color=#a89c88]Reliquien[/color] [b]%d[/b]" % [meta.glut, meta.best_night, meta.runs, nrel]
+	cv.add_child(st)
+	_fade_in(menu_box, 0.6)
 
-func show_forge() -> void:
+func _forge_tab(tab: int) -> void:
+	show_forge(tab)
+
+func show_forge(tab: int = 0) -> void:
 	_hide_overlays()
 	state = "menu"
 	forge_box = Control.new()
 	forge_box.size = Vector2(1280, 720)
 	root.add_child(forge_box)
-	var p := _center_panel(1000)
-	p.position.y = 50
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.55)
+	dim.size = Vector2(1280, 720)
+	forge_box.add_child(dim)
+	_embers(forge_box, Vector2(1280, 720), 40)
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", _style(Color(INK, 0.94), Color(BRASS, 0.6), 6, 2))
+	p.position = Vector2(170, 46)
+	p.custom_minimum_size = Vector2(940, 620)
 	forge_box.add_child(p)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 12)
 	p.add_child(v)
 	var hb := HBoxContainer.new()
 	v.add_child(hb)
-	var t := Label.new()
-	t.text = "Glutschmiede"
-	t.add_theme_font_size_override("font_size", 28)
-	t.add_theme_color_override("font_color", Color(1, 0.8, 0.5))
+	var t := _head("Glutschmiede", 32, Color(1, 0.82, 0.55))
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hb.add_child(t)
-	var gl := Label.new()
-	gl.text = "◆ %d Glut" % meta.glut
-	gl.add_theme_font_size_override("font_size", 22)
-	gl.add_theme_color_override("font_color", Color(1, 0.6, 0.3))
-	hb.add_child(gl)
-	var info := Label.new()
-	info.text = "Dauerhafte Verbesserungen für alle zukünftigen Läufe."
-	info.add_theme_color_override("font_color", Color(0.7, 0.72, 0.75))
-	v.add_child(info)
+	hb.add_child(_head("✦ %d" % meta.glut, 26, Color(1, 0.6, 0.3)))
+	var sub := Label.new()
+	sub.text = "Was du hier schmiedest, bleibt für immer."
+	sub.add_theme_color_override("font_color", Color(0.7, 0.65, 0.58))
+	v.add_child(sub)
+	var groups := [["Turm", ["tower_hp", "light", "burn", "pulse"]], ["Wehr & Bau", ["guard", "bhp", "start_scrap", "start_oil"]],
+		["Volk & Ertrag", ["growth", "prod", "glut", "air"]], ["Pläne", ["u_beacon", "u_mortar", "u_forge", "cards4", "reroll"]]]
+	var tabs := HBoxContainer.new()
+	tabs.add_theme_constant_override("separation", 6)
+	v.add_child(tabs)
+	for gi in groups.size():
+		var tb := Button.new()
+		tb.text = groups[gi][0]
+		tb.toggle_mode = true
+		tb.button_pressed = gi == tab
+		tb.add_theme_font_override("font", font_head)
+		tb.add_theme_font_size_override("font_size", 15)
+		tb.add_theme_stylebox_override("normal", _flat(Color(0, 0, 0, 0)))
+		tb.add_theme_stylebox_override("hover", _flat(Color(1, 1, 1, 0.04), Color(EMBER, 0.5)))
+		tb.add_theme_stylebox_override("pressed", _flat(Color(1, 0.6, 0.2, 0.08), EMBER))
+		var g2 := gi
+		tb.pressed.connect(func(): _forge_tab(g2))
+		tabs.add_child(tb)
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 8)
+	v.add_child(list)
+	var i := 0
+	for id in groups[tab][1]:
+		var u: Array = Meta.UPGRADES[id]
+		var row := PanelContainer.new()
+		row.add_theme_stylebox_override("panel", _style(Color(0.1, 0.085, 0.07, 0.9), Color(BRASS, 0.25), 4))
+		list.add_child(row)
+		var rh := HBoxContainer.new()
+		rh.add_theme_constant_override("separation", 16)
+		row.add_child(rh)
+		var tv := VBoxContainer.new()
+		tv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		rh.add_child(tv)
+		tv.add_child(_head(u[0], 17, Color(0.98, 0.85, 0.62)))
+		var d := Label.new()
+		d.text = u[1]
+		d.add_theme_color_override("font_color", Color(0.72, 0.68, 0.62))
+		tv.add_child(d)
+		var lv := meta.level(id)
+		var pips := Label.new()
+		pips.text = "◆".repeat(lv) + "◇".repeat(u[2] - lv)
+		pips.add_theme_color_override("font_color", EMBER)
+		pips.add_theme_font_size_override("font_size", 15)
+		pips.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		rh.add_child(pips)
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(150, 44)
+		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		var maxed: bool = lv >= u[2]
+		b.text = "Gemeistert" if maxed else "✦ %d" % meta.cost(id)
+		b.add_theme_font_size_override("font_size", 16)
+		b.disabled = not meta.can_buy(id)
+		b.pressed.connect(func():
+			if meta.buy(id):
+				sfx("build", -2.0)
+				show_forge(tab))
+		rh.add_child(b)
+		row.modulate.a = 0.0
+		var tw := row.create_tween()
+		tw.tween_interval(0.04 * i)
+		tw.tween_property(row, "modulate:a", 1.0, 0.25)
+		i += 1
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	v.add_child(spacer)
+	var back := _menu_button("‹  Zurück", show_menu)
+	back.add_theme_font_size_override("font_size", 18)
+	v.add_child(back)
+
+func show_relics() -> void:
+	_hide_overlays()
+	state = "menu"
+	forge_box = Control.new()
+	forge_box.size = Vector2(1280, 720)
+	root.add_child(forge_box)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.55)
+	dim.size = Vector2(1280, 720)
+	forge_box.add_child(dim)
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", _style(Color(INK, 0.94), Color(BRASS, 0.6), 6, 2))
+	p.position = Vector2(170, 46)
+	p.custom_minimum_size = Vector2(940, 620)
+	forge_box.add_child(p)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 12)
+	p.add_child(v)
+	v.add_child(_head("Reliquien", 32, Color(1, 0.82, 0.55)))
+	var sub := Label.new()
+	sub.text = "Gefunden in den Hauptkammern von Höhlen und Bunkern. Doppelte Funde verstärken sie."
+	sub.add_theme_color_override("font_color", Color(0.7, 0.65, 0.58))
+	v.add_child(sub)
 	var grid := GridContainer.new()
 	grid.columns = 3
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 10)
 	v.add_child(grid)
-	for id in Meta.UPGRADES:
-		var u: Array = Meta.UPGRADES[id]
-		var b := Button.new()
-		b.custom_minimum_size = Vector2(316, 66)
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		var lv := meta.level(id)
-		var maxed: bool = lv >= u[2]
-		b.text = "%s   %s\n%s\n%s" % [u[0], "%d/%d" % [lv, u[2]], u[1], "Maximal" if maxed else "◆ %d Glut" % meta.cost(id)]
-		b.add_theme_font_size_override("font_size", 12)
-		b.disabled = not meta.can_buy(id)
-		b.pressed.connect(func():
-			if meta.buy(id):
-				sfx("build", -2.0)
-				show_forge())
-		grid.add_child(b)
-	var back := Button.new()
-	back.text = "Zurück"
-	back.custom_minimum_size = Vector2(200, 40)
-	back.pressed.connect(show_menu)
+	for id in Meta.RELICS:
+		var r: Array = Meta.RELICS[id]
+		var n := meta.rel(id)
+		var c := PanelContainer.new()
+		var col: Color = RARITY_COL[r[2]]
+		c.add_theme_stylebox_override("panel", _style(Color(0.1, 0.085, 0.07, 0.9), Color(col, 0.55 if n > 0 else 0.12), 4))
+		c.custom_minimum_size = Vector2(296, 92)
+		grid.add_child(c)
+		var cv := VBoxContainer.new()
+		c.add_child(cv)
+		cv.add_child(_head(r[0] if n > 0 else "? ? ?", 16, col if n > 0 else Color(0.4, 0.38, 0.35)))
+		var d := Label.new()
+		d.text = ("%s pro Stufe\nStufe %d" % [r[1], n]) if n > 0 else "Noch nicht gefunden"
+		d.add_theme_color_override("font_color", Color(0.72, 0.68, 0.62) if n > 0 else Color(0.4, 0.38, 0.35))
+		cv.add_child(d)
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	v.add_child(spacer)
+	var back := _menu_button("‹  Zurück", show_menu)
+	back.add_theme_font_size_override("font_size", 18)
 	v.add_child(back)
+	_fade_in(forge_box)
+
+const CARD_ICON := {"oil": "⛽", "scrap": "⚒", "food": "❀", "gdmg": "➶", "grate": "➶", "grange": "♜", "burn": "☀", "radius": "◎", "pulse": "✺",
+	"pulsecd": "✺", "hp": "▣", "pop": "☺", "glut": "✦", "cheap": "⚖", "regen": "✚", "slow": "☁", "crit": "✧", "tower": "♖"}
 
 func _build_card_ui() -> void:
 	if card_box: card_box.queue_free()
@@ -1526,39 +2015,78 @@ func _build_card_ui() -> void:
 	card_box.size = Vector2(1280, 720)
 	root.add_child(card_box)
 	var dim := ColorRect.new()
-	dim.color = Color(0, 0, 0, 0.45)
+	dim.color = Color(0, 0, 0, 0.55)
 	dim.size = Vector2(1280, 720)
 	card_box.add_child(dim)
-	var title := Label.new()
-	title.text = "Nacht %d überstanden  ·  Wähle eine Karte" % night
-	title.add_theme_font_size_override("font_size", 26)
-	title.add_theme_color_override("font_color", Color(1, 0.85, 0.6))
-	title.position = Vector2(0, 150)
+	_fade_in(dim, 0.4)
+	var title := _head("Morgengrauen", 34, Color(1, 0.84, 0.58))
+	title.position = Vector2(0, 118)
 	title.size = Vector2(1280, 40)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	card_box.add_child(title)
-	var hb := HBoxContainer.new()
-	hb.add_theme_constant_override("separation", 18)
-	card_box.add_child(hb)
+	var sub := Label.new()
+	sub.text = "Nacht %d überstanden  ·  Wähle eine Gabe" % night
+	sub.position = Vector2(0, 162)
+	sub.size = Vector2(1280, 24)
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.add_theme_color_override("font_color", Color(0.78, 0.72, 0.62))
+	card_box.add_child(sub)
 	var n := card_opts.size()
-	hb.position = Vector2((1280 - (n * 220 + (n - 1) * 18)) / 2.0, 220)
-	for id in card_opts:
+	var w := 214.0
+	var gap := 22.0
+	var x0 := (1280 - (n * w + (n - 1) * gap)) / 2.0
+	for i in n:
+		var id: String = card_opts[i]
 		var c: Array = CARDS[id]
-		var b := Button.new()
-		b.custom_minimum_size = Vector2(220, 280)
 		var col: Color = RARITY_COL[c[2]]
-		b.add_theme_stylebox_override("normal", _style(Color(0.06, 0.07, 0.1, 0.95), Color(col, 0.7), 14))
-		b.add_theme_stylebox_override("hover", _style(Color(0.1, 0.1, 0.14, 0.98), col, 14))
-		b.text = "%s\n\n%s\n\n\n%s%s" % [c[0], c[1], RARITY_NAME[c[2]], ("\nStufe %d" % (pk(id) + 1)) if pk(id) > 0 else ""]
-		b.add_theme_font_size_override("font_size", 15)
-		b.autowrap_mode = TextServer.AUTOWRAP_WORD
-		b.add_theme_color_override("font_color", col.lightened(0.3))
+		var b := Button.new()
+		b.size = Vector2(w, 300)
+		b.position = Vector2(x0 + i * (w + gap), 760)
+		b.pivot_offset = b.size / 2.0
+		b.add_theme_stylebox_override("normal", _style(Color(0.08, 0.07, 0.06, 0.97), Color(col, 0.75), 8, 2))
+		b.add_theme_stylebox_override("hover", _style(Color(0.13, 0.1, 0.08, 0.99), col, 8, 3))
+		b.add_theme_stylebox_override("pressed", _style(Color(0.2, 0.14, 0.08, 1.0), col, 8, 3))
+		card_box.add_child(b)
+		var vb := VBoxContainer.new()
+		vb.position = Vector2(0, 22)
+		vb.size = Vector2(w, 260)
+		vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		vb.add_theme_constant_override("separation", 12)
+		b.add_child(vb)
+		var ic := Label.new()
+		ic.text = CARD_ICON.get(id, "✦")
+		ic.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		ic.add_theme_font_size_override("font_size", 52)
+		ic.add_theme_color_override("font_color", col.lightened(0.15))
+		vb.add_child(ic)
+		var nm := _head(c[0], 19, Color(1, 0.88, 0.66))
+		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		nm.autowrap_mode = TextServer.AUTOWRAP_WORD
+		vb.add_child(nm)
+		var de := Label.new()
+		de.text = c[1]
+		de.autowrap_mode = TextServer.AUTOWRAP_WORD
+		de.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		de.custom_minimum_size = Vector2(w - 30, 0)
+		de.add_theme_color_override("font_color", Color(0.82, 0.78, 0.72))
+		vb.add_child(de)
+		var ra := Label.new()
+		ra.text = RARITY_NAME[c[2]].to_upper() + (("   ·   Stufe %d" % (pk(id) + 1)) if pk(id) > 0 else "")
+		ra.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		ra.add_theme_font_size_override("font_size", 11)
+		ra.add_theme_color_override("font_color", col)
+		vb.add_child(ra)
+		for nd in [ic, nm, de, ra]: nd.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var tw := b.create_tween()
+		tw.tween_interval(0.12 * i)
+		tw.tween_property(b, "position:y", 220.0, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		b.mouse_entered.connect(func(): _hover_tween(b, 1.05))
+		b.mouse_exited.connect(func(): _hover_tween(b, 1.0))
 		b.pressed.connect(func(): pick_card(id))
-		hb.add_child(b)
 	if reroll_left > 0:
 		var rb := Button.new()
 		rb.text = "Neu mischen"
-		rb.position = Vector2(560, 530)
+		rb.position = Vector2(560, 560)
 		rb.custom_minimum_size = Vector2(160, 38)
 		rb.pressed.connect(func():
 			reroll_left -= 1
@@ -1573,54 +2101,74 @@ func _build_over_ui(earned: int, record: bool) -> void:
 	over_box.size = Vector2(1280, 720)
 	root.add_child(over_box)
 	var dim := ColorRect.new()
-	dim.color = Color(0, 0, 0, 0.55)
+	dim.color = Color(0, 0, 0, 0.7)
 	dim.size = Vector2(1280, 720)
 	over_box.add_child(dim)
-	var p := _center_panel(520)
-	p.position.y = 170
-	over_box.add_child(p)
+	_fade_in(over_box, 0.8)
+	_embers(over_box, Vector2(1280, 720), 30)
 	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 12)
-	p.add_child(v)
-	var t := Label.new()
-	t.text = "Das Licht ist erloschen"
-	t.add_theme_font_size_override("font_size", 30)
-	t.add_theme_color_override("font_color", Color(1, 0.75, 0.55))
+	v.position = Vector2(340, 170)
+	v.custom_minimum_size = Vector2(600, 0)
+	v.add_theme_constant_override("separation", 14)
+	over_box.add_child(v)
+	var t := _head("Das Licht ist erloschen", 44, Color(1, 0.75, 0.52))
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(t)
-	var st := _rich(15)
-	st.text = "Du hast [b]%d Nächte[/b] überstanden.%s\n\n[color=#9aa0a6]Wucherer besiegt[/color]  %d\n[color=#ff9a4a]◆ +%d Glut[/color] für die Glutschmiede" % [night, "  [color=#ffd27a]Neuer Rekord![/color]" if record else "", run_kills, earned]
+	var nights := _head("%d Nächte" % night, 26, Color(0.9, 0.86, 0.78))
+	nights.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(nights)
+	if record:
+		var rl := _head("Neuer Rekord", 18, EMBER)
+		rl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(rl)
+	var gl := _head("✦ 0", 34, Color(1, 0.6, 0.3))
+	gl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(gl)
+	var tw := gl.create_tween()
+	tw.tween_interval(0.6)
+	tw.tween_method(func(x: float): gl.text = "✦ +%d Glut" % int(x), 0.0, float(earned), 1.4)
+	var st := Label.new()
+	st.text = "%d Wucherer besiegt   ·   Wächter-Rang %d" % [run_kills, meta.rank()]
+	st.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	st.add_theme_color_override("font_color", Color(0.75, 0.7, 0.62))
 	v.add_child(st)
 	var hb := HBoxContainer.new()
-	hb.add_theme_constant_override("separation", 10)
+	hb.alignment = BoxContainer.ALIGNMENT_CENTER
+	hb.add_theme_constant_override("separation", 12)
 	v.add_child(hb)
 	for item in [["Glutschmiede", show_forge], ["Neuer Lauf", start_run], ["Hauptmenü", show_menu]]:
 		var b := Button.new()
 		b.text = item[0]
-		b.custom_minimum_size = Vector2(150, 42)
-		b.pressed.connect(item[1])
+		b.custom_minimum_size = Vector2(170, 44)
+		b.add_theme_font_override("font", font_head)
+		b.add_theme_font_size_override("font_size", 16)
+		b.pressed.connect(func(): item[1].call())
 		hb.add_child(b)
 
 func _snap(name: String) -> void:
 	get_viewport().get_texture().get_image().save_png("res://shot_%s.png" % name)
 
 func _shot() -> void:
-	# Basis aufbauen, Nacht starten, Kampf fotografieren, Karten zeigen
-	res.scrap = 600
-	for p in ["pump", "guard", "guard", "lamp", "farm", "yard", "guard", "clinic", "lamp", "hut"]:
+	res.scrap = 900
+	for p in ["pump", "guard", "guard", "lamp", "farm", "yard", "guard", "clinic", "lamp", "hut", "scout"]:
 		for i in tiles.size():
 			if can_place(i, p) and tiles[i].d >= (2 if p == "guard" else 1) and tiles[i].d <= 3:
 				build(i, p); break
-	await get_tree().create_timer(2.0).timeout
+	await get_tree().create_timer(1.5).timeout
+	_snap("bau")
+	for t in tiles:
+		if t.get("cons", 0.0) > 0: t.cons = 0.01
+	await get_tree().create_timer(1.0).timeout
+	sel_tile = idx[Vector2i(0, 0)]
 	_snap("tag")
+	sel_tile = -1
 	phase_t = 0.01
 	night = 5
-	await get_tree().create_timer(9.0).timeout
-	light_pulse()
-	await get_tree().create_timer(0.25).timeout
+	await get_tree().create_timer(10.0).timeout
 	_snap("nacht")
 	creatures.clear(); spawn_left = 0
 	_end_night()
-	await get_tree().create_timer(1.0).timeout
+	await get_tree().create_timer(1.2).timeout
 	_snap("karten")
 	get_tree().quit()
 
@@ -1628,8 +2176,11 @@ func _shot_menu() -> void:
 	await get_tree().create_timer(2.0).timeout
 	_snap("menu")
 	show_forge()
-	await get_tree().create_timer(1.0).timeout
+	await get_tree().create_timer(1.2).timeout
 	_snap("schmiede")
+	show_relics()
+	await get_tree().create_timer(0.8).timeout
+	_snap("reliquien")
 	get_tree().quit()
 
 # ================================================================ Audio

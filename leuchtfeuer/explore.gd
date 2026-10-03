@@ -46,6 +46,12 @@ var torches := 0
 var torch_btn: Button
 var monster_tex: Texture2D
 var hit_flash := 0.0
+const STEP_TIME := 2.2
+var moving := false
+var move_t := 0.0
+var move_from := Vector2i.ZERO
+var move_dest := Vector2i.ZERO
+var relic := false
 
 func setup(k: String, seed_: int, air0: int, team_n: int, can_break: bool, torches_n: int = 0, mtex: Texture2D = null) -> void:
 	torches = torches_n
@@ -162,11 +168,25 @@ func _rect(c: Vector2i) -> Rect2:
 func _gui_input(e: InputEvent) -> void:
 	if done:
 		return
+	if moving:
+		return
 	if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 		for c in rooms[cur].links:
 			if _rect(c).has_point(e.position):
-				move_to(c)
+				begin_move(c)
 				return
+
+## Das Team bewegt sich mit Zeit – Taschenlampen tasten sich durch die Dunkelheit
+func begin_move(c: Vector2i) -> void:
+	var r: Dictionary = rooms[c]
+	if r.t == "locked" and not r.done and not crowbar:
+		_log("Eine verriegelte Stahltür. Ohne Brecheisen kein Durchkommen.")
+		return
+	moving = true
+	move_t = 0.0
+	move_from = cur
+	move_dest = c
+	if ret_btn: ret_btn.disabled = true
 
 func move_to(c: Vector2i) -> void:
 	var r: Dictionary = rooms[c]
@@ -303,7 +323,10 @@ func _event(r: Dictionary) -> void:
 			loot.oil += 40 if big else 20
 			loot.scrap += 40 if big else 25
 			loot.know += 25 if big else 10
-			_log("%s: Öl, Schrott und Pläne!" % ("DER HAUPTRAUM" if big else "Ein Lager"))
+			_log("%s: Öl, Schrott und Pläne!" % ("Der Hauptraum" if big else "Ein Lager"))
+			if big or rng.randf() < 0.3:
+				relic = true
+				_log("[✦] Zwischen den Trümmern schimmert eine Reliquie.")
 
 func _return_dist() -> int:
 	var d := _bfs(start, false)
@@ -331,7 +354,7 @@ func _try_return() -> void:
 func _finish(ok: bool) -> void:
 	done = true
 	var res := {"ok": ok, "loot": loot if ok else {}, "people": people if ok else 0,
-		"lost": team0 - (team if ok else 0), "hours": steps * 2}
+		"lost": team0 - (team if ok else 0), "hours": steps * 2, "relic": relic and ok}
 	ret_btn.text = "Weiter"
 	ret_btn.disabled = false
 	ret_btn.pressed.disconnect(_try_return)
@@ -373,6 +396,11 @@ func _log(s: String) -> void:
 func _process(delta: float) -> void:
 	t += delta
 	hit_flash = maxf(0.0, hit_flash - delta * 1.5)
+	if moving:
+		move_t += delta
+		if move_t >= STEP_TIME:
+			moving = false
+			move_to(move_dest)
 	for h in hunters:
 		h.anim = minf(1.0, h.anim + delta * 2.5)
 	queue_redraw()
@@ -446,6 +474,12 @@ func _draw() -> void:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.8, 0.05, 0.05, hit_flash * 0.35))
 	# Team in Schutzanzügen
 	var cc := _rect(cur).get_center()
+	if moving:
+		var k := clampf(move_t / STEP_TIME, 0.0, 1.0)
+		cc = _rect(move_from).get_center().lerp(_rect(move_dest).get_center(), smoothstep(0.0, 1.0, k))
+		var rc := _rect(move_dest)
+		draw_rect(Rect2(rc.position + Vector2(0, rc.size.y + 4), Vector2(rc.size.x * k, 4)), Color(1, 0.75, 0.4))
+		draw_string(font, rc.position + Vector2(0, rc.size.y + 22), "Taste mich vor …", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1, 0.8, 0.5, 0.8))
 	for i in team:
 		var p := cc + Vector2(-24 + i * 14, 18) + Vector2(0, sin(t * 3 + i) * 1.0)
 		draw_suit(self, p, 1.4, t + i, true)
@@ -469,10 +503,10 @@ func _draw() -> void:
 		draw_multiline_string(font, Vector2(x, 262 + i * 40), lines[i], HORIZONTAL_ALIGNMENT_LEFT, 400, 13, 2, Color(0.9, 0.86, 0.75, 1.0 - i * 0.08))
 
 ## Figur im Schutzanzug mit Gasmaske – auch von main.gd benutzt.
-static func draw_suit(ci: CanvasItem, p: Vector2, s: float, ph: float, moving: bool) -> void:
+static func draw_suit(ci: CanvasItem, p: Vector2, s: float, ph: float, walk: bool) -> void:
 	var suit := Color(0.85, 0.62, 0.18)
 	var dark := Color(0.2, 0.18, 0.16)
-	var sw := sin(ph * 8.0) * 2.0 * s if moving else 0.0
+	var sw := sin(ph * 8.0) * 2.0 * s if walk else 0.0
 	# Beine
 	ci.draw_line(p + Vector2(-1.5, 0) * s, p + Vector2(-1.5 - sw * 0.5, 6) * s, dark, 2.2 * s)
 	ci.draw_line(p + Vector2(1.5, 0) * s, p + Vector2(1.5 + sw * 0.5, 6) * s, dark, 2.2 * s)

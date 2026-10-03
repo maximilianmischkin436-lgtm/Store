@@ -24,7 +24,25 @@ const UPGRADES := {
 	"reroll": ["Neu mischen", "1 Neumischen der Karten pro Nacht", 1, 45],
 }
 
+## Reliquien: [Name, Wirkung pro Stufe, Seltenheit 0..2]
+const RELICS := {
+	"amber_lens": ["Bernsteinlinse", "Turmlicht +4 %", 1],
+	"ember_heart": ["Glutherz", "Lichtstoß +8 %", 1],
+	"iron_will": ["Eiserner Wille", "Turm-Lebenspunkte +6 %", 0],
+	"fungal_seed": ["Myzelsamen", "Nahrung +8 %", 0],
+	"oil_idol": ["Ölgötze", "Öl +8 %", 0],
+	"scrap_saint": ["Schrottheiliger", "Schrott +8 %", 0],
+	"watch_eye": ["Wächterauge", "Wachen +6 % Schaden", 1],
+	"swift_hands": ["Flinke Hände", "Bauzeit −6 %", 1],
+	"old_map": ["Alte Karte", "+1 Atemluft bei Erkundungen", 2],
+	"glut_shard": ["Glutsplitter", "Glut +6 %", 2],
+	"moth_wing": ["Mottenflügel", "Wucherer 3 % langsamer", 2],
+	"bell_bronze": ["Glockenbronze", "Gebäude +6 % Lebenspunkte", 0],
+}
+
 var glut := 0
+var relics := {}
+var xp := 0
 var lvl := {}
 var best_night := 0
 var runs := 0
@@ -39,6 +57,8 @@ func load_data() -> void:
 	best_night = cf.get_value("meta", "best_night", 0)
 	runs = cf.get_value("meta", "runs", 0)
 	total_kills = cf.get_value("meta", "kills", 0)
+	relics = cf.get_value("meta", "relics", {})
+	xp = cf.get_value("meta", "xp", 0)
 
 func save_data() -> void:
 	var cf := ConfigFile.new()
@@ -47,6 +67,8 @@ func save_data() -> void:
 	cf.set_value("meta", "best_night", best_night)
 	cf.set_value("meta", "runs", runs)
 	cf.set_value("meta", "kills", total_kills)
+	cf.set_value("meta", "relics", relics)
+	cf.set_value("meta", "xp", xp)
 	cf.save(PATH)
 
 func level(id: String) -> int:
@@ -65,3 +87,28 @@ func buy(id: String) -> bool:
 	lvl[id] = level(id) + 1
 	save_data()
 	return true
+
+func rel(id: String) -> int:
+	return relics.get(id, 0)
+
+func add_relic(rng: RandomNumberGenerator) -> String:
+	var pool := []
+	for id in RELICS:
+		for k in [6, 3, 1][RELICS[id][2]]: pool.append(id)
+	var id: String = pool[rng.randi() % pool.size()]
+	relics[id] = rel(id) + 1
+	save_data()
+	return id
+
+## Wächter-Rang aus gesammelter Erfahrung (jede verdiente Glut = 1 EP)
+func rank() -> int:
+	return int(sqrt(xp / 60.0))
+
+func rank_progress() -> float:
+	var r := rank()
+	var a := r * r * 60.0
+	var b := (r + 1) * (r + 1) * 60.0
+	return clampf((xp - a) / (b - a), 0.0, 1.0)
+
+func rank_bonus() -> float:
+	return 1.0 + 0.01 * rank()
