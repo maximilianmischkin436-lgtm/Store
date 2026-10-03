@@ -37,10 +37,18 @@ const TECH := {
 	"T2": {"n": "Tiefpumpen", "c": 40, "req": "T1", "d": "Ölpumpen +50%."},
 	"T3": {"n": "Dampfbagger", "c": 60, "req": "T2", "d": "Schrottplätze +50%."},
 	"E1": {"n": "Schutzanzüge", "c": 20, "req": "", "d": "Arbeit im Nebel halb so riskant. +3 Atemluft."},
-	"E2": {"n": "Brecheisen", "c": 35, "req": "E1", "d": "Öffnet Stahltüren in Bunkern."},
+	"E2": {"n": "Brecheisen", "c": 35, "req": "E4", "d": "Öffnet Stahltüren in Bunkern."},
 	"E3": {"n": "Sauerstofftanks", "c": 55, "req": "E2", "d": "+5 Atemluft, 5er-Team."},
+	"E4": {"n": "Leuchtfackeln", "c": 30, "req": "E1", "d": "Erkundungsteams tragen 2 Fackeln, die Jäger vertreiben."},
+	"G1": {"n": "Gemeinschaftsfeuer", "c": 20, "req": "", "d": "Zuversicht +1 pro Tag."},
+	"G2": {"n": "Volksrat", "c": 40, "req": "G1", "d": "Zorn −1 pro Tag."},
+	"G3": {"n": "Gedenkstätte", "c": 60, "req": "G2", "d": "Tote kosten weniger Zuversicht. Streik erst ab Zorn 75."},
+	"D1": {"n": "Fallgruben", "c": 20, "req": "", "d": "Wucherer sind 30 % langsamer."},
+	"D2": {"n": "Brandöl", "c": 40, "req": "D1", "d": "Wachen treffen 50 % häufiger."},
+	"D3": {"n": "Signalfeuer", "c": 60, "req": "D2", "d": "30 % weniger Angriffe, Wachen reichen 1 Feld weiter."},
 }
-const BRANCHES := [["LICHT", ["L1", "L2", "L3"]], ["LEBEN", ["V1", "V2", "V3"]], ["TECHNIK", ["T1", "T2", "T3"]], ["ERKUNDUNG", ["E1", "E2", "E3"]]]
+const BRANCHES := [["Licht", ["L1", "L2", "L3"]], ["Leben", ["V1", "V2", "V3"]], ["Technik", ["T1", "T2", "T3"]],
+	["Erkundung", ["E1", "E4", "E2", "E3"]], ["Gesellschaft", ["G1", "G2", "G3"]], ["Verteidigung", ["D1", "D2", "D3"]]]
 const Explore := preload("res://explore.gd")
 const ORDER := ["hut", "stone", "pump", "yard", "farm", "water", "lamp", "guard", "clinic", "scout", "lab", "green", "filter", "brew", "beacon"]
 const RES_NAME := {"oil": "Öl", "scrap": "Schrott", "food": "Nahrung", "water": "Wasser", "know": "Wissen"}
@@ -109,7 +117,9 @@ var glow_tex: GradientTexture2D
 # ---------- UI ----------
 var ui: CanvasLayer
 var top: RichTextLabel
-var info: Label
+var info: RichTextLabel
+var stat_bars: Array = []
+var pop_title: Label
 var logl: RichTextLabel
 var gen_btns: Array = []
 var law_box: VBoxContainer
@@ -297,7 +307,7 @@ func _tick_hour() -> void:
 			tower_lvl = 0
 			if out_day != day:
 				out_day = day
-				say("[color=#ff7050]DAS LICHT IST ERLOSCHEN.[/color] Der Nebel kriecht herein.")
+				say("[color=#ff7050]Der Turm ist erloschen.[/color] Der Nebel rückt vor.")
 				hope -= 8
 	else:
 		res.oil -= burn
@@ -316,7 +326,7 @@ func _tick_hour() -> void:
 			t.dark = (t.dark + 1 if dark else 0) if path != "myc" else 0
 			if t.dark >= 20:
 				t.grown = true
-				say("%s ist vom Nebel überwuchert worden." % B[t.type].n)
+				say("%s ist überwuchert." % B[t.type].n)
 		# Wilde Pilze breiten sich im Dunkeln aus
 		if dark and t.terr == "ground" and t.type == "" and rng.randf() < 0.004:
 			t.terr = "fungus"
@@ -430,7 +440,7 @@ func _kill(n: int, why: String) -> void:
 	pop -= n
 	infected = mini(infected, pop)
 	deaths += n
-	hope -= n * (0.7 if "pyre" in laws else 1.4)
+	hope -= n * (0.7 if "pyre" in laws else 1.4) * (0.6 if has_tech("G3") else 1.0)
 	if "pyre" in laws: res.oil += n * 3
 	say(("1 Mensch ist %s." % why) if n == 1 else ("%d Menschen sind %s." % [n, why]))
 
@@ -449,23 +459,25 @@ func _new_day() -> void:
 	anger += homeless * 0.2
 	if "mask" in laws: anger += 1
 	if path == "light": anger += 0.8
+	if has_tech("G1"): hope += 1
+	if has_tech("G2"): anger -= 1
 	if path == "myc": hope += 1
 	if "double" in laws: anger += 3
 	if "kitchen" in laws: hope -= 1
 	if tower_lvl == 0: anger += 6
-	if anger >= 65 and not striking:
+	if anger >= (75 if has_tech("G3") else 65) and not striking:
 		striking = true
 		sfx("strike", -4.0)
-		say("[color=#ff9050]STREIK![/color] Die Arbeiter legen die Werkzeuge nieder. Produktion halbiert.")
+		say("[color=#ff9050]Streik.[/color] Die Arbeiter legen die Werkzeuge nieder.")
 	elif anger < 50 and striking:
 		striking = false
-		say("Der Streik ist vorbei. Die Arbeit geht weiter.")
+		say("Der Streik ist beendet.")
 	if anger >= 85 and rng.randf() < 0.4:
 		var lost := minf(res.oil, 30.0)
 		res.oil -= lost
 		say("[color=#ff7050]Sabotage![/color] Jemand hat %d Öl in den Nebel gekippt." % int(lost))
 	if day >= 4:
-		say("Der Nebel wird dichter. Das Licht des Turms reicht jeden Tag ein wenig weniger weit.") if day % 4 == 0 else null
+		say("Der Nebel wird dichter. Das Turmlicht schrumpft.") if day % 4 == 0 else null
 	if infected == 0 and homeless == 0 and hunger == 0 and thirst == 0:
 		hope += 3
 		anger -= 2
@@ -509,7 +521,7 @@ func _maybe_event() -> void:
 		var e: Array = ev[day]
 		show_event(e[0], e[1], e[2], e[3])
 	if day == 3:
-		say("[color=#ff9070]In der Nacht kratzt etwas an den Hütten am Rand.[/color] Die Wucherer sind wach. Baut Wachposten!")
+		say("[color=#ff9070]Nachts kratzt etwas an den Hütten.[/color] Baut Wachposten.")
 
 func show_event(text: String, a: String, b: String, id: String) -> void:
 	sfx("sting", -4.0)
@@ -517,6 +529,8 @@ func show_event(text: String, a: String, b: String, id: String) -> void:
 		_resolve(id, 0)
 		return
 	paused_event = true
+	pop_title.text = {"path": "Zwei Wege", "child": "Ein Kind im Nebel", "trade": "Fremde am Lichtrand", "boil": "Verdorbenes Wasser",
+		"quar": "Die Befallenen", "preach": "Der Prediger", "nest": "Das Nest", "radio": "Ein Funkspruch", "north": "Das Licht im Norden"}.get(id, "Ereignis")
 	pop_text.text = text
 	for c in pop_btns.get_children(): c.queue_free()
 	for i in 2:
@@ -598,7 +612,7 @@ func research(id: String) -> void:
 	if not can_research(id): return
 	res.know -= TECH[id].c
 	tech.append(id)
-	say("[color=#90d0ff]Erforscht: %s[/color] – %s" % [TECH[id].n, TECH[id].d])
+	say("[color=#90d0ff]Erforscht:[/color] %s" % TECH[id].n)
 
 func start_explore(i: int) -> void:
 	var t: Dictionary = tiles[i]
@@ -614,7 +628,7 @@ func start_explore(i: int) -> void:
 	explore_node = Explore.new()
 	explore_node.main = self
 	var air := 10 + (3 if has_tech("E1") else 0) + (5 if has_tech("E3") else 0)
-	explore_node.setup(t.terr, int(t.seed * 100000), air, team, has_tech("E2"))
+	explore_node.setup(t.terr, int(t.seed * 100000), air, team, has_tech("E2"), 2 if has_tech("E4") else 0, SPR.get("creature"))
 	explore_node.finished.connect(func(r: Dictionary): _explore_done(i, r))
 	ui.add_child(explore_node)
 	if autotest:
@@ -632,7 +646,7 @@ func _explore_done(i: int, r: Dictionary) -> void:
 	if r.lost > 0:
 		_kill(r.lost, "bei der Erkundung verschollen")
 	if r.ok:
-		say("Das Erkundungsteam ist zurück: %d Öl, %d Schrott, %d Nahrung, %d Wissen, %d Überlebende." % [l.get("oil", 0), l.get("scrap", 0), l.get("food", 0), l.get("know", 0), r.people])
+		say("[color=#8fd0ff]Team zurück:[/color] +%d Öl · +%d Schrott · +%d Nahrung · +%d Wissen · +%d Leute" % [l.get("oil", 0), l.get("scrap", 0), l.get("food", 0), l.get("know", 0), r.people])
 		hope += 3 + r.people
 	for h in int(r.hours):
 		if over == "": _tick_hour()
@@ -663,12 +677,12 @@ func build(i: int, type: String) -> bool:
 	if t.grown:
 		if res.scrap >= 8:
 			res.scrap -= 8; t.grown = false; t.dark = 0
-			say("%s vom Bewuchs befreit." % B[t.type].n)
+			say("%s freigeräumt." % B[t.type].n)
 			return true
 		return false
 	if t.terr == "ruin" and t.type == "" and type != "yard":
 		res.scrap += 15; t.terr = "ground"
-		say("Ruine ausgeschlachtet: +15 Schrott.")
+		say("Ruine geplündert · +15 Schrott")
 		return true
 	if not can_place(i, type) or not can_afford(type):
 		return false
@@ -705,7 +719,7 @@ func _auto_play() -> void:
 		if t.grown and res.scrap > 20: build(tiles.find(t), "hut")
 	if laws.size() < 3 and law_cd == 0:
 		sign_law(["mask", "watch", "pyre"][laws.size()])
-	for id in ["V1", "E1", "L1", "V2", "T1", "E2", "L2", "T2", "V3", "L3", "E3", "T3"]:
+	for id in ["V1", "D1", "E1", "G1", "L1", "D2", "V2", "E4", "G2", "T1", "E2", "L2", "D3", "T2", "V3", "G3", "L3", "E3", "T3"]:
 		if can_research(id): research(id)
 	if hour == 9 and day % 2 == 0 and explore_node == null:
 		for i in tiles.size():
@@ -718,7 +732,7 @@ func sign_law(k: String) -> void:
 	if k in laws or law_cd > 0: return
 	laws.append(k)
 	law_cd = 2
-	say("Erlass verkündet: [b]%s[/b]" % LAWS[k].n)
+	say("[color=#ffd27a]Erlass:[/color] %s" % LAWS[k].n)
 
 # ================= Eingabe =================
 
@@ -1276,7 +1290,7 @@ func _make_ui() -> void:
 	var side := VBoxContainer.new()
 	sp.add_child(side)
 	var gl := Label.new()
-	gl.text = "LEUCHTFEUER"
+	gl.text = "LEUCHTTURM"
 	gl.add_theme_color_override("font_color", Color(1, 0.8, 0.45))
 	side.add_child(gl)
 	var gh := HBoxContainer.new()
@@ -1302,11 +1316,35 @@ func _make_ui() -> void:
 		b.pressed.connect(func(): sign_law(k))
 		law_box.add_child(b)
 	exp_btn = Button.new()
-	exp_btn.text = "⚙ FORSCHUNG  (T)"
+	exp_btn.text = "Forschung   [T]"
 	exp_btn.pressed.connect(func(): tech_panel.visible = not tech_panel.visible)
 	side.add_child(exp_btn)
-	info = Label.new()
-	info.add_theme_font_size_override("font_size", 13)
+	for st in [["Zuversicht", Color(0.55, 0.85, 1.0)], ["Zorn", Color(1.0, 0.45, 0.35)], ["Linsenhitze", Color(1.0, 0.75, 0.3)]]:
+		var row := VBoxContainer.new()
+		row.add_theme_constant_override("separation", 2)
+		var lb := Label.new()
+		lb.text = st[0]
+		lb.add_theme_font_size_override("font_size", 11)
+		lb.add_theme_color_override("font_color", Color(0.65, 0.67, 0.7))
+		row.add_child(lb)
+		var pb := ProgressBar.new()
+		pb.show_percentage = false
+		pb.custom_minimum_size = Vector2(240, 7)
+		var bg := StyleBoxFlat.new(); bg.bg_color = Color(1, 1, 1, 0.08); bg.set_corner_radius_all(4)
+		var fg := StyleBoxFlat.new(); fg.bg_color = st[1]; fg.set_corner_radius_all(4)
+		pb.add_theme_stylebox_override("background", bg)
+		pb.add_theme_stylebox_override("fill", fg)
+		row.add_child(pb)
+		side.add_child(row)
+		stat_bars.append(pb)
+	info = RichTextLabel.new()
+	info.bbcode_enabled = true
+	info.fit_content = true
+	info.scroll_active = false
+	info.custom_minimum_size = Vector2(240, 0)
+	info.add_theme_font_size_override("normal_font_size", 12)
+	info.add_theme_font_size_override("bold_font_size", 13)
+	info.add_theme_color_override("default_color", Color(0.82, 0.83, 0.85))
 	side.add_child(info)
 	# Chronik links
 	var lp := PanelContainer.new()
@@ -1316,43 +1354,59 @@ func _make_ui() -> void:
 	logl = RichTextLabel.new()
 	logl.bbcode_enabled = true
 	logl.custom_minimum_size = Vector2(304, 220)
-	logl.add_theme_font_size_override("normal_font_size", 13)
-	logl.add_theme_color_override("default_color", Color(0.92, 0.86, 0.74))
+	logl.add_theme_font_size_override("normal_font_size", 12)
+	logl.add_theme_constant_override("line_separation", 5)
+	logl.add_theme_color_override("default_color", Color(0.86, 0.87, 0.88))
 	lp.add_child(logl)
-	var help := Label.new()
-	help.position = Vector2(12, 290)
-	help.text = "Links: bauen · Ruinen ausschlachten\nRechts: Gebäude an/aus\nWASD/Mitte ziehen: Kamera · Rad: Zoom\nLeertaste: Pause · 1/2/3: Tempo\nKlick auf Turm: Lichtstufe\nKlick auf Höhle/Bunker: Erkundung\nT: Forschung"
-	help.add_theme_font_size_override("font_size", 12)
-	help.add_theme_color_override("font_color", Color(0.8, 0.8, 0.75, 0.8))
+	var help := RichTextLabel.new()
+	help.bbcode_enabled = true
+	help.position = Vector2(16, 292)
+	help.size = Vector2(300, 170)
+	help.scroll_active = false
+	help.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	help.add_theme_font_size_override("normal_font_size", 11)
+	help.add_theme_constant_override("line_separation", 4)
+	help.add_theme_color_override("default_color", Color(0.75, 0.77, 0.8, 0.85))
+	var keys := [["Linksklick", "Bauen"], ["Rechtsklick", "Gebäude an/aus"], ["WASD", "Kamera"], ["Mausrad", "Zoom"],
+		["Leertaste", "Pause"], ["1 · 2 · 3", "Tempo"], ["T", "Forschung"], ["Turm", "Lichtstufe"], ["Höhle/Bunker", "Erkunden"]]
+	var ht := ""
+	for kk in keys:
+		ht += "[color=#ffcf8a]%s[/color]  %s\n" % [kk[0], kk[1]]
+	help.text = ht
 	root.add_child(help)
 	# Ereignis-Fenster
 	popup = PanelContainer.new()
 	popup.position = Vector2(390, 250)
 	popup.custom_minimum_size = Vector2(500, 0)
-	popup.add_theme_stylebox_override("panel", _style(Color(0.1, 0.09, 0.08, 0.97), Color(1, 0.75, 0.4)))
+	popup.add_theme_stylebox_override("panel", _style(Color(0.05, 0.06, 0.08, 0.94), Color(1, 0.75, 0.4, 0.5)))
 	popup.visible = false
 	root.add_child(popup)
 	var pv := VBoxContainer.new()
 	pv.add_theme_constant_override("separation", 14)
 	popup.add_child(pv)
+	pop_title = Label.new()
+	pop_title.add_theme_font_size_override("font_size", 22)
+	pop_title.add_theme_color_override("font_color", Color(1, 0.8, 0.5))
+	pv.add_child(pop_title)
 	pop_text = Label.new()
 	pop_text.autowrap_mode = TextServer.AUTOWRAP_WORD
 	pop_text.custom_minimum_size = Vector2(480, 0)
-	pop_text.add_theme_font_size_override("font_size", 17)
+	pop_text.add_theme_font_size_override("font_size", 15)
+	pop_text.add_theme_color_override("font_color", Color(0.86, 0.87, 0.88))
 	pv.add_child(pop_text)
 	pop_btns = HBoxContainer.new()
 	pop_btns.alignment = BoxContainer.ALIGNMENT_CENTER
 	pop_btns.add_theme_constant_override("separation", 16)
 	pv.add_child(pop_btns)
 	tech_panel = PanelContainer.new()
-	tech_panel.position = Vector2(300, 120)
+	tech_panel.position = Vector2(150, 110)
 	tech_panel.visible = false
 	tech_panel.add_theme_stylebox_override("panel", _style(Color(0.08, 0.08, 0.1, 0.97), Color(0.5, 0.75, 1)))
 	root.add_child(tech_panel)
 	var tv := VBoxContainer.new()
 	tech_panel.add_child(tv)
 	var tl := Label.new()
-	tl.text = "FORSCHUNG – Werkstätten erzeugen Wissen, Bunker enthalten Pläne"
+	tl.text = "Forschung  ·  Wissen entsteht in Werkstätten und wird in Bunkern gefunden"
 	tl.add_theme_color_override("font_color", Color(0.6, 0.85, 1))
 	tv.add_child(tl)
 	var grid := HBoxContainer.new()
@@ -1367,12 +1421,12 @@ func _make_ui() -> void:
 		col.add_child(bl)
 		for id in br[1]:
 			var tb := Button.new()
-			tb.custom_minimum_size = Vector2(150, 54)
+			tb.custom_minimum_size = Vector2(150, 58)
 			tb.tooltip_text = TECH[id].d
 			tb.pressed.connect(func(): research(id))
 			col.add_child(tb)
 			tech_btns[id] = tb
-			if id != br[1][2]:
+			if id != br[1][br[1].size() - 1]:
 				var ar := Label.new()
 				ar.text = "↓"
 				ar.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1385,7 +1439,7 @@ func _make_ui() -> void:
 	banner.size = Vector2(1280, 720)
 	banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	banner.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	banner.add_theme_font_size_override("font_size", 40)
+	banner.add_theme_font_size_override("font_size", 30)
 	banner.add_theme_color_override("font_outline_color", Color.BLACK)
 	banner.add_theme_constant_override("outline_size", 12)
 	banner.visible = false
@@ -1415,39 +1469,41 @@ func _update_ui() -> void:
 		pop, ("  ✚%d" % infected) if infected > 0 else ""]
 	var free := pop - infected
 	for t in tiles: free -= t.wk
-	var s := "Zuversicht %s %d\nZorn       %s %d\nLinsen-Hitze %d%%\nFreie Hände %d" % [_bar(hope), hope, _bar(anger), anger, wear, maxi(0, free)]
-	s += "\nWissen %d" % res.know
-	if striking: s += "\n[STREIK – Produktion halbiert]"
-	if path != "": s += "\nWeg: " + ("des Lichts" if path == "light" else "des Myzels")
-	if creatures.size() > 0: s += "\n⚠ %d Wucherer unterwegs!" % creatures.size()
+	stat_bars[0].value = hope
+	stat_bars[1].value = anger
+	stat_bars[2].value = wear
+	var s := "[color=#9aa0a6]Freie Arbeiter[/color]  [b]%d[/b]      [color=#9aa0a6]Wissen[/color]  [b]%d[/b]" % [maxi(0, free), res.know]
+	if path != "": s += "\n[color=#9aa0a6]Weg[/color]  " + ("[color=#ffd27a]Licht[/color]" if path == "light" else "[color=#8fffe0]Myzel[/color]")
+	if striking: s += "\n[color=#ff8a5c][b]Streik[/b] · Produktion halbiert[/color]"
+	if creatures.size() > 0: s += "\n[color=#ff6a5a][b]%d Wucherer[/b] in der Stadt[/color]" % creatures.size()
 	if hover >= 0:
 		var h: Dictionary = tiles[hover]
 		var tn: String = {"ground": "Boden", "fungus": "Pilzfeld", "oil": "Ölquelle", "ruin": "Ruine", "rock": "Fels"}[h.terr]
 		var nm: String = "Leuchtturm" if h.type == "tower" else (B[h.type].n if h.type in B else tn)
-		s += "\n\n[%s]%s" % [nm, " – im Licht" if h.get("lit", true) else " – im NEBEL"]
+		s += "\n\n[b]%s[/b]  %s" % [nm, "[color=#ffd27a]im Licht[/color]" if h.get("lit", true) else "[color=#9fe08a]im Nebel[/color]"]
 		if h.type in B:
-			s += "\n" + B[h.type].d
-			if h.grown: s += "\nÜBERWUCHERT – klicken (8 Schrott)"
-			elif B[h.type].w > 0: s += "\nArbeiter %d/%d" % [h.wk, B[h.type].w]
+			s += "\n[color=#9aa0a6]" + B[h.type].d + "[/color]"
+			if h.grown: s += "\n[color=#9fe08a]Überwuchert · Klicken zum Freiräumen (8 Schrott)[/color]"
+			elif B[h.type].w > 0: s += "\nArbeiter  %d / %d" % [h.wk, B[h.type].w]
 	info.text = s
 	for i in gen_btns.size():
 		gen_btns[i].modulate = Color(1, 0.75, 0.35) if i == tower_lvl else Color(1, 1, 1)
 	for b in law_box.get_children():
 		b.disabled = b.name in laws or law_cd > 0
-		b.text = LAWS[b.name].n + ("  ✓" if b.name in laws else "")
+		b.text = LAWS[b.name].n + ("  ·  aktiv" if b.name in laws else "")
 	for k in build_btns:
 		build_btns[k].visible = not B[k].has("req") or has_tech(B[k].req)
 	if tech_panel.visible:
 		for id in tech_btns:
 			var tb: Button = tech_btns[id]
-			tb.text = "%s\n%s" % [TECH[id].n, "✓ erforscht" if has_tech(id) else "%d Wissen" % TECH[id].c]
+			tb.text = "%s\n%s" % [TECH[id].n, "Erforscht" if has_tech(id) else "%d Wissen" % TECH[id].c]
 			tb.disabled = not can_research(id) and not has_tech(id)
 			tb.modulate = Color(0.6, 1, 0.6) if has_tech(id) else Color(1, 1, 1)
 
 func say(s: String) -> void:
 	if autotest and OS.get_cmdline_user_args().has("--verbose"): print(s)
-	log_lines.push_front("• " + s)
-	if log_lines.size() > 10: log_lines.pop_back()
+	log_lines.push_front("[color=#6b7078]T%d %02d:00[/color]  %s" % [day, hour, s])
+	if log_lines.size() > 9: log_lines.pop_back()
 	_refresh_log()
 
 func _refresh_log() -> void:
@@ -1456,7 +1512,7 @@ func _refresh_log() -> void:
 func _win() -> void:
 	over = "win"
 	sfx("win", 0.0)
-	banner.text = "DAS LICHT BRENNT WEITER\n%d Überlebende · %d Tote\nIm Norden antwortet ein zweites Feuer." % [pop, deaths]
+	banner.text = "Das Licht brennt weiter\n\n%d Überlebende   ·   %d Tote\nIm Norden antwortet ein zweites Feuer." % [pop, deaths]
 	banner.visible = true
 	if autotest and not "--shot" in OS.get_cmdline_user_args():
 		print("RESULT WIN pop=%d deaths=%d" % [pop, deaths]); get_tree().quit()
@@ -1464,7 +1520,7 @@ func _win() -> void:
 func _lose(why: String) -> void:
 	over = "lose"
 	sfx("lose", 0.0)
-	banner.text = "DAS LICHT IST ERLOSCHEN\n" + why + "\n\nR = Neustart"
+	banner.text = "Das Licht ist erloschen\n\n" + why + "\n\n[R]  Neu beginnen"
 	banner.visible = true
 	if autotest and not "--shot" in OS.get_cmdline_user_args():
 		print("RESULT LOSE day=%d %s" % [day, why]); get_tree().quit()
@@ -1523,7 +1579,8 @@ func _draw_markers() -> void:
 
 func _shotx() -> void:
 	var e := Explore.new()
-	e.setup("bunker" if "--shotx" in OS.get_cmdline_user_args() else "cave", 4242, 13, 4, true)
+	e.main = self
+	e.setup("bunker" if "--shotx" in OS.get_cmdline_user_args() else "cave", 4242, 13, 4, true, 2, SPR.get("creature"))
 	ui.add_child(e)
 	for k in 5:
 		var opts: Array = e.rooms[e.cur].links
@@ -1543,6 +1600,7 @@ func _tick_creatures() -> void:
 		if flood_now(): chance *= 1.8
 		if nest_burned: chance *= 0.5
 		if path == "myc": chance *= 0.45
+		if has_tech("D3"): chance *= 0.7
 		if rng.randf() < chance:
 			var a := rng.randf() * TAU
 			var start := Vector2.from_angle(a) * HEX * SQ3 * (MAP_R + 0.5)
@@ -1567,10 +1625,10 @@ func _tick_creatures() -> void:
 			c.hp = 0
 			continue
 		var tp: Vector2 = tiles[c.target].pos
-		var spd := HEX * SQ3 * (0.8 if lit_at(c.pos, src) < 0.5 else 0.45)
+		var spd := HEX * SQ3 * (0.8 if lit_at(c.pos, src) < 0.5 else 0.45) * (0.7 if has_tech("D1") else 1.0)
 		c.pos = (c.pos as Vector2).move_toward(tp, spd)
 		for g in guards:
-			if (g.pos as Vector2).distance_to(c.pos) < HEX * SQ3 * 3.0 and rng.randf() < (0.6 if path == "light" else 0.35) * g.wk / 3.0:
+			if (g.pos as Vector2).distance_to(c.pos) < HEX * SQ3 * (4.0 if has_tech("D3") else 3.0) and rng.randf() < (0.6 if path == "light" else 0.35) * (1.5 if has_tech("D2") else 1.0) * g.wk / 3.0:
 				c.hp -= 1
 				shots.append({"a": g.pos + Vector2(0, -30), "b": c.pos, "t": 0.6})
 				sfx("flame", -8.0)
@@ -1580,7 +1638,7 @@ func _tick_creatures() -> void:
 				t.grown = true
 				t.dark = 20
 				var victims := rng.randi_range(1, 3) if B[t.type].get("house", 0) > 0 or B[t.type].w > 0 else 0
-				say("[color=#ff6040]Ein Wucherer hat %s verwüstet![/color]" % B[t.type].n)
+				say("[color=#ff6040]Wucherer verwüstet: %s[/color]" % B[t.type].n)
 				if victims > 0: _kill(victims, "von Wucherern gerissen")
 				sfx("alarm", -3.0)
 				shake = 1.0

@@ -41,8 +41,15 @@ var rng := RandomNumberGenerator.new()
 var font: Font
 var ret_btn: Button
 var t := 0.0
+var hunters: Array = []     # Jäger: {"at": Vector2i, "prev": Vector2i, "anim": float}
+var torches := 0
+var torch_btn: Button
+var monster_tex: Texture2D
+var hit_flash := 0.0
 
-func setup(k: String, seed_: int, air0: int, team_n: int, can_break: bool) -> void:
+func setup(k: String, seed_: int, air0: int, team_n: int, can_break: bool, torches_n: int = 0, mtex: Texture2D = null) -> void:
+	torches = torches_n
+	monster_tex = mtex
 	kind = k
 	rng.seed = seed_
 	air = air0
@@ -59,7 +66,26 @@ func setup(k: String, seed_: int, air0: int, team_n: int, can_break: bool) -> vo
 	ret_btn.custom_minimum_size = Vector2(380, 48)
 	ret_btn.pressed.connect(_try_return)
 	add_child(ret_btn)
-	_log("Das Team steigt hinab. Masken dicht. Atemluft für %d Räume." % air)
+	torch_btn = Button.new()
+	torch_btn.position = Vector2(860, 584)
+	torch_btn.custom_minimum_size = Vector2(380, 44)
+	torch_btn.pressed.connect(use_torch)
+	add_child(torch_btn)
+	# Jäger lauern in der Tiefe – Höhlen sind gefährlicher
+	var n_h := 2 if kind == "cave" else 1
+	var dist := _bfs(start, true)
+	var far := []
+	for k2 in dist:
+		if dist[k2] >= 3 and rooms[k2].t != "vault":
+			far.append(k2)
+	for i in n_h:
+		if far.size() > 0:
+			var at: Vector2i = far[rng.randi() % far.size()]
+			far.erase(at)
+			hunters.append({"at": at, "prev": at, "anim": 1.0})
+	_log("Das Team steigt hinab. Atemluft für %d Räume." % air)
+	if hunters.size() > 0:
+		_log("[!] Etwas lebt hier unten.")
 	_update_btn()
 
 func _generate() -> void:
@@ -157,9 +183,80 @@ func move_to(c: Vector2i) -> void:
 		r.done = true
 		_event(r)
 	_reveal()
+	_move_hunters()
+	if done:
+		return
 	if air <= 0 and cur != start:
 		_log("Die Filter sind verbraucht. Die Funkgeräte verstummen einer nach dem anderen.")
 		_finish(false)
+	_update_btn()
+
+func _path_next(from: Vector2i, to: Vector2i) -> Vector2i:
+	# Ein Schritt entlang des kürzesten Weges von from nach to
+	var d := _bfs(to, true)
+	var best := from
+	var bd: int = d.get(from, 99)
+	for n in rooms[from].links:
+		if d.get(n, 99) < bd:
+			bd = d[n]; best = n
+	return best
+
+func _move_hunters() -> void:
+	for h in hunters:
+		h.prev = h.at
+		h.anim = 0.0
+		var dist: int = _bfs(cur, true).get(h.at, 99)
+		# Je näher, desto zielstrebiger; aus der Ferne wandern sie
+		var chase := 0.85 if dist <= 3 else 0.45
+		if rng.randf() < chase:
+			h.at = _path_next(h.at, cur)
+		elif rng.randf() < 0.5:
+			var opts: Array = rooms[h.at].links
+			h.at = opts[rng.randi() % opts.size()]
+		if h.at == cur:
+			_attack(h)
+			if done:
+				return
+	for h in hunters:
+		if _bfs(cur, true).get(h.at, 99) == 1:
+			_log("[!] Schritte im Nebenraum. Es kommt näher.")
+			break
+
+func _attack(h: Dictionary) -> void:
+	hit_flash = 1.0
+	var lost := 1 if rng.randf() < 0.65 else 2
+	lost = mini(lost, team)
+	team -= lost
+	if main: main.sfx("growl", -2.0)
+	_log("[!!] Ein Jäger springt aus der Dunkelheit. %d %s." % [lost, "Späher stirbt" if lost == 1 else "Späher sterben"])
+	# Der Jäger zieht sich zurück
+	var dist := _bfs(cur, true)
+	var far := cur
+	for k2 in dist:
+		if dist[k2] > dist[far]: far = k2
+	h.at = far
+	h.prev = far
+	if team <= 0:
+		_log("Das ganze Team ist verloren.")
+		_finish(false)
+
+func use_torch() -> void:
+	if torches <= 0 or done:
+		return
+	torches -= 1
+	if main: main.sfx("flame", -4.0)
+	var scared := 0
+	var dist := _bfs(cur, true)
+	for h in hunters:
+		if dist.get(h.at, 99) <= 2:
+			var far := cur
+			for k2 in dist:
+				if dist[k2] > dist[far]: far = k2
+			h.prev = h.at
+			h.at = far
+			h.anim = 0.0
+			scared += 1
+	_log("Fackel entzündet. %s" % ("Etwas flieht kreischend in die Tiefe." if scared > 0 else "Nichts rührt sich."))
 	_update_btn()
 
 func _event(r: Dictionary) -> void:
@@ -219,6 +316,9 @@ func _update_btn() -> void:
 	var d := _return_dist()
 	ret_btn.text = "Zurückkehren (braucht %d Atemluft)" % d
 	ret_btn.disabled = d > air
+	if torch_btn:
+		torch_btn.visible = torches > 0
+		torch_btn.text = "Fackel entzünden  (%d übrig)" % torches
 
 func _try_return() -> void:
 	var d := _return_dist()
@@ -244,6 +344,10 @@ func auto_run() -> void:
 	var guard := 0
 	while not done:
 		guard += 1
+		var dd := _bfs(cur, true)
+		for h in hunters:
+			if dd.get(h.at, 99) <= 1 and torches > 0:
+				use_torch()
 		if _return_dist() + 2 >= air or guard > 60:
 			if _return_dist() <= air: _try_return()
 			else: _finish(false)
@@ -268,13 +372,16 @@ func _log(s: String) -> void:
 
 func _process(delta: float) -> void:
 	t += delta
+	hit_flash = maxf(0.0, hit_flash - delta * 1.5)
+	for h in hunters:
+		h.anim = minf(1.0, h.anim + delta * 2.5)
 	queue_redraw()
 
 func _draw() -> void:
 	var bunker := kind == "bunker"
 	draw_rect(Rect2(Vector2.ZERO, size), Color(0.05, 0.06, 0.06, 0.97) if bunker else Color(0.06, 0.04, 0.07, 0.97))
-	draw_string(font, Vector2(60, 60), ("ERKUNDUNG: VERLASSENER BUNKER" if bunker else "ERKUNDUNG: PILZHÖHLE"), HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Color(1, 0.8, 0.45))
-	draw_string(font, Vector2(60, 92), "Klicke auf einen angrenzenden Raum. Jeder Schritt kostet Atemluft.", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.8, 0.8, 0.75))
+	draw_string(font, Vector2(60, 60), ("Verlassener Bunker" if bunker else "Pilzhöhle"), HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Color(1, 0.8, 0.45))
+	draw_string(font, Vector2(60, 92), "Wähle einen angrenzenden Raum  ·  jeder Schritt kostet Atemluft", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.8, 0.8, 0.75))
 	# Gänge
 	for c in rooms:
 		for n in rooms[c].links:
@@ -319,6 +426,24 @@ func _draw() -> void:
 		elif r.t == "locked":
 			label = "Stahltür"
 		draw_string(font, rc.position + Vector2(8, 20), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.95, 0.9, 0.8))
+	# Jäger – nur sichtbar in bekannten Räumen
+	for h in hunters:
+		var hp: Vector2 = _rect(h.prev).get_center().lerp(_rect(h.at).get_center(), h.anim)
+		var vis: bool = rooms[h.at].seen and (rooms[h.at].done or h.at in rooms[cur].links)
+		if not vis:
+			continue
+		var near: bool = h.at in rooms[cur].links
+		draw_circle(hp + Vector2(0, 10), 26, Color(1, 0.2, 0.15, 0.10 + (0.12 * (0.5 + 0.5 * sin(t * 6))) if near else 0.06))
+		if monster_tex:
+			var hh := 60.0
+			var ww := hh * monster_tex.get_width() / monster_tex.get_height()
+			draw_set_transform(hp + Vector2(0, 26), sin(t * 3 + hp.x) * 0.06, Vector2.ONE)
+			draw_texture_rect(monster_tex, Rect2(Vector2(-ww * 0.5, -hh), Vector2(ww, hh)), false, Color(1, 1, 1, 0.95))
+			draw_set_transform(Vector2.ZERO)
+		else:
+			draw_circle(hp, 12, Color(0.4, 0.9, 0.7))
+	if hit_flash > 0:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.8, 0.05, 0.05, hit_flash * 0.35))
 	# Team in Schutzanzügen
 	var cc := _rect(cur).get_center()
 	for i in team:
@@ -328,13 +453,20 @@ func _draw() -> void:
 	draw_circle(cc, 70, Color(1, 0.9, 0.6, 0.05))
 	# Seitenleiste
 	var x := 860.0
-	draw_string(font, Vector2(x, 140), "ATEMLUFT", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 0.8, 0.45))
+	draw_string(font, Vector2(x, 140), "Atemluft", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 0.8, 0.45))
 	for i in maxi(air_max, air):
 		draw_rect(Rect2(Vector2(x + i * 22, 150), Vector2(18, 16)), Color(0.4, 0.8, 0.9) if i < air else Color(0.15, 0.2, 0.22))
-	draw_string(font, Vector2(x, 196), "TEAM %d/%d" % [team, team0], HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 0.8, 0.45))
-	draw_string(font, Vector2(x, 224), "Beute: %d Öl · %d Schrott · %d Nahrung · %d Wissen · %d Menschen" % [loot.oil, loot.scrap, loot.food, loot.know, people], HORIZONTAL_ALIGNMENT_LEFT, 400, 13, Color(0.9, 0.85, 0.75))
+	draw_string(font, Vector2(x, 196), "Team  %d / %d" % [team, team0], HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 0.8, 0.45))
+	var nd := 99
+	var dd := _bfs(cur, true)
+	for h in hunters: nd = mini(nd, dd.get(h.at, 99))
+	if hunters.size() > 0:
+		var warn := "Gefahr: nah" if nd <= 1 else ("Gefahr: in der Nähe" if nd <= 3 else "Gefahr: fern")
+		var wc := Color(1, 0.3, 0.25) if nd <= 1 else (Color(1, 0.7, 0.3) if nd <= 3 else Color(0.6, 0.65, 0.7))
+		draw_string(font, Vector2(x + 140, 196), warn, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, wc)
+	draw_string(font, Vector2(x, 224), "Beute   %d Öl  ·  %d Schrott  ·  %d Nahrung  ·  %d Wissen  ·  %d Leute" % [loot.oil, loot.scrap, loot.food, loot.know, people], HORIZONTAL_ALIGNMENT_LEFT, 400, 13, Color(0.9, 0.85, 0.75))
 	for i in lines.size():
-		draw_multiline_string(font, Vector2(x, 262 + i * 40), "• " + lines[i], HORIZONTAL_ALIGNMENT_LEFT, 400, 13, 2, Color(0.9, 0.86, 0.75, 1.0 - i * 0.08))
+		draw_multiline_string(font, Vector2(x, 262 + i * 40), lines[i], HORIZONTAL_ALIGNMENT_LEFT, 400, 13, 2, Color(0.9, 0.86, 0.75, 1.0 - i * 0.08))
 
 ## Figur im Schutzanzug mit Gasmaske – auch von main.gd benutzt.
 static func draw_suit(ci: CanvasItem, p: Vector2, s: float, ph: float, moving: bool) -> void:
