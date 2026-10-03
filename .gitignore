@@ -3,3 +3,6 @@ dist/parts/
 dist/itch/
 dist/itch-parts/
 dist/*.zip
+dist/*.zip
+dist/**/*.zip
+dist/**/*.z0*
