@@ -4,19 +4,21 @@ extends Node2D
 
 const HEX := 34.0
 const MAP_R := 7
-const LAST_DAY := 14
+const LAST_DAY := 16
 const SEC_PER_HOUR := 1.5
 const SQ3 := 1.7320508
 
 const B := {
-	"hut":   {"n": "Hütte", "cost": {"scrap": 10}, "w": 0, "house": 8, "col": Color(0.55, 0.42, 0.3), "d": "Wohnraum für 8."},
+	"hut":   {"n": "Hütte", "cost": {"scrap": 12}, "w": 0, "house": 8, "col": Color(0.55, 0.42, 0.3), "d": "Wohnraum für 8."},
 	"stone": {"n": "Steinhaus", "cost": {"scrap": 30}, "w": 0, "house": 12, "seal": true, "col": Color(0.5, 0.5, 0.52), "d": "Wohnraum für 12. Dicht gegen Sporen."},
 	"pump":  {"n": "Ölpumpe", "cost": {"scrap": 20}, "w": 6, "out": {"oil": 7.0}, "terr": "oil", "col": Color(0.2, 0.2, 0.24), "d": "6 Arbeiter. Nur auf Ölquellen."},
 	"yard":  {"n": "Schrottplatz", "cost": {"scrap": 10}, "w": 8, "out": {"scrap": 2.5}, "bonus": "ruin", "col": Color(0.55, 0.38, 0.25), "d": "8 Arbeiter. Doppelt auf Ruinen."},
-	"farm":  {"n": "Pilzzucht", "cost": {"scrap": 15}, "w": 5, "out": {"food": 2.6}, "bonus": "fungus", "col": Color(0.35, 0.3, 0.45), "d": "5 Arbeiter. Doppelt auf Pilzfeldern."},
+	"farm":  {"n": "Pilzzucht", "cost": {"scrap": 15}, "w": 5, "out": {"food": 3.0}, "bonus": "fungus", "col": Color(0.35, 0.3, 0.45), "d": "5 Arbeiter. Doppelt auf Pilzfeldern."},
 	"lamp":  {"n": "Laterne", "cost": {"scrap": 15}, "w": 0, "lamp": true, "col": Color(0.95, 0.75, 0.35), "d": "Licht vertreibt den Nebel. 0.6 Öl/h."},
 	"clinic":{"n": "Heilstube", "cost": {"scrap": 25}, "w": 4, "heal": true, "seal": true, "col": Color(0.85, 0.85, 0.88), "d": "4 Arbeiter. Heilt Befallene."},
 	"scout": {"n": "Späherposten", "cost": {"scrap": 20}, "w": 2, "scout": true, "col": Color(0.4, 0.5, 0.35), "d": "Ermöglicht Erkundungen von Höhlen und Bunkern."},
+	"water": {"n": "Wasserwerk", "cost": {"scrap": 20}, "w": 4, "out": {"water": 5.0}, "col": Color(0.4, 0.5, 0.6), "d": "4 Arbeiter. Sauberes Wasser. Ohne Wasser: Befall und Zorn."},
+	"guard": {"n": "Wachposten", "cost": {"scrap": 25}, "w": 3, "guard": true, "col": Color(0.5, 0.4, 0.3), "d": "3 Wachen. Verbrennen Wucherer im Umkreis von 3 Feldern."},
 	"lab":   {"n": "Werkstatt", "cost": {"scrap": 25}, "w": 4, "out": {"know": 1.5}, "col": Color(0.45, 0.4, 0.35), "d": "4 Arbeiter. Erzeugt Wissen für die Forschung."},
 	"green": {"n": "Gewächshaus", "cost": {"scrap": 25}, "w": 4, "out": {"food": 3.2}, "req": "V1", "col": Color(0.5, 0.7, 0.6), "d": "4 Arbeiter. Nahrung, überall."},
 	"filter":{"n": "Filterhaus", "cost": {"scrap": 30}, "w": 2, "filter": true, "req": "V2", "col": Color(0.6, 0.65, 0.7), "d": "2 Arbeiter. Befall im Umkreis -70%."},
@@ -40,8 +42,8 @@ const TECH := {
 }
 const BRANCHES := [["LICHT", ["L1", "L2", "L3"]], ["LEBEN", ["V1", "V2", "V3"]], ["TECHNIK", ["T1", "T2", "T3"]], ["ERKUNDUNG", ["E1", "E2", "E3"]]]
 const Explore := preload("res://explore.gd")
-const ORDER := ["hut", "stone", "pump", "yard", "farm", "lamp", "clinic", "scout", "lab", "green", "filter", "brew", "beacon"]
-const RES_NAME := {"oil": "Öl", "scrap": "Schrott", "food": "Nahrung", "know": "Wissen"}
+const ORDER := ["hut", "stone", "pump", "yard", "farm", "water", "lamp", "guard", "clinic", "scout", "lab", "green", "filter", "brew", "beacon"]
+const RES_NAME := {"oil": "Öl", "scrap": "Schrott", "food": "Nahrung", "water": "Wasser", "know": "Wissen"}
 
 const LAWS := {
 	"mask":   {"n": "Maskenpflicht", "d": "Befall -40%. Zorn +1/Tag."},
@@ -52,7 +54,14 @@ const LAWS := {
 }
 
 # ---------- Zustand ----------
-var res := {"oil": 140.0, "scrap": 90.0, "food": 90.0, "know": 0.0}
+var res := {"oil": 110.0, "scrap": 85.0, "food": 95.0, "water": 70.0, "know": 0.0}
+var SPR := {}
+var draw_order: Array = []
+var creatures: Array = []
+var shots: Array = []
+var striking := false
+var nest_burned := false
+var thirst := 0
 var tech: Array = []
 var explore_node: Control
 var build_btns := {}
@@ -194,7 +203,7 @@ func light_sources() -> Array:
 	var flood := 0.62 if flood_now() else 1.0
 	var nightm := lerpf(0.85, 1.0, dayf) * flood
 	if tower_lvl > 0:
-		out.append(Vector3(0, 0, (2.6 + tower_lvl * 1.15 + (0.7 if has_tech("L1") else 0.0)) * hw * nightm))
+		out.append(Vector3(0, 0, maxf(1.6, 2.6 + tower_lvl * 1.15 + (0.7 if has_tech("L1") else 0.0) - (day - 1) * 0.07) * hw * nightm))
 	if res.oil > 0:
 		var lr := (2.4 * (1.25 if "watch" in laws else 1.0)) * hw * nightm
 		for t in tiles:
@@ -210,7 +219,7 @@ func lit_at(p: Vector2, src: Array) -> float:
 	return lit
 
 func flood_now() -> bool:
-	return day >= 9 and day <= 11
+	return (day >= 10 and day <= 12) or day >= 15
 
 func daylight() -> float:
 	var h := hour + hour_t / SEC_PER_HOUR
@@ -302,7 +311,7 @@ func _tick_hour() -> void:
 		t.wk = w
 		if w == 0 or not working:
 			continue
-		var f := float(w) / need * (1.0 if t.lit else 0.5)
+		var f := float(w) / need * (1.0 if t.lit else 0.5) * (0.5 if striking else 1.0)
 		if B[t.type].get("bonus", "") == t.terr:
 			f *= 2.0
 		if t.type == "pump" and has_tech("T2"): f *= 1.5
@@ -343,12 +352,13 @@ func _tick_hour() -> void:
 				risk += n * (0.004 if B[t.type].get("seal", false) else 0.012) * fm
 		if t.wk > 0 and not t.lit and working:
 			risk += t.wk * 0.01 * fm * (0.5 if has_tech("E1") else 1.0)
-	risk += left * 0.01 # Obdachlose
+	risk += left * 0.004 # Obdachlose
 	if "mask" in laws: risk *= 0.6
 	if quarantine > 0: risk *= 0.5
 	risk += infected * 0.002 * (0.3 if quarantine > 0 else 1.0)
 	var add := int(risk) + (1 if rng.randf() < fmod(risk, 1.0) else 0)
 	infected = mini(pop, infected + add)
+	_tick_creatures()
 	if hour == 19:
 		_meal()
 	_check_end()
@@ -375,6 +385,19 @@ func _meal() -> void:
 			_kill(maxi(1, int(need * 0.08)), "verhungert")
 	else:
 		hunger = 0
+	var drink := pop * 0.8
+	var got := minf(res.water, drink)
+	res.water -= got
+	if drink - got > 0.5:
+		thirst += 1
+		var short := int(drink - got)
+		infected = mini(pop, infected + int(short * 0.12) + 1)
+		anger += 4
+		say("[color=#90c0ff]%d Menschen trinken Nebelwasser.[/color] Der Befall breitet sich aus." % short)
+		if thirst >= 3:
+			_kill(maxi(1, short / 10), "verdurstet")
+	else:
+		thirst = 0
 
 func _kill(n: int, why: String) -> void:
 	n = mini(n, pop)
@@ -403,7 +426,19 @@ func _new_day() -> void:
 	if "double" in laws: anger += 3
 	if "kitchen" in laws: hope -= 1
 	if tower_lvl == 0: anger += 6
-	if infected == 0 and homeless == 0 and hunger == 0:
+	if anger >= 65 and not striking:
+		striking = true
+		say("[color=#ff9050]STREIK![/color] Die Arbeiter legen die Werkzeuge nieder. Produktion halbiert.")
+	elif anger < 50 and striking:
+		striking = false
+		say("Der Streik ist vorbei. Die Arbeit geht weiter.")
+	if anger >= 85 and rng.randf() < 0.4:
+		var lost := minf(res.oil, 30.0)
+		res.oil -= lost
+		say("[color=#ff7050]Sabotage![/color] Jemand hat %d Öl in den Nebel gekippt." % int(lost))
+	if day >= 4:
+		say("Der Nebel wird dichter. Das Licht des Turms reicht jeden Tag ein wenig weniger weit.") if day % 4 == 0 else null
+	if infected == 0 and homeless == 0 and hunger == 0 and thirst == 0:
 		hope += 3
 		anger -= 2
 	hope = clampf(hope, 0, 100)
@@ -430,6 +465,12 @@ func _maybe_event() -> void:
 			"Quarantäne erzwingen", "Familien vereinen", "quar"],
 		8: ["Ein Prediger ruft: Der Nebel ist unsere Strafe, nur das Licht ist heilig!",
 			"Predigen lassen", "Verbannen", "preach"],
+		5: ["Das Wasser schmeckt nach Pilzen. Einige husten schon nach dem Trinken.",
+			"Abkochen (25 Öl)", "Weitertrinken", "boil"],
+		9: ["Späher entdecken ein Wucherer-Nest nahe der Stadt. Nachts kommen sie von dort.",
+			"Nest niederbrennen (Leben riskieren)", "Mauern verstärken (30 Schrott)", "nest"],
+		13: ["Die Kinder zeichnen Bilder vom Licht im Norden. Die Erwachsenen streiten, ob man aufbrechen soll.",
+			"Hoffnung schüren", "Bleiben befehlen", "north"],
 		12: ["Vom Turm aus sieht man es: ein zweites Licht, weit im Norden. Ein Funkspruch knistert.",
 			"Antworten", "Schweigen", "radio"],
 	}
@@ -437,6 +478,8 @@ func _maybe_event() -> void:
 		events_done[day] = true
 		var e: Array = ev[day]
 		show_event(e[0], e[1], e[2], e[3])
+	if day == 3:
+		say("[color=#ff9070]In der Nacht kratzt etwas an den Hütten am Rand.[/color] Die Wucherer sind wach. Baut Wachposten!")
 
 func show_event(text: String, a: String, b: String, id: String) -> void:
 	if autotest:
@@ -481,6 +524,24 @@ func _resolve(id: String, c: int) -> void:
 				hope += 8; anger += 3; say("Jeden Abend versammeln sie sich am Turm und beten ins Licht.")
 			else:
 				anger += 6; say("Der Prediger geht in den Nebel. Seine Anhänger schauen dir lange nach.")
+		"boil":
+			if c == 0 and res.oil >= 25:
+				res.oil -= 25; say("Das Wasser wird abgekocht. Es schmeckt nach Rauch, aber es ist sauber.")
+			else:
+				infected += 6; say("Sie trinken weiter. In der Nacht hört man überall Husten.")
+		"nest":
+			if c == 0:
+				nest_burned = true
+				_kill(rng.randi_range(2, 4), "beim Angriff auf das Nest gestorben")
+				hope += 6; say("Das Nest brennt. Die Nächte werden ruhiger.")
+			else:
+				if res.scrap >= 30: res.scrap -= 30
+				anger += 3; say("Palisaden werden gezogen. Die Wucherer kommen trotzdem.")
+		"north":
+			if c == 0:
+				hope += 8; anger += 4; say("Jeden Abend erzählt man sich vom Licht im Norden.")
+			else:
+				anger += 8; hope -= 3; say("Niemand verlässt die Stadt. Die Kinder hören auf zu zeichnen.")
 		"radio":
 			if c == 0:
 				hope += 15; say("[color=#ffe090]\"Wir hören euch. Haltet durch. Wir kommen.\"[/color]")
@@ -581,8 +642,7 @@ func build(i: int, type: String) -> bool:
 	return true
 
 func _auto_play() -> void:
-	var plan := ["pump", "yard", "farm", "lab", "hut", "hut", "yard", "hut", "hut", "farm", "hut", "clinic", "lamp", "hut", "scout",
-		"lamp", "stone", "farm", "pump", "lamp", "stone", "yard", "clinic", "lamp", "stone", "lamp", "farm", "green", "filter", "beacon", "brew"]
+	var plan := ["pump", "yard", "farm", "yard", "water", "hut", "hut", "farm", "hut", "guard", "farm", "hut", "lab", "clinic", "hut", "pump", "lamp", "scout", "guard", "water", "yard", "farm", "lamp", "stone", "guard", "lamp", "stone", "green", "filter", "beacon", "brew"]
 	var have := {}
 	for t in tiles:
 		if t.type in B: have[t.type] = have.get(t.type, 0) + 1
@@ -664,7 +724,20 @@ func _process_keys(delta: float) -> void:
 
 # ================= Darstellung =================
 
+func _load_sprites() -> void:
+	for f in DirAccess.get_files_at("res://sprites"):
+		if f.ends_with(".png"):
+			var img := Image.load_from_file(ProjectSettings.globalize_path("res://sprites/" + f))
+			if img:
+				img.generate_mipmaps()
+				SPR[f.get_basename()] = ImageTexture.create_from_image(img)
+	draw_order = range(tiles.size())
+	draw_order.sort_custom(func(a, b): return tiles[a].pos.y < tiles[b].pos.y)
+
 func _make_world() -> void:
+	_load_sprites()
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	cam = Camera2D.new()
 	cam.position = Vector2(60, 10)
 	cam.zoom = Vector2(1.1, 1.1)
@@ -719,6 +792,8 @@ func _make_world() -> void:
 
 func _update_visuals(delta: float) -> void:
 	_process_keys(delta)
+	for sh in shots: sh.t -= delta
+	shots = shots.filter(func(x): return x.t > 0)
 	var dl := daylight()
 	var c := Color(0.32, 0.36, 0.5).lerp(Color(1, 0.98, 0.94), dl)
 	if flood_now(): c = c.lerp(Color(0.55, 0.65, 0.5), 0.35)
@@ -782,37 +857,73 @@ func _hex_pts(p: Vector2, s: float) -> PackedVector2Array:
 		pts.append(p + Vector2.from_angle(deg_to_rad(60 * k - 30)) * s)
 	return pts
 
+const SPR_W := {"tower": 64, "hut": 76, "stone": 78, "pump": 74, "yard": 78, "farm": 78, "lamp": 26, "clinic": 80,
+	"scout": 52, "lab": 76, "green": 78, "filter": 78, "brew": 78, "beacon": 40, "water": 74, "guard": 78,
+	"ruin": 66, "rock": 66, "oil": 62, "cave": 82, "bunker": 82}
+
+func spr(ci: CanvasItem, key: String, p: Vector2, mod: Color = Color.WHITE, wmul: float = 1.0) -> bool:
+	if not SPR.has(key):
+		return false
+	var tex: Texture2D = SPR[key]
+	var w: float = SPR_W.get(key, 70) * wmul
+	var h: float = w * tex.get_height() / tex.get_width()
+	ci.draw_texture_rect(tex, Rect2(p - Vector2(w * 0.5, h - w * 0.18), Vector2(w, h)), false, mod)
+	return true
+
 func _draw() -> void:
 	var tm := Time.get_ticks_msec() / 1000.0
 	var dl := daylight()
-	# Boden
-	draw_circle(Vector2.ZERO, 760, Color(0.14, 0.15, 0.13))
+	draw_circle(Vector2.ZERO, 820, Color(0.09, 0.1, 0.09))
+	var gtex: Texture2D = SPR.get("tex_ground")
+	var ftex: Texture2D = SPR.get("tex_fungus")
 	for i in tiles.size():
 		var t: Dictionary = tiles[i]
 		var p: Vector2 = t.pos
-		var base := Color(0.36, 0.33, 0.27)
-		match t.terr:
-			"fungus": base = Color(0.27, 0.24, 0.32)
-			"oil": base = Color(0.24, 0.23, 0.22)
-			"ruin": base = Color(0.4, 0.36, 0.32)
-			"rock": base = Color(0.3, 0.3, 0.31)
-		base = base.lightened(t.shade)
-		var pts := _hex_pts(p, HEX - 1.5)
-		draw_colored_polygon(_hex_pts(p + Vector2(0, 3), HEX - 1.5), base.darkened(0.45))
-		draw_colored_polygon(pts, base)
+		var pts := _hex_pts(p, HEX + 0.6)
+		var uvs := PackedVector2Array()
+		for v in pts: uvs.append(v / 300.0)
+		var tex: Texture2D = ftex if t.terr == "fungus" else gtex
+		var tint := Color(1, 1, 1).darkened(0.12 - t.shade)
+		if t.terr == "rock": tint = tint.darkened(0.15)
+		if tex:
+			draw_colored_polygon(pts, tint, uvs, tex)
+		else:
+			draw_colored_polygon(pts, Color(0.35, 0.32, 0.27))
+		draw_polyline(pts + PackedVector2Array([pts[0]]), Color(0, 0, 0, 0.18), 1.0)
 		if i == hover:
 			var ok: bool = t.type == "" and can_place(i, sel) and can_afford(sel)
+			draw_colored_polygon(pts, Color(0.6, 1, 0.6, 0.12) if ok else Color(1, 0.6, 0.3, 0.12))
 			draw_polyline(pts + PackedVector2Array([pts[0]]), Color(0.6, 1, 0.6) if ok else Color(1, 0.8, 0.5), 2.5)
-		_draw_terrain(t, p, tm)
-	# Gebäude (nach y sortiert, damit sie sich korrekt überlappen)
-	for i in tiles.size():
+	# Objekte von hinten nach vorne
+	for i in draw_order:
 		var t: Dictionary = tiles[i]
+		var p: Vector2 = t.pos
+		if t.type == "" and t.terr in ["ruin", "rock", "oil"]:
+			if not spr(self, t.terr, p + Vector2(0, 4)):
+				_draw_terrain(t, p, tm)
+		elif t.type == "" and t.terr == "fungus":
+			_draw_terrain(t, p, tm)
 		if t.type != "":
-			_draw_building(t, t.pos, tm, dl)
+			# weicher Schatten
+			draw_set_transform(p + Vector2(4, 6), 0, Vector2(1, 0.45))
+			draw_circle(Vector2.ZERO, HEX * 0.85, Color(0, 0, 0, 0.28))
+			draw_set_transform(Vector2.ZERO)
+			_draw_building(t, p, tm, dl)
+	# Bewohner in Schutzanzügen
+	var ptex: Texture2D = SPR.get("person")
 	for w in walkers:
 		var wp: Vector2 = (w.a as Vector2).lerp(w.b, w.t)
-		wp += Vector2(0, sin(w.t * 60.0) * 0.6)
-		Explore.draw_suit(self, wp, 0.9, w.t * 8.0, true)
+		var bob := absf(sin(w.t * 90.0)) * 1.5
+		if ptex:
+			var hh := 24.0
+			var ww := hh * ptex.get_width() / ptex.get_height()
+			var left: bool = ((w.b as Vector2).x - (w.a as Vector2).x) * w.dir < 0
+			draw_set_transform(wp + Vector2(0, -bob), 0, Vector2(-1 if left else 1, 1))
+			draw_circle(Vector2(0, 0), 4, Color(0, 0, 0, 0.25))
+			draw_texture_rect(ptex, Rect2(Vector2(-ww * 0.5, -hh), Vector2(ww, hh)), false)
+			draw_set_transform(Vector2.ZERO)
+		else:
+			Explore.draw_suit(self, wp, 0.9, w.t * 8.0, true)
 
 func _draw_terrain(t: Dictionary, p: Vector2, tm: float) -> void:
 	var sd: float = t.seed
@@ -850,6 +961,60 @@ func _house(p: Vector2, w: float, h: float, wall: Color, roof: Color, lit: bool,
 
 func _draw_building(t: Dictionary, p: Vector2, tm: float, dl: float) -> void:
 	var on: bool = t.on and not t.grown
+	var mod := Color.WHITE
+	if t.grown: mod = Color(0.55, 0.85, 0.6)
+	elif not t.on: mod = Color(0.55, 0.55, 0.55)
+	if spr(self, t.type, p, mod):
+		_building_fx(t, p, tm, on)
+	else:
+		_draw_building_vec(t, p, tm, dl, on)
+	_building_status(t, p)
+
+func _building_fx(t: Dictionary, p: Vector2, tm: float, on: bool) -> void:
+	match t.type:
+		"tower":
+			var lc: Color = [Color(0.2, 0.2, 0.2), Color(1, 0.85, 0.5), Color(1, 0.95, 0.75), Color(1, 1, 1)][tower_lvl]
+			var top := p + Vector2(0, -SPR_W.tower * 1.62)
+			if tower_lvl > 0:
+				draw_circle(top, 10 + sin(tm * 5) * 1.5, Color(lc.r, lc.g, lc.b, 0.45))
+				var a := tm * 0.9
+				for s in [0.0, PI]:
+					var d: Vector2 = Vector2.from_angle(a + s)
+					draw_colored_polygon(PackedVector2Array([top, top + d.rotated(0.13) * 360, top + d.rotated(-0.13) * 360]), Color(lc.r, lc.g, lc.b, 0.13))
+		"lamp", "beacon":
+			if on and res.oil > 0:
+				var top2 := p + Vector2(0, -SPR_W[t.type] * (2.95 if t.type == "lamp" else 1.75))
+				draw_circle(top2, 9 if t.type == "lamp" else 15, Color(1, 0.8, 0.45, 0.35 + 0.08 * sin(tm * 7 + t.seed * 9)))
+		"brew", "lab", "hut", "stone":
+			if on and (t.wk > 0 or B[t.type].w == 0):
+				for k in 3:
+					var sm := fmod(tm * 0.35 + k * 0.33 + t.seed, 1.0)
+					draw_circle(p + Vector2(14 + sm * 10, -50 - sm * 26), 3 + sm * 5, Color(0.65, 0.65, 0.6, 0.35 * (1.0 - sm)))
+		"filter":
+			if on and t.wk > 0:
+				draw_arc(p, HEX * SQ3 * 2.2, 0, TAU, 48, Color(0.6, 0.85, 1, 0.12), 2)
+		"guard":
+			if on and t.wk > 0:
+				draw_arc(p, HEX * SQ3 * 3.0, 0, TAU, 48, Color(1, 0.55, 0.3, 0.10), 2)
+				draw_circle(p + Vector2(10, -56), 4 + sin(tm * 9) * 1.2, Color(1, 0.6, 0.2, 0.8))
+	if t.grown:
+		for k in 9:
+			var o := Vector2.from_angle(k * 0.9 + t.seed * 9) * (6 + k * 2.2)
+			draw_circle(p + o + Vector2(0, -14), 4.5, Color(0.35, 0.85, 0.65, 0.75))
+
+func _building_status(t: Dictionary, p: Vector2) -> void:
+	if t.grown or not t.type in B:
+		return
+	if not t.on:
+		draw_string(font, p + Vector2(-12, 20), "AUS", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1, 0.4, 0.3))
+	elif B[t.type].w > 0 and t.wk < B[t.type].w:
+		draw_circle(p + Vector2(20, -30), 5, Color(0, 0, 0, 0.5))
+		draw_circle(p + Vector2(20, -30), 3.5, Color(0.95, 0.3, 0.2))
+	if t.dark > 0:
+		draw_arc(p, HEX * 0.65, -PI / 2, -PI / 2 + TAU * t.dark / 20.0, 24, Color(0.5, 1, 0.5, 0.9), 3)
+
+func _draw_building_vec(t: Dictionary, p: Vector2, tm: float, dl: float, on0: bool) -> void:
+	var on := on0
 	match t.type:
 		"tower":
 			draw_colored_polygon(_hex_pts(p, 24), Color(0.3, 0.28, 0.27))
@@ -949,17 +1114,6 @@ func _draw_building(t: Dictionary, p: Vector2, tm: float, dl: float) -> void:
 			if lit3:
 				draw_circle(p + Vector2(0, -42), 14, Color(1, 0.85, 0.5, 0.25))
 			draw_circle(p + Vector2(0, -42), 6, Color(1, 0.9, 0.6) if lit3 else Color(0.3, 0.3, 0.3))
-	if t.grown:
-		for k in 7:
-			var o := Vector2.from_angle(k * 0.9 + t.seed * 9) * (5 + k * 2)
-			draw_circle(p + o + Vector2(0, -6), 4, Color(0.35, 0.75, 0.55, 0.85))
-	elif t.type in B:
-		if not t.on:
-			draw_string(font, p + Vector2(-12, 16), "AUS", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(1, 0.4, 0.3))
-		elif B[t.type].w > 0 and t.wk < B[t.type].w:
-			draw_circle(p + Vector2(14, -18), 3.5, Color(0.95, 0.3, 0.2))
-		if t.dark > 0:
-			draw_arc(p, HEX * 0.6, -PI / 2, -PI / 2 + TAU * t.dark / 20.0, 24, Color(0.5, 1, 0.5, 0.9), 2.5)
 
 # ================= UI =================
 
@@ -1001,13 +1155,13 @@ func _make_ui() -> void:
 	# Bauleiste
 	var bar := HBoxContainer.new()
 	bar.position = Vector2(8, 662)
-	bar.add_theme_constant_override("separation", 4)
+	bar.add_theme_constant_override("separation", 3)
 	root.add_child(bar)
 	for k in ORDER:
 		var b := Button.new()
 		b.text = "%s\n%s" % [B[k].n, _cost_str(B[k].cost)]
-		b.custom_minimum_size = Vector2(92, 50)
-		b.add_theme_font_size_override("font_size", 12)
+		b.custom_minimum_size = Vector2(80, 50)
+		b.add_theme_font_size_override("font_size", 11)
 		build_btns[k] = b
 		b.toggle_mode = true
 		b.button_pressed = k == sel
@@ -1152,12 +1306,14 @@ func _bar(v: float) -> String:
 	return "█".repeat(n) + "░".repeat(10 - n)
 
 func _update_ui() -> void:
-	top.text = "  Tag %d/%d   %02d:00 %s   │   Öl %d   Schrott %d   Nahrung %d   │   Bewohner %d   Befallen %d   Wohnraum %d" % [
-		day, LAST_DAY, hour, "  ☁ NEBELFLUT" if flood_now() else "", res.oil, res.scrap, res.food, pop, infected, housing()]
+	top.text = "  Tag %d/%d   %02d:00 %s   │   Öl %d   Schrott %d   Nahrung %d   Wasser %d   │   Bewohner %d   Befallen %d   Wohnraum %d" % [
+		day, LAST_DAY, hour, "  ☁ NEBELFLUT" if flood_now() else "", res.oil, res.scrap, res.food, res.water, pop, infected, housing()]
 	var free := pop - infected
 	for t in tiles: free -= t.wk
 	var s := "Zuversicht %s %d\nZorn       %s %d\nLinsen-Hitze %d%%\nFreie Hände %d" % [_bar(hope), hope, _bar(anger), anger, wear, maxi(0, free)]
 	s += "\nWissen %d" % res.know
+	if striking: s += "\n[STREIK – Produktion halbiert]"
+	if creatures.size() > 0: s += "\n⚠ %d Wucherer unterwegs!" % creatures.size()
 	if hover >= 0:
 		var h: Dictionary = tiles[hover]
 		var tn: String = {"ground": "Boden", "fungus": "Pilzfeld", "oil": "Ölquelle", "ruin": "Ruine", "rock": "Fels"}[h.terr]
@@ -1206,6 +1362,7 @@ func _lose(why: String) -> void:
 		print("RESULT LOSE day=%d %s" % [day, why]); get_tree().quit()
 
 func _shot() -> void:
+	if "--zoom" in OS.get_cmdline_user_args(): cam.zoom = Vector2(2.0, 2.0); cam.position = Vector2(20, -20)
 	for n in [5.0, 9.0]:
 		await get_tree().create_timer(n).timeout
 		get_viewport().get_texture().get_image().save_png("res://shot%d.png" % int(n))
@@ -1213,13 +1370,32 @@ func _shot() -> void:
 
 func _draw_markers() -> void:
 	var tm := Time.get_ticks_msec() / 1000.0
+	var f := clampf(hour_t / SEC_PER_HOUR, 0, 1)
+	var ctex: Texture2D = SPR.get("creature")
+	for c in creatures:
+		var cp: Vector2 = (c.prev as Vector2).lerp(c.pos, f)
+		var sway := sin(tm * 4 + cp.x) * 0.08
+		if ctex:
+			var hh := 34.0
+			var ww := hh * ctex.get_width() / ctex.get_height()
+			markers.draw_set_transform(cp, sway, Vector2(1, 1))
+			markers.draw_circle(Vector2.ZERO, 8, Color(0.3, 1, 0.7, 0.18))
+			markers.draw_texture_rect(ctex, Rect2(Vector2(-ww * 0.5, -hh), Vector2(ww, hh)), false)
+			markers.draw_set_transform(Vector2.ZERO)
+		else:
+			markers.draw_circle(cp, 6, Color(0.4, 0.9, 0.6))
+	for sh in shots:
+		markers.draw_line(sh.a, sh.b, Color(1, 0.6, 0.2, sh.t), 3)
+		markers.draw_circle(sh.b, 10 * sh.t, Color(1, 0.5, 0.1, sh.t * 0.7))
 	for i in tiles.size():
 		var t: Dictionary = tiles[i]
 		if not t.terr in ["cave", "bunker"]:
 			continue
 		var p: Vector2 = t.pos
 		var ex: bool = t.get("explored", false)
-		if t.terr == "bunker":
+		if spr(markers, t.terr, p + Vector2(0, 6), Color(0.75, 0.75, 0.75) if ex else Color.WHITE):
+			pass
+		elif t.terr == "bunker":
 			markers.draw_rect(Rect2(p + Vector2(-16, -6), Vector2(32, 14)), Color(0.4, 0.42, 0.4))
 			markers.draw_rect(Rect2(p + Vector2(-8, -2), Vector2(16, 10)), Color(0.08, 0.08, 0.08))
 			for k in 4:
@@ -1245,3 +1421,54 @@ func _shotx() -> void:
 	await get_tree().create_timer(1.5).timeout
 	get_viewport().get_texture().get_image().save_png("res://shotx.png")
 	get_tree().quit()
+
+# ================= Wucherer =================
+
+func _tick_creatures() -> void:
+	var night := hour >= 21 or hour < 5
+	for c in creatures:
+		c.prev = c.pos
+	if night and day >= 3:
+		var chance := 0.06 + day * 0.025
+		if flood_now(): chance *= 1.8
+		if nest_burned: chance *= 0.5
+		if rng.randf() < chance:
+			var a := rng.randf() * TAU
+			var start := Vector2.from_angle(a) * HEX * SQ3 * (MAP_R + 0.5)
+			var best := -1
+			var bd := 1e9
+			for i in tiles.size():
+				var t: Dictionary = tiles[i]
+				if t.type in B and not t.grown:
+					var d: float = start.distance_to(t.pos)
+					if d < bd:
+						bd = d; best = i
+			if best >= 0:
+				creatures.append({"pos": start, "prev": start, "target": best, "hp": 2})
+	var src := light_sources()
+	var guards := []
+	for t in tiles:
+		if t.type == "guard" and t.wk > 0 and not t.grown:
+			guards.append(t)
+	for c in creatures.duplicate():
+		if not night:
+			c.hp = 0
+			continue
+		var tp: Vector2 = tiles[c.target].pos
+		var spd := HEX * SQ3 * (0.8 if lit_at(c.pos, src) < 0.5 else 0.45)
+		c.pos = (c.pos as Vector2).move_toward(tp, spd)
+		for g in guards:
+			if (g.pos as Vector2).distance_to(c.pos) < HEX * SQ3 * 3.0 and rng.randf() < 0.35 * g.wk / 3.0:
+				c.hp -= 1
+				shots.append({"a": g.pos + Vector2(0, -30), "b": c.pos, "t": 0.6})
+		if c.hp > 0 and (c.pos as Vector2).distance_to(tp) < 8.0:
+			var t: Dictionary = tiles[c.target]
+			if t.type in B and not t.grown:
+				t.grown = true
+				t.dark = 20
+				var victims := rng.randi_range(1, 3) if B[t.type].get("house", 0) > 0 or B[t.type].w > 0 else 0
+				say("[color=#ff6040]Ein Wucherer hat %s verwüstet![/color]" % B[t.type].n)
+				if victims > 0: _kill(victims, "von Wucherern gerissen")
+				anger += 2
+			c.hp = 0
+	creatures = creatures.filter(func(c): return c.hp > 0)

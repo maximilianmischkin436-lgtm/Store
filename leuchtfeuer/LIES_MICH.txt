@@ -22,3 +22,13 @@ NEU:
 - Höhlen und Bunker im Nebel: anklicken (braucht Späherposten).
   Raum für Raum erkunden, Atemluft im Blick behalten, rechtzeitig zurück!
   Beute, Überlebende, Notizen, Sporenwolken, Wucherer, Stahltüren (Brecheisen).
+
+UPDATE 3 – Grafik & neue Probleme (schwerer, 16 Tage):
+- Alle Gebäude, Gelände, Menschen und Wucherer sind jetzt gemalte Sprites.
+- WASSER: Jeder trinkt jeden Abend. Ohne Wasserwerk → Nebelwasser → Befall, Zorn, Verdursten.
+- WUCHERER: Ab Tag 3 kommen sie nachts aus dem Nebel und verwüsten Gebäude.
+  Wachposten (3 Wachen) verbrennen sie im Umkreis von 3 Feldern.
+- STREIK ab Zorn 65 (Produktion halbiert), SABOTAGE ab Zorn 85.
+- Der Nebel wird jeden Tag dichter – das Turmlicht schrumpft langsam.
+- Nebelflut Tag 10–12 und Sporensturm ab Tag 15.
+- Neue Entscheidungen: verseuchtes Wasser, Wucherer-Nest, Aufbruch nach Norden.
