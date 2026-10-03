@@ -32,3 +32,16 @@ UPDATE 3 – Grafik & neue Probleme (schwerer, 16 Tage):
 - Der Nebel wird jeden Tag dichter – das Turmlicht schrumpft langsam.
 - Nebelflut Tag 10–12 und Sporensturm ab Tag 15.
 - Neue Entscheidungen: verseuchtes Wasser, Wucherer-Nest, Aufbruch nach Norden.
+
+UPDATE 4 – Musik, Sound, moderne Grafik, eigener Weg:
+- Dynamische Musik: ruhig am Tag, unheimlich nachts, treibend bei Gefahr –
+  sie blendet je nach Stresslage über. Herzschlag bei höchster Gefahr.
+- Sounds: Turmglocke im Morgengrauen, Bauen, Klicks, Wucherer-Knurren,
+  Flammenstöße der Wachen, Alarmsirene, Streik, Ereignis-Fanfare, Sieg/Niederlage.
+- Moderne Grafik: Tilt-Shift (Miniatur-Look), Bloom, Farbkorrektur, Filmkorn,
+  Glas-Oberfläche, weiche Kamera, Bau-Animation, Bildschirmwackeln bei Angriffen.
+  Unter Stress wird das Bild blasser und der Rand pulsiert rot.
+- Tag 3: Wähle deinen Weg
+  * Weg des Lichts: stärkere Wachen, weiteres Licht, aber mehr Zorn.
+  * Weg des Myzels: Gebäude verwachsen nicht, Befallene arbeiten mit,
+    weniger Wucherer, leuchtend violetter Nebel – aber schwächeres Turmlicht.

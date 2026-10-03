@@ -6,6 +6,7 @@ uniform int nlights = 0;
 uniform vec2 origin;
 uniform vec2 size;
 uniform float density = 1.0;
+uniform float myc = 0.0;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) {
@@ -37,5 +38,8 @@ void fragment() {
 	fog *= 1.0 - lit;
 	vec3 col = mix(vec3(0.12, 0.16, 0.12), vec3(0.45, 0.55, 0.38), n2);
 	col += vec3(0.25, 0.35, 0.15) * edge * n;
+	// Myzel-Weg: der Nebel wird zu leuchtendem, violett-türkisem Sporenschleier
+	vec3 mc = mix(vec3(0.12, 0.08, 0.2), vec3(0.2, 0.75, 0.7), n2) + vec3(0.6, 0.3, 0.9) * pow(n, 6.0) * 2.0;
+	col = mix(col, mc, myc);
 	COLOR = vec4(col, fog * 0.93);
 }

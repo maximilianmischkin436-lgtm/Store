@@ -62,6 +62,7 @@ var shots: Array = []
 var striking := false
 var nest_burned := false
 var thirst := 0
+var path := ""  # "light" oder "myc"
 var tech: Array = []
 var explore_node: Control
 var build_btns := {}
@@ -107,7 +108,7 @@ var lamp_lights := {}
 var glow_tex: GradientTexture2D
 # ---------- UI ----------
 var ui: CanvasLayer
-var top: Label
+var top: RichTextLabel
 var info: Label
 var logl: RichTextLabel
 var gen_btns: Array = []
@@ -203,7 +204,7 @@ func light_sources() -> Array:
 	var flood := 0.62 if flood_now() else 1.0
 	var nightm := lerpf(0.85, 1.0, dayf) * flood
 	if tower_lvl > 0:
-		out.append(Vector3(0, 0, maxf(1.6, 2.6 + tower_lvl * 1.15 + (0.7 if has_tech("L1") else 0.0) - (day - 1) * 0.07) * hw * nightm))
+		out.append(Vector3(0, 0, maxf(1.6, 2.6 + tower_lvl * 1.15 + (0.7 if has_tech("L1") else 0.0) - (day - 1) * 0.07 + (0.5 if path == "light" else (-0.5 if path == "myc" else 0.0))) * hw * nightm))
 	if res.oil > 0:
 		var lr := (2.4 * (1.25 if "watch" in laws else 1.0)) * hw * nightm
 		for t in tiles:
@@ -241,7 +242,30 @@ func housing() -> int:
 
 # ================= Simulation =================
 
+func calc_stress() -> float:
+	var st := 0.0
+	st += minf(creatures.size() * 0.22, 0.6)
+	if flood_now(): st += 0.3
+	if res.oil < 25: st += 0.3
+	if tower_lvl == 0: st += 0.4
+	if anger > 60: st += (anger - 60) / 80.0
+	if hope < 25: st += 0.25
+	if hunger > 0 or thirst > 0: st += 0.2
+	if infected > pop * 0.2: st += 0.2
+	return clampf(st, 0.0, 1.0)
+
 func _process(delta: float) -> void:
+	stress_v = lerpf(stress_v, calc_stress() if over == "" else 0.0, 1.0 - exp(-delta * 1.5))
+	flash_v = maxf(0.0, flash_v - delta * 2.0)
+	if post_mat:
+		post_mat.set_shader_parameter("stress", stress_v)
+		post_mat.set_shader_parameter("night", 1.0 - daylight())
+		post_mat.set_shader_parameter("flash", flash_v)
+	_update_audio(delta)
+	for f in floats:
+		f.t -= delta
+		f.p += Vector2(0, -22) * delta
+	floats = floats.filter(func(f): return f.t > 0)
 	_update_visuals(delta)
 	if over == "" and not paused_event:
 		hour_t += delta * speed
@@ -259,6 +283,7 @@ func _tick_hour() -> void:
 	if autotest:
 		_auto_play()
 	hour += 1
+	if hour == 6: sfx("bell", -6.0)
 	if hour >= 24:
 		hour = 0
 		_new_day()
@@ -288,7 +313,7 @@ func _tick_hour() -> void:
 		var dark: bool = lit_at(t.pos, src) < 0.5
 		t.lit = not dark
 		if t.type in B and not t.grown:
-			t.dark = t.dark + 1 if dark else 0
+			t.dark = (t.dark + 1 if dark else 0) if path != "myc" else 0
 			if t.dark >= 20:
 				t.grown = true
 				say("%s ist vom Nebel überwuchert worden." % B[t.type].n)
@@ -296,7 +321,7 @@ func _tick_hour() -> void:
 		if dark and t.terr == "ground" and t.type == "" and rng.randf() < 0.004:
 			t.terr = "fungus"
 	# Arbeit
-	var free := pop - infected
+	var free := pop - infected + (infected / 2 if path == "myc" else 0)
 	var wh := work_hours()
 	var working := hour >= wh.x and hour < wh.y
 	for t in tiles:
@@ -312,7 +337,7 @@ func _tick_hour() -> void:
 		if w == 0 or not working:
 			continue
 		var f := float(w) / need * (1.0 if t.lit else 0.5) * (0.5 if striking else 1.0)
-		if B[t.type].get("bonus", "") == t.terr:
+		if B[t.type].get("bonus", "") == t.terr or (path == "myc" and t.type == "farm"):
 			f *= 2.0
 		if t.type == "pump" and has_tech("T2"): f *= 1.5
 		if t.type == "yard" and has_tech("T3"): f *= 1.5
@@ -423,11 +448,14 @@ func _new_day() -> void:
 	var homeless := maxi(0, pop - housing())
 	anger += homeless * 0.2
 	if "mask" in laws: anger += 1
+	if path == "light": anger += 0.8
+	if path == "myc": hope += 1
 	if "double" in laws: anger += 3
 	if "kitchen" in laws: hope -= 1
 	if tower_lvl == 0: anger += 6
 	if anger >= 65 and not striking:
 		striking = true
+		sfx("strike", -4.0)
 		say("[color=#ff9050]STREIK![/color] Die Arbeiter legen die Werkzeuge nieder. Produktion halbiert.")
 	elif anger < 50 and striking:
 		striking = false
@@ -465,6 +493,8 @@ func _maybe_event() -> void:
 			"Quarantäne erzwingen", "Familien vereinen", "quar"],
 		8: ["Ein Prediger ruft: Der Nebel ist unsere Strafe, nur das Licht ist heilig!",
 			"Predigen lassen", "Verbannen", "preach"],
+		3: ["Die Ältesten sind gespalten. Die einen wollen den Nebel mit Feuer und Licht zurückdrängen. Die anderen sagen: Wir müssen lernen, mit ihm zu leben – das Myzel ist nicht nur Feind.",
+			"Weg des Lichts", "Weg des Myzels", "path"],
 		5: ["Das Wasser schmeckt nach Pilzen. Einige husten schon nach dem Trinken.",
 			"Abkochen (25 Öl)", "Weitertrinken", "boil"],
 		9: ["Späher entdecken ein Wucherer-Nest nahe der Stadt. Nachts kommen sie von dort.",
@@ -482,6 +512,7 @@ func _maybe_event() -> void:
 		say("[color=#ff9070]In der Nacht kratzt etwas an den Hütten am Rand.[/color] Die Wucherer sind wach. Baut Wachposten!")
 
 func show_event(text: String, a: String, b: String, id: String) -> void:
+	sfx("sting", -4.0)
 	if autotest:
 		_resolve(id, 0)
 		return
@@ -524,6 +555,13 @@ func _resolve(id: String, c: int) -> void:
 				hope += 8; anger += 3; say("Jeden Abend versammeln sie sich am Turm und beten ins Licht.")
 			else:
 				anger += 6; say("Der Prediger geht in den Nebel. Seine Anhänger schauen dir lange nach.")
+		"path":
+			if c == 0:
+				path = "light"
+				say("[color=#ffd27a]WEG DES LICHTS.[/color] Wachen kämpfen härter, der Turm strahlt weiter – doch die strenge Ordnung macht zornig.")
+			else:
+				path = "myc"
+				say("[color=#8fffe0]WEG DES MYZELS.[/color] Gebäude verwachsen nicht mehr, Befallene arbeiten mit, Wucherer meiden uns – doch das Turmlicht verblasst.")
 		"boil":
 			if c == 0 and res.oil >= 25:
 				res.oil -= 25; say("Das Wasser wird abgekocht. Es schmeckt nach Rauch, aber es ist sauber.")
@@ -637,11 +675,15 @@ func build(i: int, type: String) -> bool:
 	for k in B[type].cost:
 		res[k] -= B[type].cost[k]
 	t.type = type
+	t.born = Time.get_ticks_msec() / 1000.0
+	sfx("build", -4.0)
+	floats.append({"p": t.pos + Vector2(0, -40), "t": 1.4, "s": "-" + _cost_str(B[type].cost), "c": Color(1, 0.8, 0.5)})
 	t.on = true
 	t.dark = 0
 	return true
 
 func _auto_play() -> void:
+	if day == 3 and path == "": path = "light"
 	var plan := ["pump", "yard", "farm", "yard", "water", "hut", "hut", "farm", "hut", "guard", "farm", "hut", "lab", "clinic", "hut", "pump", "lamp", "scout", "guard", "water", "yard", "farm", "lamp", "stone", "guard", "lamp", "stone", "green", "filter", "beacon", "brew"]
 	var have := {}
 	for t in tiles:
@@ -685,7 +727,7 @@ func _unhandled_input(e: InputEvent) -> void:
 		var h := pos_hex(get_global_mouse_position())
 		hover = idx.get(h, -1)
 		if e.button_mask & MOUSE_BUTTON_MASK_MIDDLE:
-			cam.position -= e.relative / cam.zoom
+			cam_target -= e.relative / cam.zoom
 	elif e is InputEventMouseButton and e.pressed:
 		if e.button_index == MOUSE_BUTTON_WHEEL_UP:
 			cam.zoom = (cam.zoom * 1.1).clamp(Vector2(0.6, 0.6), Vector2(2.2, 2.2))
@@ -719,8 +761,11 @@ func _process_keys(delta: float) -> void:
 	if Input.is_key_pressed(KEY_D): v.x += 1
 	if Input.is_key_pressed(KEY_W): v.y -= 1
 	if Input.is_key_pressed(KEY_S): v.y += 1
-	cam.position += v * 500.0 * delta / cam.zoom.x
-	cam.position = cam.position.clamp(Vector2(-450, -400), Vector2(450, 400))
+	cam_target += v * 520.0 * delta / cam.zoom.x
+	cam_target = cam_target.clamp(Vector2(-450, -400), Vector2(450, 400))
+	cam.position = cam.position.lerp(cam_target, 1.0 - exp(-delta * 9.0))
+	shake = maxf(0.0, shake - delta * 2.5)
+	cam.offset = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * shake * 9.0
 
 # ================= Darstellung =================
 
@@ -734,8 +779,29 @@ func _load_sprites() -> void:
 	draw_order = range(tiles.size())
 	draw_order.sort_custom(func(a, b): return tiles[a].pos.y < tiles[b].pos.y)
 
+var post_mat: ShaderMaterial
+var stress_v := 0.0
+var flash_v := 0.0
+var shake := 0.0
+var cam_target := Vector2(60, 10)
+var floats: Array = []
+
+func _make_post() -> void:
+	var pl := CanvasLayer.new()
+	pl.layer = 1
+	add_child(pl)
+	var r := ColorRect.new()
+	r.size = Vector2(1280, 720)
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	post_mat = ShaderMaterial.new()
+	post_mat.shader = load("res://post.gdshader")
+	r.material = post_mat
+	pl.add_child(r)
+
 func _make_world() -> void:
 	_load_sprites()
+	_make_post()
+	_make_audio()
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	cam = Camera2D.new()
@@ -805,6 +871,7 @@ func _update_visuals(delta: float) -> void:
 	fog_mat.set_shader_parameter("lights", arr)
 	fog_mat.set_shader_parameter("nlights", arr.size())
 	fog_mat.set_shader_parameter("density", 1.25 if flood_now() else 1.0)
+	fog_mat.set_shader_parameter("myc", 1.0 if path == "myc" else 0.0)
 	spores.position = cam.position
 	# echte 2D-Lichter (warmes Glühen nachts)
 	tower_light.enabled = tower_lvl > 0
@@ -964,7 +1031,15 @@ func _draw_building(t: Dictionary, p: Vector2, tm: float, dl: float) -> void:
 	var mod := Color.WHITE
 	if t.grown: mod = Color(0.55, 0.85, 0.6)
 	elif not t.on: mod = Color(0.55, 0.55, 0.55)
-	if spr(self, t.type, p, mod):
+	var age: float = Time.get_ticks_msec() / 1000.0 - t.get("born", -10.0)
+	var pop_s := 1.0
+	if age < 0.5:
+		var k := age / 0.5
+		pop_s = 1.0 + sin(k * PI * 1.5) * (1.0 - k) * 0.35 - (1.0 - minf(k * 4.0, 1.0)) * 0.6
+		for j in 6:
+			var a: float = j * TAU / 6.0 + t.seed
+			draw_circle(p + Vector2.from_angle(a) * (10 + k * 30) * Vector2(1, 0.5), 6 * (1.0 - k), Color(0.7, 0.65, 0.55, 0.5 * (1.0 - k)))
+	if spr(self, t.type, p, mod, pop_s):
 		_building_fx(t, p, tm, on)
 	else:
 		_draw_building_vec(t, p, tm, dl, on)
@@ -1117,29 +1192,44 @@ func _draw_building_vec(t: Dictionary, p: Vector2, tm: float, dl: float, on0: bo
 
 # ================= UI =================
 
-func _style(c: Color, border: Color = Color(0.5, 0.42, 0.3)) -> StyleBoxFlat:
+func _style(c: Color, border: Color = Color(1, 1, 1, 0.08)) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
 	s.bg_color = c
 	s.border_color = border
 	s.set_border_width_all(1)
-	s.set_corner_radius_all(4)
-	s.content_margin_left = 8; s.content_margin_right = 8
-	s.content_margin_top = 4; s.content_margin_bottom = 4
+	s.set_corner_radius_all(10)
+	s.shadow_color = Color(0, 0, 0, 0.35)
+	s.shadow_size = 10
+	s.anti_aliasing = true
+	s.content_margin_left = 12; s.content_margin_right = 12
+	s.content_margin_top = 7; s.content_margin_bottom = 7
 	return s
 
 func _make_ui() -> void:
 	ui = CanvasLayer.new()
+	ui.layer = 5
 	add_child(ui)
 	var th := Theme.new()
-	th.set_stylebox("normal", "Button", _style(Color(0.12, 0.11, 0.1, 0.92)))
-	th.set_stylebox("hover", "Button", _style(Color(0.22, 0.19, 0.15, 0.95), Color(0.9, 0.7, 0.4)))
-	th.set_stylebox("pressed", "Button", _style(Color(0.35, 0.26, 0.15, 0.95), Color(1, 0.8, 0.45)))
-	th.set_stylebox("disabled", "Button", _style(Color(0.08, 0.08, 0.08, 0.8), Color(0.25, 0.25, 0.25)))
-	th.set_stylebox("panel", "PanelContainer", _style(Color(0.07, 0.07, 0.07, 0.86)))
-	th.set_color("font_color", "Button", Color(0.95, 0.88, 0.75))
-	th.set_color("font_color", "Label", Color(0.95, 0.9, 0.8))
-	th.set_font_size("font_size", "Button", 14)
-	th.set_font_size("font_size", "Label", 14)
+	var sf := SystemFont.new()
+	sf.font_names = PackedStringArray(["Inter", "SF Pro Text", "Helvetica Neue", "Segoe UI", "Roboto", "Noto Sans", "DejaVu Sans"])
+	sf.antialiasing = TextServer.FONT_ANTIALIASING_LCD
+	sf.hinting = TextServer.HINTING_LIGHT
+	th.default_font = sf
+	var accent := Color(1.0, 0.72, 0.35)
+	th.set_stylebox("normal", "Button", _style(Color(0.09, 0.1, 0.12, 0.62)))
+	th.set_stylebox("hover", "Button", _style(Color(0.16, 0.15, 0.14, 0.78), Color(accent, 0.7)))
+	th.set_stylebox("pressed", "Button", _style(Color(0.32, 0.22, 0.1, 0.85), accent))
+	th.set_stylebox("disabled", "Button", _style(Color(0.06, 0.06, 0.07, 0.5), Color(1, 1, 1, 0.04)))
+	th.set_stylebox("focus", "Button", StyleBoxEmpty.new())
+	th.set_stylebox("panel", "PanelContainer", _style(Color(0.05, 0.06, 0.08, 0.66)))
+	th.set_stylebox("panel", "TooltipPanel", _style(Color(0.05, 0.06, 0.08, 0.92), Color(accent, 0.5)))
+	th.set_color("font_color", "Button", Color(0.93, 0.92, 0.9))
+	th.set_color("font_hover_color", "Button", Color(1, 0.9, 0.75))
+	th.set_color("font_pressed_color", "Button", Color(1, 0.86, 0.6))
+	th.set_color("font_disabled_color", "Button", Color(0.5, 0.5, 0.52))
+	th.set_color("font_color", "Label", Color(0.92, 0.92, 0.9))
+	th.set_font_size("font_size", "Button", 13)
+	th.set_font_size("font_size", "Label", 13)
 	var root := Control.new()
 	root.theme = th
 	root.size = Vector2(1280, 720)
@@ -1149,8 +1239,16 @@ func _make_ui() -> void:
 	tp.position = Vector2(0, 0)
 	tp.size = Vector2(1280, 36)
 	root.add_child(tp)
-	top = Label.new()
-	top.add_theme_font_size_override("font_size", 16)
+	tp.position = Vector2(340, 8)
+	tp.size = Vector2(600, 34)
+	top = RichTextLabel.new()
+	top.bbcode_enabled = true
+	top.fit_content = true
+	top.autowrap_mode = TextServer.AUTOWRAP_OFF
+	top.custom_minimum_size = Vector2(640, 22)
+	top.scroll_active = false
+	top.add_theme_font_size_override("normal_font_size", 15)
+	top.add_theme_font_override("normal_font", sf)
 	tp.add_child(top)
 	# Bauleiste
 	var bar := HBoxContainer.new()
@@ -1306,13 +1404,21 @@ func _bar(v: float) -> String:
 	return "█".repeat(n) + "░".repeat(10 - n)
 
 func _update_ui() -> void:
-	top.text = "  Tag %d/%d   %02d:00 %s   │   Öl %d   Schrott %d   Nahrung %d   Wasser %d   │   Bewohner %d   Befallen %d   Wohnraum %d" % [
-		day, LAST_DAY, hour, "  ☁ NEBELFLUT" if flood_now() else "", res.oil, res.scrap, res.food, res.water, pop, infected, housing()]
+	var blink := sin(Time.get_ticks_msec() * 0.008) > 0
+	var chip := func(col: String, name: String, v: float, low: float) -> String:
+		var c2 := "#ff5a4a" if v < low and blink else "#f2efe9"
+		return "[color=%s]●[/color] [color=#9aa0a6]%s[/color] [color=%s][b]%d[/b][/color]" % [col, name, c2, int(v)]
+	top.text = "[b]TAG %d[/b][color=#9aa0a6]/%d · %02d:00[/color]%s    %s    %s    %s    %s    [color=#6fd3ff]●[/color] [color=#9aa0a6]Leute[/color] [b]%d[/b][color=#ff7b6b]%s[/color]" % [
+		day, LAST_DAY, hour, "  [color=#b8ff9a]☁ NEBELFLUT[/color]" if flood_now() else "",
+		chip.call("#ffb347", "Öl", res.oil, 25), chip.call("#c9a27a", "Schrott", res.scrap, 10),
+		chip.call("#9be37a", "Nahrung", res.food, pop * 0.6), chip.call("#6aa8ff", "Wasser", res.water, pop * 0.5),
+		pop, ("  ✚%d" % infected) if infected > 0 else ""]
 	var free := pop - infected
 	for t in tiles: free -= t.wk
 	var s := "Zuversicht %s %d\nZorn       %s %d\nLinsen-Hitze %d%%\nFreie Hände %d" % [_bar(hope), hope, _bar(anger), anger, wear, maxi(0, free)]
 	s += "\nWissen %d" % res.know
 	if striking: s += "\n[STREIK – Produktion halbiert]"
+	if path != "": s += "\nWeg: " + ("des Lichts" if path == "light" else "des Myzels")
 	if creatures.size() > 0: s += "\n⚠ %d Wucherer unterwegs!" % creatures.size()
 	if hover >= 0:
 		var h: Dictionary = tiles[hover]
@@ -1349,6 +1455,7 @@ func _refresh_log() -> void:
 
 func _win() -> void:
 	over = "win"
+	sfx("win", 0.0)
 	banner.text = "DAS LICHT BRENNT WEITER\n%d Überlebende · %d Tote\nIm Norden antwortet ein zweites Feuer." % [pop, deaths]
 	banner.visible = true
 	if autotest and not "--shot" in OS.get_cmdline_user_args():
@@ -1356,13 +1463,14 @@ func _win() -> void:
 
 func _lose(why: String) -> void:
 	over = "lose"
+	sfx("lose", 0.0)
 	banner.text = "DAS LICHT IST ERLOSCHEN\n" + why + "\n\nR = Neustart"
 	banner.visible = true
 	if autotest and not "--shot" in OS.get_cmdline_user_args():
 		print("RESULT LOSE day=%d %s" % [day, why]); get_tree().quit()
 
 func _shot() -> void:
-	if "--zoom" in OS.get_cmdline_user_args(): cam.zoom = Vector2(2.0, 2.0); cam.position = Vector2(20, -20)
+	if "--zoom" in OS.get_cmdline_user_args(): cam.zoom = Vector2(2.0, 2.0); cam.position = Vector2(20, -20); cam_target = cam.position
 	for n in [5.0, 9.0]:
 		await get_tree().create_timer(n).timeout
 		get_viewport().get_texture().get_image().save_png("res://shot%d.png" % int(n))
@@ -1384,6 +1492,8 @@ func _draw_markers() -> void:
 			markers.draw_set_transform(Vector2.ZERO)
 		else:
 			markers.draw_circle(cp, 6, Color(0.4, 0.9, 0.6))
+	for fl in floats:
+		markers.draw_string(font, fl.p + Vector2(-60, 0), fl.s, HORIZONTAL_ALIGNMENT_CENTER, 120, 13, Color(fl.c, minf(fl.t, 1.0)))
 	for sh in shots:
 		markers.draw_line(sh.a, sh.b, Color(1, 0.6, 0.2, sh.t), 3)
 		markers.draw_circle(sh.b, 10 * sh.t, Color(1, 0.5, 0.1, sh.t * 0.7))
@@ -1432,6 +1542,7 @@ func _tick_creatures() -> void:
 		var chance := 0.06 + day * 0.025
 		if flood_now(): chance *= 1.8
 		if nest_burned: chance *= 0.5
+		if path == "myc": chance *= 0.45
 		if rng.randf() < chance:
 			var a := rng.randf() * TAU
 			var start := Vector2.from_angle(a) * HEX * SQ3 * (MAP_R + 0.5)
@@ -1445,6 +1556,7 @@ func _tick_creatures() -> void:
 						bd = d; best = i
 			if best >= 0:
 				creatures.append({"pos": start, "prev": start, "target": best, "hp": 2})
+				sfx("growl", -6.0)
 	var src := light_sources()
 	var guards := []
 	for t in tiles:
@@ -1458,9 +1570,10 @@ func _tick_creatures() -> void:
 		var spd := HEX * SQ3 * (0.8 if lit_at(c.pos, src) < 0.5 else 0.45)
 		c.pos = (c.pos as Vector2).move_toward(tp, spd)
 		for g in guards:
-			if (g.pos as Vector2).distance_to(c.pos) < HEX * SQ3 * 3.0 and rng.randf() < 0.35 * g.wk / 3.0:
+			if (g.pos as Vector2).distance_to(c.pos) < HEX * SQ3 * 3.0 and rng.randf() < (0.6 if path == "light" else 0.35) * g.wk / 3.0:
 				c.hp -= 1
 				shots.append({"a": g.pos + Vector2(0, -30), "b": c.pos, "t": 0.6})
+				sfx("flame", -8.0)
 		if c.hp > 0 and (c.pos as Vector2).distance_to(tp) < 8.0:
 			var t: Dictionary = tiles[c.target]
 			if t.type in B and not t.grown:
@@ -1469,6 +1582,77 @@ func _tick_creatures() -> void:
 				var victims := rng.randi_range(1, 3) if B[t.type].get("house", 0) > 0 or B[t.type].w > 0 else 0
 				say("[color=#ff6040]Ein Wucherer hat %s verwüstet![/color]" % B[t.type].n)
 				if victims > 0: _kill(victims, "von Wucherern gerissen")
+				sfx("alarm", -3.0)
+				shake = 1.0
+				flash_v = 0.5
 				anger += 2
 			c.hp = 0
 	creatures = creatures.filter(func(c): return c.hp > 0)
+
+# ================= Audio =================
+var music := {}
+var loops := {}
+var sfx_players: Array = []
+var audio_cache := {}
+
+func _stream(name: String) -> AudioStream:
+	if audio_cache.has(name):
+		return audio_cache[name]
+	var path := "res://audio/%s.mp3" % name
+	if not FileAccess.file_exists(path):
+		return null
+	var st := AudioStreamMP3.new()
+	st.data = FileAccess.get_file_as_bytes(path)
+	audio_cache[name] = st
+	return st
+
+func _make_audio() -> void:
+	for n in ["calm", "tense", "night", "wind", "heart"]:
+		var st := _stream(n)
+		if st == null:
+			continue
+		st.loop = true
+		var pl := AudioStreamPlayer.new()
+		pl.stream = st
+		pl.volume_db = -80.0
+		add_child(pl)
+		pl.play()
+		music[n] = pl
+	for i in 8:
+		var p := AudioStreamPlayer.new()
+		add_child(p)
+		sfx_players.append(p)
+	get_tree().node_added.connect(func(n):
+		if n is Button: n.pressed.connect(func(): sfx("click", -10.0)))
+
+func sfx(name: String, db: float = 0.0) -> void:
+	if autotest or sfx_players.is_empty():
+		return
+	var st := _stream(name)
+	if st == null:
+		return
+	for p in sfx_players:
+		if not p.playing:
+			p.stream = st
+			p.volume_db = db
+			p.pitch_scale = randf_range(0.94, 1.06)
+			p.play()
+			return
+
+func _mix(n: String, w: float, base_db: float, delta: float) -> void:
+	if not music.has(n):
+		return
+	var target := base_db + linear_to_db(maxf(w, 0.0001))
+	var pl: AudioStreamPlayer = music[n]
+	pl.volume_db = lerpf(pl.volume_db, maxf(target, -80.0), 1.0 - exp(-delta * 1.2))
+
+func _update_audio(delta: float) -> void:
+	var dl := daylight()
+	var st := stress_v
+	_mix("tense", st, -6.0, delta)
+	_mix("calm", (1.0 - st) * dl, -8.0, delta)
+	_mix("night", (1.0 - st) * (1.0 - dl), -7.0, delta)
+	_mix("wind", 0.55 + (0.45 if flood_now() else 0.0), -14.0, delta)
+	_mix("heart", clampf((st - 0.55) * 2.2, 0.0, 1.0), -6.0, delta)
+	if music.has("heart"):
+		music["heart"].pitch_scale = 1.0 + st * 0.35
