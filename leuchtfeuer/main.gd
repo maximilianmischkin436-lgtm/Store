@@ -1478,7 +1478,7 @@ func _update_ui() -> void:
 	if creatures.size() > 0: s += "\n[color=#ff6a5a][b]%d Wucherer[/b] in der Stadt[/color]" % creatures.size()
 	if hover >= 0:
 		var h: Dictionary = tiles[hover]
-		var tn: String = {"ground": "Boden", "fungus": "Pilzfeld", "oil": "Ölquelle", "ruin": "Ruine", "rock": "Fels"}[h.terr]
+		var tn: String = {"ground": "Boden", "fungus": "Pilzfeld", "oil": "Ölquelle", "ruin": "Ruine", "rock": "Fels", "cave": "Höhle · klicken zum Erkunden", "bunker": "Bunker · klicken zum Erkunden"}.get(h.terr, "Gelände")
 		var nm: String = "Leuchtturm" if h.type == "tower" else (B[h.type].n if h.type in B else tn)
 		s += "\n\n[b]%s[/b]  %s" % [nm, "[color=#ffd27a]im Licht[/color]" if h.get("lit", true) else "[color=#9fe08a]im Nebel[/color]"]
 		if h.type in B:
