@@ -1,0 +1,31 @@
+NEON EXILE – ASSET-PACKS FUER ITCH.IO
+=====================================
+
+5 Packs, jeder Ordner = ein Produkt auf itch.io:
+
+  liminal-vhs-shaders       Godot-Projekt   Vorschlag 6 $
+  liminal-level-generator   Godot-Projekt   Vorschlag 12 $
+  horror-ai-kit             Godot-Projekt   Vorschlag 8 $
+  liminal-sound-pack        Audio-Dateien   Vorschlag 10 $
+  liminal-texture-pack      PNG-Texturen    Vorschlag 5 $
+
+In jedem Ordner:
+  README.md     Anleitung (Englisch) – kommt mit in den Download
+  LICENSE.txt   Lizenz (kommerzielle Nutzung ja, Weiterverkauf nein) – kommt mit in den Download
+  ITCH_PAGE.md  Text fuer deine itch.io-Seite (Beschreibung, Preis, Tags) – NICHT mit hochladen
+
+Bilder fuer die Shop-Seiten liegen in _covers/ (Cover + Screenshots).
+Tipp: Screenshots aus dem Spiel Neon Exile selbst sehen noch besser aus – nimm die als Cover dazu.
+
+WICHTIG VOR DEM VERKAUF
+- liminal-sound-pack und liminal-texture-pack wurden mit ElevenLabs erstellt.
+  Pruefe in deinem ElevenLabs-Konto, dass dein Abo kommerzielle Nutzung UND den Verkauf
+  (auch als Asset-Pack) erlaubt. Wenn nicht: diese zwei Packs nicht verkaufen.
+- Die drei Godot-Packs enthalten nur eigenen Code/Shader, keine fremden Modelle.
+- Trag in LICENSE.txt deinen echten Namen bzw. Kuenstlernamen ein (steht aktuell drin: Maximilian Mischkin).
+
+Hochladen auf itch.io:
+  1. itch.io -> Dashboard -> "Create new project"
+  2. Kind of project: "Assets"
+  3. Den jeweiligen Ordner als ZIP hochladen (ohne ITCH_PAGE.md)
+  4. Text aus ITCH_PAGE.md einfuegen, Preis + Tags setzen, Cover aus _covers/ hochladen

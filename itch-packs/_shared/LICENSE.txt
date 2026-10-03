@@ -1,0 +1,16 @@
+LICENSE - Neon Exile Asset Packs
+
+Copyright (c) 2026 Maximilian Mischkin
+
+You MAY:
+- use these assets in unlimited personal and commercial projects (games, apps, videos),
+- modify them in any way,
+- ship them inside your compiled/exported projects.
+
+You may NOT:
+- resell, redistribute, sublicense or share the assets themselves (alone or in another asset pack),
+  modified or unmodified,
+- claim the assets as your own work.
+
+Credit is appreciated but not required: "Assets by Maximilian Mischkin (Neon Exile)".
+The assets are provided "as is", without warranty of any kind.
