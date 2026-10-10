@@ -1,0 +1,30 @@
+; Engine configuration file.
+config_version=5
+
+[application]
+
+config/name="Neon Exile"
+config/description="A neon sci-fi action RPG."
+run/main_scene="res://menu.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.027, 0.027, 0.06, 1)
+
+[autoload]
+
+Game="*res://scripts3d/game_state.gd"
+
+[debug]
+
+gdscript/warnings/enable=false

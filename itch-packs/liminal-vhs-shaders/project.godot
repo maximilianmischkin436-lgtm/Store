@@ -1,0 +1,13 @@
+; Engine configuration file.
+config_version=5
+
+[application]
+
+config/name="Liminal VHS Shader Pack"
+run/main_scene="res://demo/demo.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"

@@ -1,0 +1,30 @@
+DAS LEUCHTFEUER
+Licht gegen den Nebel – Aufbau, Turmverteidigung und dauerhafter Fortschritt
+
+Öffnen: Godot 4.3 → Importieren → project.godot → F5
+
+SO FUNKTIONIERT ES
+- Tagsüber (45 s) baust du, baust aus und erkundest. Mit [N] startest du die Nacht früher.
+- Nachts kommen Wucherer in Wellen aus dem Nebel. Jede Nacht werden es mehr und sie werden stärker.
+  Jede 5. Nacht erscheint ein Koloss.
+- Licht ist deine Waffe: Wucherer verbrennen im Licht von Turm, Laternen und Leuchtmasten.
+  Wachtürme schießen Feuer. [Q] löst den Lichtstoß aus, eine Druckwelle aus dem Turm.
+- Fällt der Turm, endet der Lauf.
+
+FORTSCHRITT
+- Jedes Gebäude lässt sich bis Stufe 5 ausbauen, der Turm bis Stufe 8.
+- Nach jeder Nacht wählst du 1 von 3 Karten (gewöhnlich, selten, episch). Karten stapeln sich.
+- Aufträge links geben Glut und erneuern sich endlos.
+- Glut bekommst du für Kills, überstandene Nächte, Aufträge und Erkundungen.
+  Sie bleibt nach dem Lauf erhalten.
+- Glutschmiede (Hauptmenü): dauerhafte Upgrades und neue Baupläne
+  (Leuchtmast, Feuerkanone, Glutofen) für alle zukünftigen Läufe.
+- Bestenliste: längste Nacht, Läufe, besiegte Wucherer.
+
+ERKUNDUNG
+- Späherposten bauen, dann tagsüber eine Höhle oder einen Bunker anklicken.
+- Raum für Raum vorgehen, Atemluft im Blick behalten. Jäger lauern in der Tiefe, Fackeln vertreiben sie.
+
+STEUERUNG
+Linksklick bauen / auswählen · Rechtsklick abwählen · U ausbauen · Q Lichtstoß
+N Nacht starten · WASD Kamera · Mausrad Zoom · Leertaste Pause · 1/2/3 Tempo

@@ -1,6 +1,6 @@
 # Neon Dodge
 
-Kleines Arcade-Spiel (eine Datei, keine Abhaengigkeiten). Weiche roten Kugeln aus, sammle gruene Orbs, baue Combos auf.
+Small arcade game (single file, no dependencies). Dodge red balls, collect green orbs, build combos.
 
-- Lokal testen: `index.html` im Browser oeffnen
-- Auf itch.io: `index.html` in eine ZIP packen und als "HTML5" hochladen
+- Test locally: open `index.html` in a browser
+- itch.io: run `itch/build.sh` and upload `dist/neon-dodge.zip` as an HTML5 game
